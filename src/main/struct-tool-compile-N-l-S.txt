@@ -1,0 +1,30 @@
+  // 构建struct形式的interface
+	0x001d 00029 (struct.go:17)	XORPS	X0, X0
+	0x0020 00032 (struct.go:17)	MOVUPS	X0, ""..autotmp_1+48(SP)
+	0x0025 00037 (struct.go:17)	LEAQ	go.string."grooming"(SB), AX
+	0x002c 00044 (struct.go:17)	MOVQ	AX, ""..autotmp_1+48(SP)
+	0x0031 00049 (struct.go:17)	MOVQ	$8, ""..autotmp_1+56(SP)
+	0x003a 00058 (struct.go:17)	LEAQ	go.itab."".Cat,"".Duck(SB), AX
+	0x0041 00065 (struct.go:17)	MOVQ	AX, (SP)
+	0x0045 00069 (struct.go:17)	LEAQ	""..autotmp_1+48(SP), AX
+	0x004a 00074 (struct.go:17)	MOVQ	AX, 8(SP)
+	0x004f 00079 (struct.go:17)	PCDATA	$0, $1
+	0x004f 00079 (struct.go:17)	CALL	runtime.convT2I(SB)
+	0x0054 00084 (struct.go:17)	MOVQ	16(SP), AX
+	0x0059 00089 (struct.go:17)	MOVQ	24(SP), CX
+	0x005e 00094 (struct.go:17)	MOVQ	AX, "".c+32(SP)
+	0x0063 00099 (struct.go:17)	MOVQ	CX, "".c+40(SP)
+	0x0068 00104 (struct.go:18)	MOVQ	"".c+32(SP), AX
+	0x006d 00109 (struct.go:18)	TESTB	AL, (AX)
+	0x006f 00111 (struct.go:18)	MOVQ	24(AX), AX
+	0x0073 00115 (struct.go:18)	MOVQ	"".c+40(SP), CX
+	0x0078 00120 (struct.go:18)	MOVQ	CX, (SP)
+	0x007c 00124 (struct.go:18)	PCDATA	$0, $0
+	0x007c 00124 (struct.go:18)	CALL	AX
+	0x007e 00126 (struct.go:19)	MOVQ	64(SP), BP
+	0x0083 00131 (struct.go:19)	ADDQ	$72, SP
+	0x0087 00135 (struct.go:19)	RET
+	0x0088 00136 (struct.go:19)	NOP
+	0x0088 00136 (struct.go:16)	PCDATA	$0, $-1
+	0x0088 00136 (struct.go:16)	CALL	runtime.morestack_noctxt(SB)
+	0x008d 00141 (struct.go:16)	JMP	0
