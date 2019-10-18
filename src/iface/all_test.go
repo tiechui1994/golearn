@@ -3,6 +3,7 @@ package iface
 import (
 	"testing"
 	"log"
+	"fmt"
 )
 
 func TestIface(t *testing.T) {

@@ -1,23 +1,31 @@
 package main
 
-type Duck interface {
-	Quack()
-}
+import (
+	"sync"
+	"fmt"
+	"time"
+	"runtime"
+)
 
-type Cat struct {
-	Name string
-}
-
-//go:noinline
-func (c *Cat) Quack() {
-	println(c.Name + " meow")
-}
+var wg sync.WaitGroup
 
 func main() {
-	var c Duck = &Cat{Name: "grooming"}
-	switch c.(type) {
-	case *Cat:
-		cat := c.(*Cat)
-		cat.Quack()
+	a := make(chan int, 1)
+	runtime.GOMAXPROCS(1)
+	a <- 1
+
+	for i := 1; i <= 10; i++ {
+		go func(i int) {
+			<-a
+			fmt.Println(2*i - 1)
+		}(i)
 	}
+	for i := 1; i <= 10; i++ {
+		go func(i int) {
+			a <- i
+			fmt.Println(2 * i)
+		}(i)
+	}
+
+	time.Sleep(1 * time.Second)
 }
