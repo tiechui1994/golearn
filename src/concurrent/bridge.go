@@ -15,28 +15,8 @@ func Take(done, stream <-chan interface{}, num int) <-chan interface{} {
 	}()
 	return results
 }
-func OrDone(done <-chan interface{}, stream <-chan interface{}) <-chan interface{} {
-	val := make(chan interface{})
-	go func() {
-		defer close(val)
-		for {
-			select {
-			case <-done:
-				return
 
-			case v, ok := <-stream:
-				if !ok {
-					return
-				}
-				select {
-				case <-done:
-				case val <- v:
-				}
-			}
-		}
-	}()
-	return val
-}
+// 桥接的核心在于沟通的桥梁, 桥梁必须灵活可靠, 否则桥接会失败
 func Bridge(done <-chan interface{}, chans <-chan <-chan interface{}) <-chan interface{} {
 	stream := make(chan interface{})
 	go func() {

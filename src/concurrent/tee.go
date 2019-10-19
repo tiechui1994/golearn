@@ -1,5 +1,6 @@
 package concurrent
 
+// 是FanOut的全量复制的版本(反射版本)
 func Tee(done <-chan interface{}, in <-chan interface{}) (_, _ <-chan interface{}) {
 	out1 := make(chan interface{})
 	out2 := make(chan interface{})
