@@ -13,31 +13,31 @@ const (
 	mutexWaiterShift = iota
 )
 
-type Mutext struct {
+type Mutex struct {
 	mu sync.Mutex
 }
 
-func (m *Mutext) Lock() {
+func (m *Mutex) Lock() {
 	m.mu.Lock()
 }
 
-func (m *Mutext) Unlock() {
+func (m *Mutex) Unlock() {
 	m.mu.Unlock()
 }
 
-func (m *Mutext) TryLock() bool {
+func (m *Mutex) TryLock() bool {
 	return atomic.CompareAndSwapInt32((*int32)(unsafe.Pointer(&m.mu)), 0, mutexLocked)
 }
 
-func (m *Mutext) IsLocked() bool {
+func (m *Mutex) IsLocked() bool {
 	return atomic.LoadInt32((*int32)(unsafe.Pointer(&m.mu)))&mutexLocked == mutexLocked
 }
 
-func (m *Mutext) IsStarving() bool {
+func (m *Mutex) IsStarving() bool {
 	return atomic.LoadInt32((*int32)(unsafe.Pointer(&m.mu)))&mutexStarving == mutexStarving
 }
 
-func (m *Mutext) Counter() uint32 {
+func (m *Mutex) Counter() int32 {
 	state := atomic.LoadInt32((*int32)(unsafe.Pointer(&m.mu)))
 	v := state >> mutexWaiterShift
 	v = v + (v & mutexLocked)
