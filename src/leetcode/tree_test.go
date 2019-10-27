@@ -26,8 +26,8 @@ func TestKthSmallest(t *testing.T) {
 		Val: 3,
 		Left: &TreeNode{
 			Val: 1,
-			Right:&TreeNode{
-				Val:2,
+			Right: &TreeNode{
+				Val: 2,
 			},
 		},
 		Right: &TreeNode{
@@ -37,4 +37,8 @@ func TestKthSmallest(t *testing.T) {
 
 	res := kthSmallest(tree, 1)
 	fmt.Println(res)
+}
+
+func TestPathInZigZagTree(t *testing.T) {
+	pathInZigZagTree(26)
 }

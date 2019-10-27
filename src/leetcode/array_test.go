@@ -80,6 +80,11 @@ func TestListSumMore(t *testing.T) {
 }
 
 func TestRemoveDuplicates(t *testing.T) {
-	res := removeDuplicates([]int{0,0,1,1,1,2,2,3,3,4})
+	res := removeDuplicates([]int{0, 0, 1, 1, 1, 2, 2, 3, 3, 4})
 	fmt.Println(res)
+}
+
+func TestFindPeek(t *testing.T) {
+	ok, res := findPeek([]int{-200, -100, 1, 4, 0})
+	fmt.Println(ok, res)
 }

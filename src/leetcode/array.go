@@ -24,7 +24,7 @@ type ListNode struct {
 	Next *ListNode
 }
 
-// 逆序存储
+// 两个链表, 逆序存储数字, 求和
 func addTwoNumbers(l1 *ListNode, l2 *ListNode) *ListNode {
 	res := new(ListNode)
 	n1 := l1
@@ -97,7 +97,7 @@ func (s *stack) Len() int {
 	return len(*s)
 }
 
-// 顺序存储(栈的先进后出, 变为逆序存储)
+// 两个链表, 顺序存储数字, 求和 ==> (栈的先进后出, 变为逆序存储)
 func addTwoNumbersMore(l1 *ListNode, l2 *ListNode) *ListNode {
 	var s1, s2 = new(stack), new(stack)
 	n1 := l1
@@ -163,40 +163,7 @@ func addTwoNumbersMore(l1 *ListNode, l2 *ListNode) *ListNode {
 	return node
 }
 
-// 判断是否有环
-func hasCycle(head *ListNode) bool {
-	m := make(map[*ListNode]bool)
-	for n := head; n != nil; n = n.Next {
-		if _, ok := m[n]; ok {
-			return true
-		}
-		m[n] = true
-	}
-
-	return false
-}
-
-// 赛跑
-func hasCyclePointer(head *ListNode) bool {
-	if head == nil || head.Next == nil {
-		return false
-	}
-
-	slow := head
-	fast := head.Next
-	for slow != fast {
-		if fast == nil || fast.Next == nil {
-			return false
-		}
-
-		slow = slow.Next
-		fast = fast.Next.Next
-	}
-
-	return true
-}
-
-// 三个数字的和是0的所有组合, 空间:O(N) 时间:O(N^2)
+// 三个数字的和是0的所有组合, 空间: O(N) 时间:O(N^2)
 func threeSum(nums []int) [][]int {
 	sort.SliceStable(nums, func(i, j int) bool {
 		return nums[i] < nums[j]
@@ -249,9 +216,42 @@ func threeSum(nums []int) [][]int {
 	return res
 }
 
+// 判断是否存在环 ==> map
+func hasCycle(head *ListNode) bool {
+	m := make(map[*ListNode]bool)
+	for n := head; n != nil; n = n.Next {
+		if _, ok := m[n]; ok {
+			return true
+		}
+		m[n] = true
+	}
+
+	return false
+}
+
+// 判断是否存在环 ==> 双指针. next 和 next.next
+func hasCyclePointer(head *ListNode) bool {
+	if head == nil || head.Next == nil {
+		return false
+	}
+
+	slow := head
+	fast := head.Next
+	for slow != fast {
+		if fast == nil || fast.Next == nil {
+			return false
+		}
+
+		slow = slow.Next
+		fast = fast.Next.Next
+	}
+
+	return true
+}
+
 //-----------------------------------------------------------------
 
-// 有序的数组, 去除重复
+// 有序的数组, 去除重复的数字 ==> 双指针
 func removeDuplicates(nums []int) int {
 	fmt.Println(nums)
 	if len(nums) == 0 {
@@ -269,7 +269,7 @@ func removeDuplicates(nums []int) int {
 	return k + 1
 }
 
-// 数组, 移除重复元素
+// 无序的数组, 去除某个所有的元素 ==> 双指针
 func removeElement(nums []int, val int) int {
 	if len(nums) == 0 {
 		return 0
@@ -284,4 +284,41 @@ func removeElement(nums []int, val int) int {
 	}
 
 	return k
+}
+
+// 波峰问题. 二分查找的特性
+// 条件: arr[0]<arr[1] a[m] < a[m-1]
+// 波峰: arr[m-1] < arr[m] && arr[m] > arr[m+1]
+// a[m-1] < a[m] < a[m+1], 增长
+// a[m-1] > a[m] > a[m+1], 减少
+func findPeek(nums []int) (bool, int) {
+	// 单调递增
+	isupper := func(nums []int, m int) bool {
+		return nums[m-1] < nums[m] && nums[m] < nums[m+1]
+	}
+
+	if nums == nil || len(nums) <= 2 {
+		return false, -1
+	}
+
+	start := 0
+	end := len(nums) - 1
+	for start <= end {
+		m := (start + end) / 2
+		if m == 0 || m == len(nums)-1 {
+			return false, -1
+		}
+
+		if nums[m-1] < nums[m] && nums[m] > nums[m+1] {
+			return true, nums[m]
+		}
+
+		if isupper(nums, m) {
+			start = m + 1
+		} else {
+			end = m - 1
+		}
+	}
+
+	return false, -1
 }
