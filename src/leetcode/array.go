@@ -322,3 +322,54 @@ func findPeek(nums []int) (bool, int) {
 
 	return false, -1
 }
+
+// ------------------------------------------------------------------------
+// K个数的和是target的算法.
+func KNumSum(nums []int, k, target int) [][]int {
+	sort.SliceStable(nums, func(i, j int) bool {
+		return nums[i] < nums[j]
+	})
+	return ksum(nums, 0, k, target)
+}
+
+func ksum(nums []int, start, k, target int) [][]int {
+	n := len(nums)
+	var res [][]int
+	if k == 2 {
+		var left, right = start, n-1
+		for left < right {
+			sum := nums[left] + nums[right]
+			if sum == target {
+				res = append(res, []int{nums[left], nums[right]})
+				for left < right && nums[left] == nums[left+1] {
+					left++
+				}
+				for left < right && nums[right] == nums[right-1] {
+					right--
+				}
+				left++
+				right--
+			} else if sum < target {
+				left++
+			} else {
+				right--
+			}
+		}
+
+		return res
+	}
+
+	end := n - (k - 1)
+	for i := start; i < end; i++ {
+		if i > start && nums[i] == nums[i-1] {
+			continue
+		}
+		temp := ksum(nums, i+1, k-1, target-nums[i])
+		for j := range temp {
+			temp[j] = append([]int{nums[i]}, temp[j]...)
+		}
+		res = append(res, temp...)
+	}
+
+	return res
+}

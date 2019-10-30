@@ -1,8 +1,8 @@
 package leetcode
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestThreeSum(t *testing.T) {
@@ -87,4 +87,12 @@ func TestRemoveDuplicates(t *testing.T) {
 func TestFindPeek(t *testing.T) {
 	ok, res := findPeek([]int{-200, -100, 1, 4, 0})
 	fmt.Println(ok, res)
+}
+
+func TestKNumSum(t *testing.T) {
+	nums := []int{1, 0, -1, 0, -2, 2}
+	res := KNumSum(nums, 4, 0)
+	for i := range res {
+		fmt.Println(res[i])
+	}
 }
