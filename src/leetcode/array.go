@@ -324,7 +324,10 @@ func findPeek(nums []int) (bool, int) {
 }
 
 // ------------------------------------------------------------------------
-// K个数的和是target的算法.
+// 寻找数组当中k个数的和是target
+// 双指针的思想:
+//
+// k个数的和是target的算法.
 func KNumSum(nums []int, k, target int) [][]int {
 	sort.SliceStable(nums, func(i, j int) bool {
 		return nums[i] < nums[j]
@@ -369,6 +372,49 @@ func ksum(nums []int, start, k, target int) [][]int {
 			temp[j] = append([]int{nums[i]}, temp[j]...)
 		}
 		res = append(res, temp...)
+	}
+
+	return res
+}
+
+func threeSumClosest(nums []int, target int) int {
+	n := len(nums)
+	if n <= 3 {
+		sum := 0
+		for i := range nums {
+			sum += nums[i]
+		}
+		return sum
+	}
+
+	sort.SliceStable(nums, func(i, j int) bool {
+		return nums[i] < nums[j]
+	})
+	abs := func(x int) int {
+		if x < 0 {
+			return -x
+		}
+		return x
+	}
+
+	res := nums[0] + nums[1] + nums[2]
+	for i := 0; i < n; i++ {
+		var left, right = i+1, n-1
+		for left < right {
+			sum := nums[left] + nums[right] + nums[i]
+
+			if abs(target-sum) < abs(target-res) {
+				res = sum
+			}
+
+			if sum > target {
+				right--
+			} else if sum < target {
+				left++
+			} else {
+				return res
+			}
+		}
 	}
 
 	return res

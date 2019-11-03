@@ -74,3 +74,53 @@ func SliceRange() {
 	fmt.Println("a1= ", a1) // [1,11,22,5,6]
 	fmt.Println("a2= ", a2) // [1,11,22,5,6]
 }
+
+/**
+go当中可以进行比较的类型: (在满足下面的情况下, 如果值是一样的, 则相等)
+
+int, byte, bool, string            -- 值的比较
+array(数组大小和值类型必须一致)        -- 数组当中的值是否一样
+channel(值类型必须一致)              -- 指向底层数据的指针是否是同一个
+pointer(值类型必须一致)              -- 指向底层数据的指针是否是同一个
+
+struct
+命名结构体: 类型一致(包括类型别名)      --- 值比较
+匿名结构体: 成员变量的名称,类型,顺序完全一致  --- 值比较
+
+type A struct{}
+type B = A  // B是A的别名, A和B是同一种类型
+type C A    // 创建新的结构体C, A和C是两种类型
+
+
+注: slice是不能进行比较的.
+    map是不能进行比较的
+**/
+
+func main() {
+	var c0 chan int
+	var c1 chan int
+	fmt.Println(c0 == c1) // true
+
+	var c2 = make(chan int)
+	var c3 = make(chan int)
+	fmt.Println(c2 == c3) // false
+
+	var a1 = [5]int{1, 2, 3, 4, 0}
+	var a2 = [5]int{1, 2, 3, 4}
+	fmt.Println(a1 == a2) // true
+
+	type A struct {
+		A string
+		B int
+	}
+	var an1 struct {
+		A string
+		B int
+	}
+	var an2 struct {
+		A string
+		B int
+	}
+	var an3 A
+	fmt.Println(an1 == an2, an1 == an3) // true, true
+}
