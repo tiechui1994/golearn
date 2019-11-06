@@ -419,3 +419,156 @@ func threeSumClosest(nums []int, target int) int {
 
 	return res
 }
+
+// -------------------------------------------------------------------------------------------------
+// 旋转矩阵
+func spiralOrder(matrix [][]int) []int {
+	tR := 0
+	tC := 0
+	dR := len(matrix)
+	dC := len(matrix[0])
+
+	var res []int
+	print := func(tR, tC, dR, dC int) {
+		if tR == dR {
+			for i := tC; i < dC; i++ {
+				res = append(res, matrix[i][tR])
+			}
+		} else if tC == dC {
+			for i := tR; i < dR; i++ {
+				res = append(res, matrix[tC][i])
+			}
+		} else {
+			curR := tR
+			curC := tC
+			for curC != dC {
+				res = append(res, matrix[tR][curC])
+				curC++
+			}
+			for curR != dR {
+				res = append(res, matrix[curR][dC])
+				curR++
+			}
+			for curC != tC {
+				res = append(res, matrix[dR][curC])
+				curC--
+			}
+			for curR != tR {
+				res = append(res, matrix[curR][tC])
+				curR--
+			}
+		}
+	}
+
+	for tR <= dR && tC <= dC {
+		print(tR, tC, dR, dC)
+		tR++
+		tC++
+		dR--
+		dC--
+	}
+
+	return res
+}
+
+// -------------------------------------------------------------------------------------------------
+//原题: 传送带上的第 i 个包裹的重量为 weights[i]. 每一天, 我们都会按给出重量的顺序往传送带上装载包裹. 我们装载的重量
+//不会超过船的最大运载重量.
+//返回能在 D 天内将传送带上的所有包裹送达的船的最低运载能力.
+//
+//2. 一个必须依照数组顺序完成的工作, 数字代表工作难易度, 分成K天完工, 尽可能把困难度最高的一天变得比较不累, 求最累的一天
+// 的困难度
+//3. 一个数组代表一排的书, 数字代表页数, 现在必须把相邻的书分成K组放置到K台打印机, 设置一个配置方法使得需要打印最多页数
+// 的机器打印最少页, 求工作量最多的打印机需要打印的页数.
+//4. 一个包裹数组, 数字代表重量, 依包裹排列顺序分成K批寄送, 使得最重的一批重量最小, 求最重一批重量.
+func shipWithinDays(weights []int, D int) int {
+	max := 0
+	sum := 0
+	for _, w := range weights {
+		if w > max {
+			max = w
+		}
+		sum += w
+	}
+
+	low, high := max, sum
+	for low <= high {
+		mid := (low + high) / 2
+
+		sum := 0
+		day := 1
+		for _, w := range weights {
+			sum += w
+			if sum == mid {
+				day += 1
+				sum = 0
+			}
+			if sum > mid {
+				day += 1
+				sum = w
+			}
+		}
+
+		if day > D {
+			low = mid + 1
+		} else if day <= D {
+			high = mid - 1
+		}
+	}
+
+	return low
+}
+
+// 顺序数组在某点旋转, 搜索元素
+
+func search(nums []int, target int) int {
+	binarySearch := func(left, right int) int {
+		for left < right {
+			mid := (left + right) / 2
+			if nums[mid] == target {
+				return mid
+			}
+
+			if nums[mid] < target {
+				left = mid + 1
+			} else {
+				right = mid - 1
+			}
+		}
+
+		return -1
+	}
+
+	findRoateIndex := func(left, right int) int {
+		if nums[left] < nums[right] {
+			return 0
+		}
+		for left <= right {
+			mid := (left + right) / 2
+			if nums[mid] > nums[mid+1] {
+				return mid + 1
+			}
+			if nums[mid] < nums[left] {
+				right = mid - 1
+			} else {
+				left = mid + 1
+			}
+		}
+
+		return 0
+	}
+
+	index := findRoateIndex(0, len(nums)-1)
+	if nums[index] == target {
+		return index
+	}
+
+	if index == 0 {
+		return binarySearch(0, len(nums)-1)
+	}
+	if target < nums[0] {
+		return binarySearch(index, len(nums)-1)
+	}
+
+	return binarySearch(0, index)
+}
