@@ -96,3 +96,10 @@ func TestKNumSum(t *testing.T) {
 		fmt.Println(res[i])
 	}
 }
+
+func TestSearch(t *testing.T) {
+	nums := []int{4, 5, 6, 7, 0, 1, 2}
+	search(nums, 10)
+	fmt.Println(0&^0, 0&^1, 1&^0, 1&^1)
+	fmt.Printf("%b, %b",^0, ^1)
+}

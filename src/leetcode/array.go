@@ -523,7 +523,7 @@ func shipWithinDays(weights []int, D int) int {
 
 func search(nums []int, target int) int {
 	binarySearch := func(left, right int) int {
-		for left < right {
+		for left <= right {
 			mid := (left + right) / 2
 			if nums[mid] == target {
 				return mid
