@@ -123,6 +123,61 @@ func (set *BitSet) computeSize() int {
 		}
 	}
 
-	
 	return n
+}
+
+// 使用 & 操作, 长度是最小值
+func (set *BitSet) Intersect(other *BitSet) *BitSet {
+	n := len(set.data)
+	if len(set.data) < len(other.data) {
+		n = len(other.data)
+	}
+
+	if n == 0 {
+		return new(BitSet)
+	}
+
+	intersect := &BitSet{
+		data: make([]int64, n),
+	}
+
+	for i := 0; i < n; i++ {
+		intersect.data[i] = set.data[i] & other.data[i]
+	}
+	intersect.size = intersect.computeSize()
+	return intersect
+}
+
+// 使用 | 操作, 长度是最大值
+func (set *BitSet) Union(other *BitSet) *BitSet {
+	return nil
+}
+
+// 使用 &^ 操作, 长度是被减结合决定
+func (set *BitSet) Difference(other *BitSet) *BitSet {
+	return nil
+}
+
+func (set *BitSet) Visit(skip func(int) bool) (abort bool) {
+	d := set.data
+	for i := 0; i < len(d); i++ {
+		w := d[i]
+		if w == 0 {
+			continue
+		}
+
+		base := i << shift
+		for w != 0 {
+			// 获取首个非0的位置, 注意: 1011,其中1的位置是0,1,3
+			val := bits.TrailingZeros64(uint64(w))
+			if skip(base + val) {
+				return true
+			}
+
+			// 将首个非0的位置设置为0
+			w &^= 1 << uint64(val)
+		}
+	}
+
+	return false
 }
