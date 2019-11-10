@@ -572,3 +572,212 @@ func search(nums []int, target int) int {
 
 	return binarySearch(0, index)
 }
+
+// 螺旋矩阵I
+// 给定一个包含 m * n 个元素的矩阵(m行, n列), 请按照顺时针螺旋顺序, 返回矩阵中的所有元素.
+func spiralMatrixI(matrix [][]int) []int {
+	if len(matrix) == 0 {
+		return nil
+	}
+
+	if len(matrix) == 1 {
+		return matrix[0]
+	}
+
+	if len(matrix[0]) == 0 {
+		return nil
+	}
+
+	tR := 0
+	tC := 0
+	dR := len(matrix) - 1
+	dC := len(matrix[0]) - 1
+
+	var res []int
+	print := func(tR, tC, dR, dC int) {
+		if tR == dR {
+			for i := tC; i <= dC; i++ {
+				res = append(res, matrix[tR][i])
+			}
+		} else if tC == dC {
+			for i := tR; i <= dR; i++ {
+				res = append(res, matrix[i][tC])
+			}
+		} else {
+			curR := tR
+			curC := tC
+			for curC != dC {
+				res = append(res, matrix[tR][curC])
+				curC++
+			}
+			for curR != dR {
+				res = append(res, matrix[curR][dC])
+				curR++
+			}
+			for curC != tC {
+				res = append(res, matrix[dR][curC])
+				curC--
+			}
+			for curR != tR {
+				res = append(res, matrix[curR][tC])
+				curR--
+			}
+		}
+	}
+
+	for tR <= dR && tC <= dC {
+		print(tR, tC, dR, dC)
+		tR++
+		tC++
+		dR--
+		dC--
+	}
+
+	return res
+}
+
+func spiralMatrixII(n int) [][]int {
+	if n == 0 {
+		return nil
+	}
+
+	if n == 1 {
+		return [][]int{{1}}
+	}
+
+	var res = make([][]int, n)
+	var num = 1
+	for i := 0; i < n; i++ {
+		res[i] = make([]int, n)
+	}
+
+	tR := 0
+	tC := 0
+	dR := n - 1
+	dC := n - 1
+
+	print := func(tR, tC, dR, dC int) {
+		if tR == dR {
+			for i := tC; i <= dC; i++ {
+				res[tR][i] = num
+				num++
+			}
+		} else if tC == dC {
+			for i := tR; i <= dR; i++ {
+				res[i][tC] = num
+				num++
+			}
+		} else {
+			curR := tR
+			curC := tC
+			for curC != dC {
+				res[tR][curC] = num
+				num++
+				curC++
+			}
+			for curR != dR {
+				res[curR][dC] = num
+				num++
+				curR++
+			}
+			for curC != tC {
+				res[dR][curC] = num
+				num++
+				curC--
+			}
+			for curR != tR {
+				res[curR][tC] = num
+				num++
+				curR--
+			}
+		}
+	}
+
+	for tR <= dR && tC <= dC {
+		print(tR, tC, dR, dC)
+		tR++
+		tC++
+		dR--
+		dC--
+	}
+
+	return res
+}
+
+// 螺旋行走, 最直观的解法
+// R,C是范围, r0,c0是开始的位置
+// 在每个方向的行走长度, 发现如下模式: 1,1,2,2,3,3,4,4,... 即先向东走1单位, 然后向南走1单位,
+// 再向西走2单位, 再向北走2单位,
+// 再向东走3单位, 等等. 因为我们的行走方式是自相似的, 所以这种模式会以我们期望的方式重复.
+func spiralMatrixIII(R int, C int, r0 int, c0 int) [][]int {
+	var res = make([][]int, R*C)
+	var size int
+	res[size] = []int{r0, c0}
+	size++
+	if size == R*C {
+		return res
+	}
+
+	var step = 0
+	for size < R*C {
+		step += 1
+		for i := 0; i < step; i++ {
+			c0++
+			if 0 <= c0 && c0 < C && 0 <= r0 && r0 < R {
+				res[size] = []int{r0, c0}
+				size++
+			}
+		}
+
+		for i := 0; i < step; i++ {
+			r0++
+			if 0 <= c0 && c0 < C && 0 <= r0 && r0 < R {
+				res[size] = []int{r0, c0}
+				size++
+			}
+		}
+
+		step++
+
+		for i := 0; i < step; i++ {
+			c0--
+			if 0 <= c0 && c0 < C && 0 <= r0 && r0 < R {
+				res[size] = []int{r0, c0}
+				size++
+			}
+		}
+
+		for i := 0; i < step; i++ {
+			r0--
+			if 0 <= c0 && c0 < C && 0 <= r0 && r0 < R {
+				res[size] = []int{r0, c0}
+				size++
+			}
+		}
+
+	}
+
+	return res
+}
+
+func findRoateIndex(nums []int) int {
+	var left, right = 0, len(nums)-1
+	if nums[left] < nums[right] {
+		return 0
+	}
+
+	for left <= right {
+		mid := (left + right) / 2
+		if nums[left] <= nums[mid] && nums[mid] > nums[right] {
+			left = mid + 1
+		}
+		if nums[left] > nums[mid] && nums[mid] <= nums[right] {
+			right = mid
+		}
+		if nums[left] <= nums[mid] && nums[mid] <= nums[right] {
+			right --
+		}
+	}
+
+	return left
+}
