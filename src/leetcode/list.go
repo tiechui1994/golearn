@@ -175,3 +175,32 @@ func findTwoListIntersectionNodeII(a, b *Node) *Node {
 
 	return long
 }
+
+// 删除倒数第N个Node
+// 双指针, 第一次, first 从头遍历 n 次
+//        第二次, second 从头开始, first 遍历到结尾. 则second也到达删除的位置
+func removeNthFromEnd(head *ListNode, n int) *ListNode {
+	if n <= 0 {
+		return head
+	}
+
+	first := head
+	for n > 0 {
+		first = first.Next
+		n--
+	}
+
+	if first == nil {
+		return head.Next
+	}
+
+	second := head
+	for first.Next != nil {
+		first = first.Next
+		second = second.Next
+	}
+
+	second.Next = second.Next.Next
+
+	return head
+}
