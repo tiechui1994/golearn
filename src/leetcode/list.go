@@ -66,3 +66,112 @@ func findCycleNode(root *Node) *Node {
 
 	return slow
 }
+
+// 两个链表相交的节点
+type liststack []*Node
+
+func (l *liststack) push(node *Node) {
+	*l = append(*l, node)
+}
+func (l *liststack) pop() *Node {
+	node := (*l)[l.len()-1]
+	*l = (*l)[0:l.len()-1]
+	return node
+}
+func (l *liststack) len() int {
+	return len(*l)
+}
+
+// 使用栈方法
+func findTwoListIntersectionNodeI(a, b *Node) *Node {
+	if a == nil || b == nil {
+		return nil
+	}
+	var stackA, stackB liststack
+	var rA, rB = a, b
+
+	for rA != nil || rB != nil {
+		if rA != nil {
+			stackA.push(rA)
+			rA = rA.Next
+		}
+
+		if rB != nil {
+			stackB.push(rA)
+			rB = rB.Next
+		}
+	}
+
+	nA := stackA.pop()
+	nB := stackB.pop()
+	if nA != nB {
+		return nil
+	}
+
+	var res = nA
+	for stackA.len() != 0 && stackA.len() != 0 {
+		nA = stackA.pop()
+		nB = stackB.pop()
+		if nA != nB {
+			break
+		}
+		res = nA
+	}
+
+	return res
+}
+
+// 不使用栈的方法, O(N)
+func findTwoListIntersectionNodeII(a, b *Node) *Node {
+	if a == nil || b == nil {
+		return nil
+	}
+
+	var aLast, bLast *Node
+	var aLen, bLen int
+	var rA, rB = a, b
+
+	for rA != nil || rB != nil {
+		if rA != nil {
+			aLen++
+			if rA.Next == nil {
+				aLast = rA
+			}
+			rA = rA.Next
+		}
+
+		if rB != nil {
+			bLen++
+			if rB.Next == nil {
+				bLast = rB
+			}
+			rB = rB.Next
+		}
+	}
+
+	if aLast != bLast {
+		return nil
+	}
+
+	var long, short *Node
+	var diff int
+
+	if aLen > bLen {
+		long, short = a, b
+		diff = aLen - bLen
+	} else {
+		long, short = b, a
+		diff = bLen - aLen
+	}
+
+	for diff > 0 {
+		long = long.Next
+	}
+
+	for long != short {
+		long = long.Next
+		short = short.Next
+	}
+
+	return long
+}
