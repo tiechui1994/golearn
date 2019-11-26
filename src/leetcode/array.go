@@ -781,3 +781,32 @@ func findRoateIndex(nums []int) int {
 
 	return left
 }
+
+func searchRange(nums []int, target int) []int {
+	if nums == nil {
+		return []int{-1, -1}
+	}
+
+	find := func(isleft bool) int {
+		low, high := 0, len(nums)
+		for low < high {
+			mid := (low + high) / 2
+			if nums[mid] > target || nums[mid] == target && isleft {
+				high = mid
+			} else {
+				low = mid + 1
+			}
+		}
+
+		return low
+	}
+
+	res := []int{-1, -1}
+	leftIndex := find(true)
+	if leftIndex == len(nums) || nums[leftIndex] != target {
+		return res
+	}
+	res[0] = leftIndex
+	res[1] = find(false)-1
+	return res
+}

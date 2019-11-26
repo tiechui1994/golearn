@@ -248,3 +248,26 @@ func diameterOfBinaryTree(root *TreeNode) int {
 	dfs(root)
 	return res - 1
 }
+
+// 显然这是一个递归查找过程，需要两个信息，一个是当前结点，一个是深度，可以封装成一个类作为返回值.
+func lcaDeepestLeaves(root *TreeNode) *TreeNode {
+	var dfs func(node *TreeNode) (*TreeNode, int)
+	dfs = func(node *TreeNode) (*TreeNode, int) {
+		if node == nil {
+			return node, 0
+		}
+
+		left, ldep := dfs(node.Left)
+		right, rdep := dfs(node.Right)
+		if ldep > rdep {
+			return left, ldep + 1
+		}
+		if ldep < rdep {
+			return right, rdep + 1
+		}
+		return node, ldep + 1
+	}
+
+	node, _ := dfs(root)
+	return node
+}

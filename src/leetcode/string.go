@@ -79,26 +79,31 @@ func longPalindromeI(str string) string {
 		}
 	}
 
-	return str[start : end+1]
+	return str[start: end+1]
 }
 
-// O(n^2)
-func longPalindromeII(str string) string {
-	var n = len(str)
-	var result [n][n]bool
-	var start, end int
-	max := 0
-	for i := 0; i < n; i++ {
-		for j := i; j >= 0; j-- {
-			if str[i] == str[j] && (i-j < 2 || result[j+1][i-1]) {
-				result[j][i] = true
-				if max < i-j+1 {
-					max = i - j + 1
-					start = i
-					end = j
-				}
-			}
+// 784 letter-case-permutation
+// 字母大小写全排列
+
+func letterCasePermutation(s string) []string {
+	var runes = []rune(s)
+	var res []string
+	var dfs func(i int, temp []rune)
+	dfs = func(i int, temp []rune) {
+		if i == len(s) {
+			res = append(res, string(temp))
+			return
+		}
+
+		dfs(i+1, append(temp, runes[i]))
+		if 'a' <= runes[i] && runes[i] <= 'z' {
+			dfs(i+1, append(temp, runes[i]-'a'+'A'))
+		}
+		if 'A' <= runes[i] && runes[i] <= 'Z' {
+			dfs(i+1, append(temp, runes[i]-'A'+'a'))
 		}
 	}
-	return str[start : end+1]
+
+	dfs(0, nil)
+	return res
 }

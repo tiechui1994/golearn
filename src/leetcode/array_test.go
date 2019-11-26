@@ -158,3 +158,12 @@ func addBinary(a string, b string) string {
 func TestStack_Push(t *testing.T) {
 	fmt.Println(addBinary("111", "111"))
 }
+
+func TestSearchRange(t *testing.T) {
+	nums := []int{5, 7, 7, 8, 8, 10}
+	fmt.Println(searchRange(nums, 8))
+}
+
+func TestRange(t *testing.T) {
+	fmt.Println(letterCasePermutation("abc"))
+}
