@@ -1,6 +1,8 @@
 package detail
 
-import "fmt"
+import (
+	"fmt"
+)
 
 /**
 slice vs array
@@ -96,7 +98,7 @@ type C A    // 创建新的结构体C, A和C是两种类型
     map是不能进行比较的
 **/
 
-func main() {
+func main1() {
 	var c0 chan int
 	var c1 chan int
 	fmt.Println(c0 == c1) // true
@@ -123,4 +125,48 @@ func main() {
 	}
 	var an3 A
 	fmt.Println(an1 == an2, an1 == an3) // true, true
+}
+
+/**
+slice 与 array 之间的转换:
+
+array => slice
+
+slice = array[M:N]  M <= N
+len: N-M
+cap: len(array) - M
+
+
+detail:
+1. 在slice没有达到其"容量"之前, array 与 slice 共享底层数据段 [M:N] 部分, 这部分内容的修改两者都会修改
+2. 在slice超过其"容量"之后, array 与 slice 将不再共享底层数据段, 两者修改互不影响.
+
+slice => array
+**/
+
+func main() {
+	a := [5]int{1, 2, 3, 4, 5}
+	s1 := a[0:2]
+	s2 := a[0:4]
+	s3 := a[2:2]
+	fmt.Println(len(s1), cap(s1))
+	fmt.Println(len(s2), cap(s2))
+	fmt.Println(len(s3), cap(s3))
+
+	var a1 [5]int
+	copy(a1[:], s1)
+
+	fmt.Println("=======================================")
+
+	array := [3]int{1, 2, 3}
+	slice := array[1:2] // len:1 cap:2
+
+	slice[0] = 11
+	slice = append(slice, 12) // len:2 cap:2
+	slice[0] = 100            // 导致slice和array同时修改
+	fmt.Println("共享内存", "slice:", slice, "array:", array)
+
+	slice = append(slice, 13) // len:3 cap:4
+	slice[0] = 200            // 导致只有slice修改, array不修改
+	fmt.Println("不共享内存", "slice:", slice, "array:", array)
 }
