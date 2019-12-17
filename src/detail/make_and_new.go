@@ -1,4 +1,4 @@
-package detail
+package main
 
 /**
 虽然 make 和 new 都是能够用于初始化数据结构, 但是它们两者能够初始化的结构类型却有着较大的不同;

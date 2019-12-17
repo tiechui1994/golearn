@@ -1,4 +1,4 @@
-package detail
+package main
 
 import "log"
 

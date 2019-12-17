@@ -1,4 +1,4 @@
-package detail
+package main
 
 import (
 	"fmt"
@@ -144,7 +144,7 @@ detail:
 slice => array
 **/
 
-func main() {
+func main2() {
 	a := [5]int{1, 2, 3, 4, 5}
 	s1 := a[0:2]
 	s2 := a[0:4]
