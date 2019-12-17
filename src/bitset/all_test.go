@@ -1,9 +1,9 @@
 package bitset
 
 import (
-	"testing"
 	"fmt"
 	"math/bits"
+	"testing"
 )
 
 func TestNewBitSet(t *testing.T) {
