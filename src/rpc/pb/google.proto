@@ -1,0 +1,59 @@
+syntax = "proto3";
+package pb;
+
+service Service {
+    // 一个简单的RPC,客户端使用存根将请求发送到服务器,然后等待响应返回,就像普通的函数调用一样.
+    rpc GetFeature (Point) returns (Feature) {
+    }
+
+    // 服务器端流式RPC,客户端向服务器发送请求,并获取流以读取回一系列消息.
+    // 客户端从返回的流中读取,直到没有更多消息为止.
+    rpc ListFeatures (Rectangle) returns (stream Feature) {
+    }
+
+    // 客户端流式RPC,其中客户端使用gRPC提供的流写入一系列消息并将其发送到服务器.
+    // 客户端写完消息后, 它将等待服务器读取所有消息并返回其响应.
+    rpc RecordRoute (stream Point) returns (RouteSummary) {
+    }
+
+    // 双向流式RPC,双方都使用读写流发送一系列消息.
+    // 这两个流是独立运行的,因此客户端和服务器可以按照自己喜欢的顺序进行读写: 例如,服务器可以在写
+    // 响应之前等待接收所有客户端消息,或者可以先读取消息再写入消息,或其他一些读写组合.
+    // 每个流中的消息顺序都会保留.
+    rpc RouteChat (stream RouteNote) returns (stream RouteNote) {
+    }
+}
+message Point {
+    int32 latitude = 1;
+    int32 longitude = 2;
+}
+
+message Rectangle {
+    Point lo = 1;
+    Point hi = 2;
+}
+
+message Feature {
+    string name = 1;
+    Point location = 2;
+}
+
+message RouteNote {
+    Point location = 1;
+    string message = 2;
+}
+
+message RouteSummary {
+    // The number of points received.
+    int32 point_count = 1;
+
+    // The number of known features passed while traversing the route.
+    int32 feature_count = 2;
+
+    // The distance covered in metres.
+    int32 distance = 3;
+
+    // The duration of the traversal in seconds.
+    int32 elapsed_time = 4;
+}
+

@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+enum EnumAllowAlias {
+    option allow_alias = true;
+    UNKNOWN = 0;
+    STARTED = 1;
+    RUNNING = 1;
+}
+
+message Arg {
+    int32 argI32 = 1;
+    enum Level {
+        A = 0;
+        B = 1;
+        C = 2;
+        D = 3;
+    }
+    Level level = 2;
+}
+
+message Enum {
+    int64 argI64 = 1;
+    Arg.Level other = 2;
+}
+
+message ErrorStatus {
+    string message = 1;
+    repeated google.protobuf.Any details = 2;
+}
+
+message SampleMessage {
+    oneof One {
+        string name = 4;
+        bytes sub_message = 9;
+    }
+}

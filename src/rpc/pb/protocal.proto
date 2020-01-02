@@ -1,0 +1,38 @@
+syntax = "proto3";
+package pb;
+
+
+enum AuctionType {
+    FIRST_PRICE = 0;
+    SECOND_PRICE = 1;
+    FIXED_PRICE = 2;
+}
+
+message VarintMsg {
+    int32 argI32 = 1;
+    int64 argI64 = 2;
+    uint32 argUI32 = 3;
+    uint64 argUI64 = 4;
+    sint32 argSI32 = 5;
+    sint64 argSI64 = 6;
+    repeated bool argBool = 7;
+    AuctionType argEnum = 8;
+}
+message Bit64 {
+    fixed64 argFixed64 = 1;
+    sfixed64 argSFixed64 = 2;
+    double argDouble = 3;
+}
+
+message Bit32 {
+    fixed32 argFixed32 = 1;
+    sfixed32 argSFixed32 = 2;
+    float argFloat = 3;
+}
+
+message LenPayload {
+    repeated string argStrList = 1;
+    VarintMsg argVarintMsg = 2;
+    Bit64 argBit64 = 3;
+    Bit32 argBit32 = 4;
+}
