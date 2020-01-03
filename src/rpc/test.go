@@ -5,7 +5,6 @@ import (
 	"os"
 	"github.com/golang/protobuf/proto"
 	"fmt"
-	"io/ioutil"
 	"encoding/hex"
 )
 
@@ -21,7 +20,7 @@ func main() {
 		ArgEnum: pb.AuctionType_SECOND_PRICE,
 	}
 	data, _ := proto.Marshal(varintMsg)
-	fd, _ := os.Create("varint.bin")
+	fd, _ := os.Create("./src/rpc/varint.bin")
 
 	fmt.Printf("%v \n", hex.EncodeToString(data))
 	fd.Write(data)
@@ -34,7 +33,7 @@ func main() {
 	}
 
 	data, _ = proto.Marshal(bit64)
-	fd, _ = os.Create("bit64.bin")
+	fd, _ = os.Create("./src/rpc/bit64.bin")
 
 	fmt.Printf("%v \n", hex.EncodeToString(data))
 	fd.Write(data)
@@ -47,16 +46,17 @@ func main() {
 	}
 
 	var payload = &pb.LenPayload{
-		ArgStrList:   []string{"String 1.", "String 2."},
-		ArgVarintMsg: varintMsg,
+		ArgStrList:   []string{"String1.", "String2."},
+		ArgMap:       map[string]int32{"A": 1, "B": 2, "C": 3,},
+		ArgStr:       "Hello",
+		ArgBytes:     []byte("Hello"),
+		ArgVarintMsg: []*pb.VarintMsg{varintMsg},
 		ArgBit64:     bit64,
 		ArgBit32:     bit32,
 	}
 
 	data, _ = proto.Marshal(payload)
-	fd, _ = os.Create("demo.bin")
+	fd, _ = os.Create("./src/rpc/all.bin")
 	fd.Write(data)
-
-	data, _ = ioutil.ReadFile("/home/quinn/workspace/go-test/varint.bin")
-	fmt.Printf("%v\n", hex.EncodeToString(data))
+	fd.Sync()
 }

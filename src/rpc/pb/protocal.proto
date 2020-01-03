@@ -32,7 +32,10 @@ message Bit32 {
 
 message LenPayload {
     repeated string argStrList = 1;
-    VarintMsg argVarintMsg = 2;
-    Bit64 argBit64 = 3;
-    Bit32 argBit32 = 4;
+    map<string, int32> argMap = 2;
+    string argStr = 3;
+    bytes argBytes = 4;
+    repeated VarintMsg argVarintMsg = 5;
+    Bit64 argBit64 = 6;
+    Bit32 argBit32 = 7;
 }
