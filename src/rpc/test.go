@@ -45,14 +45,26 @@ func main() {
 		ArgFloat:    3.1415,
 	}
 
-	var payload = &pb.LenPayload{
-		ArgStrList:   []string{"String1.", "String2."},
-		ArgMap:       map[string]int32{"A": 1, "B": 2, "C": 3,},
-		ArgStr:       "Hello",
-		ArgBytes:     []byte("Hello"),
+	var repeat = &pb.Repeat{
+		ArgBoolList:  []bool{true, false},
+		ArgI32List:   []int32{0x01, 0x02},
+		ArgUI32List:  []uint32{0x01, 0x02},
+		ArgSI32List:  []int32{0x01, 0x02},
+		ArgStrList:   []string{"AA", "BB"},
 		ArgVarintMsg: []*pb.VarintMsg{varintMsg},
-		ArgBit64:     bit64,
-		ArgBit32:     bit32,
+	}
+
+	data, _ = proto.Marshal(repeat)
+	fd, _ = os.Create("./src/rpc/repeat.bin")
+	fd.Write(data)
+	fd.Sync()
+
+	var payload = &pb.LenPayload{
+		ArgMap:   map[string]int32{"A": 1, "B": 2, "C": 3,},
+		ArgStr:   "Hello",
+		ArgBytes: []byte("Hello"),
+		ArgBit64: bit64,
+		ArgBit32: bit32,
 	}
 
 	data, _ = proto.Marshal(payload)

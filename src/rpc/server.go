@@ -22,6 +22,6 @@ func (s *ServiceServer) GetFuture(ctx context.Context, pointer *pb.Point) (*pb.F
 }
 
 func main() {
-	fmt.Printf("%x\n", 5<<3|2)
+	fmt.Printf("%x\n", 2<<3|2)
 	fmt.Printf("%#v\n", []byte("B"))
 }
