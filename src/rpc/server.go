@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"rpc/pb"
-	"github.com/golang/protobuf/proto"
 	"fmt"
+	"github.com/golang/protobuf/proto"
+	"rpc/pb"
 )
 
 type ServiceServer struct {
@@ -22,6 +22,9 @@ func (s *ServiceServer) GetFuture(ctx context.Context, pointer *pb.Point) (*pb.F
 }
 
 func main() {
-	fmt.Printf("%x\n", 2<<3|2)
+	for i := 1; i <= 7; i++ {
+		fmt.Printf("index:%v   0x%02x \n", i, i<<3|2)
+	}
+
 	fmt.Printf("%#v\n", []byte("B"))
 }

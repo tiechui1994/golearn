@@ -30,13 +30,20 @@ message Bit32 {
     float argFloat = 3;
 }
 
-message repeat {
+message Simple {
+    int32 argI32 = 1;
+    uint32 argUI32 = 2;
+    bool argBool = 3;
+}
+
+message Repeat {
     repeated bool argBoolList = 1;
     repeated int32 argI32List = 2;
     repeated uint32 argUI32List = 3;
     repeated sint32 argSI32List = 4;
     repeated string argStrList = 5;
-    repeated VarintMsg argVarintMsg = 6;
+    repeated bytes argByList = 6;
+    repeated Simple argSimple = 7;
 }
 
 message LenPayload {
