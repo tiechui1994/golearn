@@ -15,8 +15,7 @@ message VarintMsg {
     uint64 argUI64 = 4;
     sint32 argSI32 = 5;
     sint64 argSI64 = 6;
-    repeated bool argBool = 7;
-    AuctionType argEnum = 8;
+    AuctionType argEnum = 7;
 }
 message Bit64 {
     fixed64 argFixed64 = 1;
@@ -44,6 +43,14 @@ message Repeat {
     repeated string argStrList = 5;
     repeated bytes argByList = 6;
     repeated Simple argSimple = 7;
+}
+
+
+message Map {
+    map<int32, int32> argII = 1;
+    map<uint32, uint32> argUI = 2;
+    map<string, string> argSS = 3;
+    map<string, uint32> argSU = 4;
 }
 
 message LenPayload {

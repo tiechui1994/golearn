@@ -16,7 +16,6 @@ func main() {
 		ArgUI64: 0x998877,
 		ArgSI32: -100,
 		ArgSI64: -200,
-		ArgBool: []bool{true, false},
 		ArgEnum: pb.AuctionType_SECOND_PRICE,
 	}
 	data, _ := proto.Marshal(varintMsg)
@@ -44,7 +43,7 @@ func main() {
 		ArgSFixed32: -10,
 		ArgFloat:    3.1415,
 	}
-	
+
 	// repeated bool, int32, uint32, sint32  编码: 编号+类型 数组字节长度 值1,值2
 	// 0a 02 01 00
 	// 12 03 88 02 02
@@ -80,6 +79,18 @@ func main() {
 
 	data, _ = proto.Marshal(repeat)
 	fd, _ = os.Create("./src/rpc/repeat.bin")
+	fd.Write(data)
+	fd.Sync()
+
+	var mp = &pb.Map{
+		ArgII: map[int32]int32{0x01: 0x012, 0x0201: 0x02},
+		ArgUI: map[uint32]uint32{0x01: 0x01, 0x0201: 0x05},
+		ArgSS: map[string]string{"AA": "BB", "ABC": "XY", "B": "HV", "WX": "ABC"},
+		ArgSU: map[string]uint32{"A": 0x01, "B": 0x0102, "EC": 0x012},
+	}
+
+	data, _ = proto.Marshal(mp)
+	fd, _ = os.Create("./src/rpc/map.bin")
 	fd.Write(data)
 	fd.Sync()
 
