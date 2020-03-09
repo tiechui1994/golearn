@@ -1,8 +1,41 @@
 package algorithm
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
-func TestBruteForce(t *testing.T) {
-	i := BruteForce("ABCXACX", "CX")
-	t.Logf("res: %v", i)
+var str = "BBCABCDABABCDABCDABDE"
+
+func BenchmarkBruteForce(t *testing.B) {
+	var count int64
+	for i := 0; i < t.N; i++ {
+		var i int
+		func() {
+			now := time.Now()
+			defer func() {
+				ns := time.Now().Sub(now).Nanoseconds()
+				count += ns
+			}()
+			i = BruteForce(str, "ABCDABD")
+		}()
+	}
+
+	t.Logf("avg: %v", count/int64(t.N))
+}
+
+func BenchmarkKMP(t *testing.B) {
+	var count int64
+	for i := 0; i < t.N; i++ {
+		var i int
+		func() {
+			now := time.Now()
+			defer func() {
+				ns := time.Now().Sub(now).Nanoseconds()
+				count += ns
+			}()
+			i = KMP(str, "ABCDABD")
+		}()
+	}
+	t.Logf("avg: %v", count/int64(t.N))
 }

@@ -43,25 +43,60 @@ func BruteForce(main string, sub string) int {
 //
 func KMP(main string, sub string) int {
 
-	getNext := func(sub string) []int {
-		length := len(sub)
-		next := make([]int, length)
-		next[0] = -1
+	//getNext := func(sub string) []int {
+	//	length := len(sub)
+	//	next := make([]int, length)
+	//	next[0] = -1
+	//
+	//	// 保存前缀和后缀数组最长相同子串
+	//	k := 0
+	//	for j := 1; j < length-1; j++ {
+	//		for (k > 0) && (sub[j-1] != sub[k]) {
+	//			k = next[j-1]
+	//		}
+	//		if (j > 1) && (sub[j-1] == sub[k]) {
+	//			k++
+	//		}
+	//		next[j] = k
+	//	}
+	//
+	//	return next
+	//}
 
-		// 保存前缀和后缀数组最长相同子串
-		k := 0
-		for j := 1; j < length-1; j++ {
-			for (k > 0) && (sub[j-1] != sub[k]) {
-				k = next[j-1]
-			}
-			if (j > 1) && (sub[j-1] == sub[k]) {
-				k++
-			}
-			next[j] = k
+	next := getnext(sub)
+	j := 0
+	i := 0
+	for i < len(main) && j < len(sub) {
+		if j == -1 || main[i] == sub[j] {
+			i++
+			j++
+		} else {
+			j = next[j]
 		}
 
-		return next
+		if j == len(sub)-1 {
+			return i - j
+		}
 	}
 
 	return -1
+}
+
+func getnext(p string) []int {
+	length := len(p)
+	next := make([]int, length)
+	next[0] = -1
+
+	k := -1
+	for j := 0; j < length-1; {
+		if k == -1 || p[j] == p[k] {
+			k++
+			j++
+			next[j] = k
+		} else {
+			k = next[k]
+		}
+	}
+
+	return next
 }
