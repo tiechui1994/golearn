@@ -161,3 +161,25 @@ func getnext(p string) []int {
 
 	return next
 }
+
+// 文档: https://www.cnblogs.com/lanxuezaipiao/p/3452579.html
+//
+// BM 算法
+func BM(text string, pattern string) int {
+	// 计算坏字符数组 bmbad
+	bmbad := func() []int {
+		var arr [256]int
+		var length = len(pattern)
+		for i := 0; i < 256; i++ {
+			arr[i] = length
+		}
+		for i := 0; i < length-1; i++ {
+			arr[pattern[i]] = length - 1 - i
+		}
+		return arr[:]
+	}()
+
+	//
+
+	return -1
+}
