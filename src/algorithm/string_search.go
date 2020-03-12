@@ -1,5 +1,7 @@
 package algorithm
 
+import "fmt"
+
 /**
 @ 字符串查询算法
 */
@@ -166,20 +168,93 @@ func getnext(p string) []int {
 //
 // BM 算法
 func BM(text string, pattern string) int {
-	// 计算坏字符数组 bmbad
-	bmbad := func() []int {
-		var arr [256]int
-		var length = len(pattern)
-		for i := 0; i < 256; i++ {
-			arr[i] = length
-		}
-		for i := 0; i < length-1; i++ {
-			arr[pattern[i]] = length - 1 - i
-		}
-		return arr[:]
-	}()
+	bmBc := PreBmBc(pattern)
+	bmGs := PreBmGs(pattern, suffix(pattern))
 
-	//
+	n := len(text)
+	m := len(pattern)
+	j := 0
+	for j <= n-m {
+		var i = m - 1
+		for i >= 0 && pattern[i] == text[i+j] {
+			i--
+		}
+
+		if i < 0 {
+			fmt.Printf("Find it, the position is %d\n", j)
+			j += bmGs[0]
+			return j
+		} else {
+			j += MAX(bmBc[text[i+j]]-m+1+i, bmGs[i])
+		}
+	}
 
 	return -1
+}
+
+func MAX(i, j int) int {
+	if i > j {
+		return i
+	}
+
+	return j
+}
+func PreBmBc(pattern string) []int {
+	var bmBc = make([]int, 256)
+	var length = len(pattern)
+	for i := 0; i < 256; i++ {
+		bmBc[i] = length
+	}
+
+	for i := 0; i < length; i++ {
+		bmBc[pattern[i]] = length - 1 - i
+	}
+
+	return bmBc
+}
+
+func PreBmGs(pattern string, suffix []int) []int {
+	var bmGs = make([]int, len(pattern))
+	var length = len(pattern)
+
+	// 全部赋值为 length, 包括了Case3
+	for i := 0; i < length; i++ {
+		bmGs[i] = length
+	}
+
+	// Case2
+	j := 0
+	for i := length - 1; i >= 0; i-- {
+		if suffix[i] == i+1 {
+			for ; j <= length-1-i-1; j++ {
+				if bmGs[j] == length {
+					bmGs[j] = length - 1 - i
+				}
+			}
+		}
+	}
+
+	// Case1
+	for i := 0; i <= length-2; i++ {
+		bmGs[length-1-suffix[i]] = length - 1 - i
+	}
+
+	return bmGs
+}
+
+func suffix(pattern string) []int {
+	var length = len(pattern)
+	var suffix = make([]int, length)
+	suffix[length-1] = length
+
+	var j int
+	for i := length - 2; i >= 0; i-- {
+		j = i
+		for j >= 0 && pattern[j] == pattern[length-1-i+j] {
+			j--
+		}
+		suffix[i] = i - j
+	}
+
+	return suffix
 }

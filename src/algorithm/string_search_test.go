@@ -39,3 +39,7 @@ func BenchmarkKMP(t *testing.B) {
 	}
 	t.Logf("avg: %v", count/int64(t.N))
 }
+
+func TestBM(t *testing.T) {
+	t.Logf("%v", BM(str, "ABCDABD"))
+}
