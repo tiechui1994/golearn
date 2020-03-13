@@ -1,5 +1,7 @@
 package algorithm
 
+import "fmt"
+
 /**
 @ 字符串查询算法
 */
@@ -174,6 +176,8 @@ func BM(text string, pattern string) int {
 
 	n := len(text)
 	m := len(pattern)
+
+	// j表示text的位置[即和pattern首字符对齐的位置], i表示pattern的位置
 	j := 0
 	for j <= n-m {
 		var i = m - 1
@@ -185,6 +189,7 @@ func BM(text string, pattern string) int {
 			return j
 		} else {
 			j += MAX(bmBc[text[i+j]]-m+1+i, bmGs[i])
+			fmt.Printf("next j postion: <%v> \n", j)
 		}
 	}
 

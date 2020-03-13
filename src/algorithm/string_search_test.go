@@ -6,11 +6,7 @@ import (
 )
 
 var str = "BBCABCDABABCDABCDABDE"
-// BBCABCDABABCDABCDABDE
-// ABCDABD
-//    ABCDABD
-//
-//
+
 
 func BenchmarkBruteForce(t *testing.B) {
 	var count int64
@@ -45,8 +41,28 @@ func BenchmarkKMP(t *testing.B) {
 	t.Logf("avg: %v, %v", count/int64(t.N), j)
 }
 
+/**
+
+012345678901234567890
+BBCABCDABABCDABCDABDE
+ABCDABD
+   ABCDABD         [第一步, 好后缀匹配CD, 和 坏字符串'C'是一样的]
+     ABCDABD       [第二步, 好后缀匹配A, 和 坏字符串'A'是一样的 ]
+         ABCDABD
+		     ABCDABD
+
+
+
+01234567890123
+ABCAACBABBACAB
+ABCBAB
+   ABCBAB
+       ABCBAB
+		ABCBAB
+**/
 func TestBM(t *testing.T) {
-	t.Logf("%v", BM(str, "ABCDABD"))
+	//t.Logf("%v", BM(str, "ABCDABD"))
+	t.Logf("%v", BM("ABCAACBABBACAB", "ABCBAB"))
 }
 
 func TestSuffix(t *testing.T) {
