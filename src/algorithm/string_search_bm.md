@@ -89,5 +89,55 @@ Case3: 对应好后缀算法case3, `bmGs[i] = len(pattern)`
 ![image](../../images/compute_good3.png)
 
 ```
+var bmGs = make([]int, len(pattern))
+var length = len(pattern)
 
+// 全部赋值为 length, 包括了Case3
+for i := 0; i < length; i++ {
+    bmGs[i] = length
+}
+
+// Case2
+j := 0
+for i := length - 1; i >= 0; i-- {
+    if suffix[i] == i+1 {
+        for ; j <= length-1-i-1; j++ {
+            if bmGs[j] == length {
+                bmGs[j] = length - 1 - i
+            }
+        }
+    }
+}
+
+// Case1
+for i := 0; i <= length-2; i++ {
+    bmGs[length-1-suffix[i]] = length - 1 - i
+}
+```
+
+- 关于suffix的定义
+
+suff数组的定义: m是pattern的长度
+
+```
+a. suffix[m-1] = m;
+
+b. suffix[i] = k  
+    for [ pattern[i-k+1] ..., pattern[i]] == [pattern[m-1-k+1], ..., pattern[m-1]]
+```
+
+即: suffix表示以位置i结尾字符串和pattern字符串的公共后缀的长度.
+
+```
+m := length(pattern)
+suffix = make([]int, length)
+
+suffix[m-1] = m
+
+for i:=m-2; i>=0; i-- {
+    j := i
+    for j>=0 && pattern[j] == pattern[length-1-i+j]
+       j--
+    suffix[i] = i-j
+}
 ```

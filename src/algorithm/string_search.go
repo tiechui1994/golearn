@@ -1,7 +1,5 @@
 package algorithm
 
-import "fmt"
-
 /**
 @ 字符串查询算法
 */
@@ -9,6 +7,9 @@ import "fmt"
 // BF算法, 暴力查询
 func BruteForce(main string, sub string) int {
 	if main == "" || sub == "" {
+		return -1
+	}
+	if len(sub) > len(main) {
 		return -1
 	}
 
@@ -22,7 +23,7 @@ func BruteForce(main string, sub string) int {
 				j = 0
 			}
 
-			if j == len(sub)-1 {
+			if j == len(sub) {
 				return i - j
 			}
 		}
@@ -77,7 +78,7 @@ func KMP(main string, sub string) int {
 			j = next[j]
 		}
 
-		if j == len(sub)-1 {
+		if j == len(sub) {
 			return i - j
 		}
 	}
@@ -181,8 +182,6 @@ func BM(text string, pattern string) int {
 		}
 
 		if i < 0 {
-			fmt.Printf("Find it, the position is %d\n", j)
-			j += bmGs[0]
 			return j
 		} else {
 			j += MAX(bmBc[text[i+j]]-m+1+i, bmGs[i])
@@ -254,6 +253,31 @@ func suffix(pattern string) []int {
 			j--
 		}
 		suffix[i] = i - j
+	}
+
+	return suffix
+}
+
+func suffix_new(pattern string) []int {
+	var length = len(pattern)
+	var suffix = make([]int, length)
+	suffix[length-1] = length
+
+	var f, g, i int
+	g = length - 1
+	for i = length - 2; i >= 0; i-- {
+		if i > g && suffix[i+length-1-f] < i-g {
+			suffix[i] = suffix[i+length-1-f]
+		} else {
+			if i < g {
+				g = i
+			}
+			f = i
+			for g >= 0 && pattern[g] == pattern[g+length-1-f] {
+				g--
+			}
+			suffix[i] = f - g
+		}
 	}
 
 	return suffix
