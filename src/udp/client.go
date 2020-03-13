@@ -75,9 +75,9 @@ func BroadCastClient() {
 
 // 多播的client
 func MulticastClient() {
-	ip := net.ParseIP("224.0.0.250")
+	ip := net.ParseIP("192.168.50.14")
 	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	dstAddr := &net.UDPAddr{IP: ip, Port: 1024}
+	dstAddr := &net.UDPAddr{IP: ip, Port: 2000}
 	conn, err := net.DialUDP("udp", srcAddr, dstAddr)
 	if err != nil {
 		log.Println("DialUDP:", err)
