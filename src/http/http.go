@@ -87,17 +87,19 @@ type RoundTripper interface {
 
 Client Do() 说明
 
-1. 如果返回的错误为nil, 则 Response 将包含一个非 null 的Body, 希望用户可以将其关闭.
+1. 如果是由 `Client` 策略(例如CheckRedirect) 或 无法 HTTP (例如网络连接问题) 引起的, 则返回err.
+非2xx状态代码不会导致错误.
+
+2. 如果返回的错误为nil, 则 Response 将包含一个非 null 的Body, 希望用户可以将其关闭.
 如果未关闭主体, 则 Client 的 RoundTripper(通常为Transport) 可能无法将与服务器的持久
 TCP连接重新用于后续的 "keep-alive" 请求.
 
-2. 请求 Body (如果非空) 将被在 Transport 当中关闭, 即使发生错误也是如此.
+3. 请求 Body (如果非空) 将被在 Transport 当中关闭, 即使发生错误也是如此.
 
-3. 发生错误时, 任何 Response 都可以忽略. 一个 non-nil Response, 带有一个 non-nil
+4. 发生错误时, 任何 Response 都可以忽略. 一个 non-nil Response, 带有一个 non-nil
 err, 仅仅仅发生在 CheckRedirect 失败时. 并且此时返回的 Response.Body 已关闭.
 
-
-4. 如果服务器回复一个 Redirect, 则 Client 首先使用 CheckRedirect 函数确定是否进行重定向.
+5. 如果服务器回复一个 Redirect, 则 Client 首先使用 CheckRedirect 函数确定是否进行重定向.
 如果允许, 则301, 302或303重定向会导致后续请求使用 HTTP 方法GET (如果原始请求为HEAD, 则为
 HEAD), 并且不携带任何Body. 如果定义了 Request.GetBody 函数, 则307或308重定向将保留原始的
 HTTP 方法和 Body.
