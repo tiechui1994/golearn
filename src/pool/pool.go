@@ -1,9 +1,11 @@
-package pool
+package main
 
 import (
-	"sync"
-	"io"
+	"database/sql"
 	"errors"
+	"fmt"
+	"io"
+	"sync"
 )
 
 var (
@@ -54,8 +56,19 @@ func (p *Pool) Close() {
 	close(p.res)
 
 	// close chan resource
-	for r:= range p.res {
+	for r := range p.res {
 		r.Close()
 	}
 }
 
+func MySQL() {
+	sql.Open("mysql", "")
+
+	var ch = make(chan struct{})
+	close(ch)
+	fmt.Println(ch == nil)
+}
+
+func main() {
+	MySQL()
+}
