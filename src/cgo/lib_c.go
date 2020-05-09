@@ -1,8 +1,8 @@
 package main
 
-/**
-#cgo linux CFLAGS: -I ./lib/math
-#cgo LDFLAGS: -L ./lib/math -lmath
+/*
+#cgo linux CFLAGS: -I ./lib
+#cgo LDFLAGS: -L ./lib -l math
 #include "lib/math.h"
 */
 import "C"
