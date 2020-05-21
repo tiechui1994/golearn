@@ -1,6 +1,10 @@
-## golang cgo
+# golang cgo
 
-### cgo语句
+[相关文章](https://colobu.com/2018/06/13/cgo-articles/)
+
+[文档](https://chai2010.cn/advanced-go-programming-book/ch2-cgo/ch2-02-basic.html)
+
+## cgo语句
 
 在 `import "C"`语句前的注释可以通过 `#cgo` 语句设置 `编译阶段` 和 `链接阶段` 的相关参数.
 
@@ -86,7 +90,7 @@ func main(){
 | char | C.char | byte | 
 | singed char | C.schar | int8 |
 | unsigned char | C.uchar | uint8 |
-|  short | C.short | int16 |
+| short | C.short | int16 |
 | int | C.int | int32 |
 | long | C.long | int32 |
 | long long int | C.longlong | int64 |
@@ -96,7 +100,7 @@ func main(){
 
 ### 结构体, 联合, 枚举类型
 
-- 结构体
+#### 结构体
 
 在 Go 当中, 可以通过 `C.struct_xxx` 来访问C语言中定义的 `struct xxx` 结构体类型.
 
@@ -162,7 +166,7 @@ func main() {
 
 > 在 C 语言当中, 无法直接访问 Go 语言定义的结构体类型
 
-- 联合类型
+#### 联合类型
 
 对于联合类型,可以通过 `C.union_xxx` 来访问 C 语言中定义的 `union xxx` 类型. **但是 Go 语言中并不支持C语言联合类型,
 它们会被转换为对应大小的字节数组.**
@@ -213,8 +217,131 @@ fmt.Println("b.f:", *(*C.float)(unsafe.Pointer(&ub)))
 推荐通过在C语言中定义辅助函数的方式处理.
 
 
-- 枚举类型
+#### 枚举类型
 
 对于枚举类型, 通过 `C.enum_xxx` 访问 C 语言当中定义的 `enum xxx` 结构体类型
 
+```cgo
+/*
+enum C {
+    ONE,
+    TWO,
+};
+*/
+import "C"
+
+main(){
+    var c C.enum_C = C.TWO
+    fmt.Println(c)
+    fmt.Println(C.ONE)
+}
+```
+
+> 在 C 语言当中, 枚举类型底层对应 int 类型, 支持负数类型的值. 可以通过 C.ONE, C.TWO 等直接访问定义的枚举值.
+
+
+### 数组, 字符串和切片
+
+在 C 语言当中, 数组名其实对应着一个指针, 指向特定类型特定长度的一段内存, 但是这个指针不能被修改.
+
+当把数组名传递给一个函数时, 实际上传递的是数组第一个元素的地址.
+
+C 语言的字符串是一个 char 类型的数组, 字符串的长度需要根据表示结尾的NULL字符的位置确定.
+
+---
+
+Go 当中, 数组是一种值类型, 而且数组的长度是数组类型的一部分.
+
+Go 当中, 字符串对应一个长度确定的只读 byte 类型的内存.
+
+Go 当中, 切片是一个简化版的动态数组.
+
+---
+
+Go 语言 和 C 语言的数组, 字符串和切片之间的相互转换可以简化为 `Go 语言的切片和 C 语言中指向一定长度内存的指针` 
+之间的转换.
+
+
+```
+// Go String to C String 
+func C.CString(string) *C.char
+
+// Go []byte to C Array
+func C.CBytes([]byte) unsafe.Pointer
+
+
+// C String to Go String
+func C.GoString(*C.char) string
+
+// C data with explicit length to Go String
+func C.GoStringN(*C.char, C.int) string
+
+// C data with explicit length to Go []byte
+func C.GoBytes(unsafe.Pointer, C.int) []byte
+```
+
+> C.CString 针对输入 Go 字符串, 克隆一个 C 语言格式的字符串; 返回的字符串由 C 语言的 malloc 函数分配,
+> 不使用时需要通过 C 语言的 free 函数释放.
+>
+> C.Cbytes 函数和 C.CString 类似, 针对输入的 Go 语言切片克一个 C 语言版本的字符数组.
+>
+> C.GoString 用于将从 NULL 结尾的 C 语言字符串克隆一个 Go语言字符串.
+>
+> C.GoStringN 是另一个字符数组克隆函数.
+> 
+> C.GoBytes 用于从 C 语言数组, 克隆一个 Go 语言字节切片.
+
+当 C 语言字符串或数组向 Go 语言转换时, 克隆的内存由 Go 语言分配管理. 通过该组转换函数, 转换前和转换后的内存
+依然在各自的语言环境中, 它们并没有跨域 Go 语言和 C 语言.
+
+克隆方式实现转换的优点是接口和内存管理简单. 缺点是克隆需要分配新的内存和复制操作都会导致额外的开销.
+
+reflect 中字符串和切片的定义:
+
+```
+type StringHeader struct{
+    Data uintptr
+    Len int
+}
+
+type SliceHeader struct {
+    Data uintptr
+    Len int
+    Cap int
+}
+```
+
+如果不希望单独分配内存, 可以在Go当中直接访问C的内存空间:
+
+```cgo
+/**
+#include <string.h>
+char arr[10];
+cahr *s = "Hello";
+**/
+import "C"
+
+func main() {
+    // 通过 reflect.SliceHeader 转换
+    var arr0 []byte
+    var arr0Hdr = (*reflect.SliceHeader)(unsafe.Pointer(&arr0))
+    arr0Hdr.Data = uintptr(unsafe.Pointer(&C.arr[0])
+    arr0Hdr.Len = 10
+    arr0Hdr.Cap = 10
+    
+    // 通过切片语法转换
+    arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
+    
+    var s0 string
+    var s0Hdr = (*reflect.SliceHeader)(unsafe.Pointer(&s0))
+    s0Hdr.Data = uintptr(unsafe.Pointer(C.s))
+    s0Hdr.Len = int(C.strlen(C.s))
+    
+    sLen := int(C.strlen(C.s))
+    s1 := string(*[31]byte)(unsafe.Pointer(C.s))[:SLen:SLen]
+}
+```
+
+> Go 字符串是只读的, 用户需要自己保证 Go 字符串在使用期间, 底层对应的 C 字符串内容不会发生变化, 内存不会被
+> 提前释放掉.
 
