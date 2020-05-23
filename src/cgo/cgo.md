@@ -347,6 +347,69 @@ func main() {
 > 提前释放掉.
 
 
+### 指针间的转换
+
+在 C 语言中, 不同类型的指针是可以显式或隐式转换的, 如果是隐式只是会在编译时给出一些警告信息.
+
+Go 语言对于不同类型的转换非常严格, 任何 C 语言中可能出现的警告信息在 Go 语言中都可能是错误!
+
+指针是 C 语言的灵魂, 指针间的自由转换也是 cgo 代码中经常要解决的第一个问题.
+
+---
+
+在 Go 语言中两个指针的类型完全一致则不需要转换可以直接使用. 如果一个指针类型是用 type 命令在另
+一个指针类型基础上构建的, 换言之 `两个指针是 "底层结构完全相同" 的指针`, 那么可以通过直接强制转
+换语法进行指针间的转换.  但是 cgo 经常要面对是2个完全不同类型的指针间的转换, 原则上这种操作在纯
+Go 语言代码是严格禁止的.
+
+```
+var p *X
+var q *Y
+
+q = (*X)(unsafe.Pointer(p)) // *X => *Y
+p = (*Y)(unsafe.Pointer(q)) // *Y => *X
+```
+
+为了实现 X 类型和 Y 类型的指针的转换, 需要借助 `unsafe.Pointer` 作为中间桥接类型实现不同类型
+指针之间的转换. `unsafe.Pointer` 指针类型类似 C 语言中的 `void*` 类型的指针.
+
+指针简单转换流程图:
+
+[!image](../../images/xtoy.png)
+
+
+### 数值和指针的转换
+
+为了严格控制指针的使用, Go 语言禁止将数值类型直接转为指针类型! 不过, Go 语言针对 `unsafe.Pointer`
+指针类型特别定义了一个 `unitptr` 类型. 可以以 `unitptr` 为中介, 实现数值类型到 `unsafe.Pointer`
+指针类型的转换. 再结合前面提到的方法, 就可以实现数值类型和指针的转换了.
+
+int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
+
+[!image](../../images/numtoptr.png)
+
+### 切片间的转换
+
+在 C 语言当中数组也是一种指针, 因此两个不同类型数组之间的转换和指针类型间转换基本类似.
+
+在 Go 语言当中, 数组或数组对应的切片不再是指针类型, 因此无法直接实现不同类型的切片之间的转换.
+
+在 Go 的 `reflect`包提供了切片类型的底层结构, 再结合前面不同类型直接的指针转换, 可以实现 []X
+到 []Y 类型的切片转换.
+
+```
+var p []X
+var q []Y
+
+pHdr := (*reflect.SliceHeader)(unsafe.Pointer(&p))
+qHdr := (*reflect.SliceHeader)(unsafe.Pointer(&q))
+
+qHdr.Data = pHdr.Data
+qHdr.Len = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
+qHdr.Cap = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
+```
+
+
 ## 内部机制
 
 ### CGO 生成的中间文件
@@ -510,3 +573,11 @@ C.sum(1,1)
 ```
 main.go -> main.cgo1.go -> _cgo_gotypes.go -> main.cgo2.c
 ```
+
+
+## CGO 内存模型
+
+CGO 是架接 Go 语言和C语言的桥梁, 它使二者在二进制借口层面实现了互通, 但是要注意两种语言的内存模型
+的差异而可能引起的问题.
+
+如果在 CGO 
