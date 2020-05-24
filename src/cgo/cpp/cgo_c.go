@@ -2,9 +2,8 @@ package main
 
 /*
 #cgo CXXFLAGS: -std=c++11
-#cgo LDFLAGS: -L ./ -l buffer
 
-#include "buffer_c.h"
+#include "./buffer_c.h"
 */
 import "C"
 
