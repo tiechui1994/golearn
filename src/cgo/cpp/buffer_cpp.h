@@ -15,7 +15,7 @@ struct Buffer {
         delete this->s_;
     }
 
-    int Size() {
+    int Size() const {
         return this->s_->size();
     }
 

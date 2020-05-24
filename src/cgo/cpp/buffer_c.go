@@ -3,7 +3,7 @@ package main
 /*
 #cgo CXXFLAGS: -std=c++11
 
-#include "./buffer_c.h"
+#include "buffer_c.h"
 */
 import "C"
 
