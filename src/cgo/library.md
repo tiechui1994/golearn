@@ -134,29 +134,123 @@ C 静态库和 C 动态库的构建说明:
 
 ## gcc(g++) 编译选项
 
-- `-shared`, 指定生成动态链接库
-
-- `-static`, 指定生成静态链接库
-
-- `-fPIC`, 表示编译为位置独立的代码, 用于编译共享库(动态库). 目标文件需要创建成位置无关码, 概念上就是
-可执行程序装载它们的时候, 它们可以放置可执行程序的内存里的任何地方.
-
-- `-L`, 表示要链接的库所在目录
-
-- `-l`, 指定链接时需要的动态库.
-
 - `-Wall`, 生成所有警告信息.
 
+---
+
 - `-E`, 产生预处理阶段的输出.
+
 ```
 gcc -E main.c > main.i
 ```
 
-- `-ggdb`, 此选项尽可能的生成gdb的可以使用的调试信息.
+- `-S`, 产生汇编阶段的代码
 
-- `-g`, 编译器在编译的时候产生调试信息
+```
+gcc -S main.c > main.s
+```
 
-- `-c`, 只激活预处理, 编译和汇编, 也就是把程序生成目标文件(.o文件)
+- `-c`, 只产生编译的代码(没有链接link)
+
+```
+gcc -c main.c
+```
+
+> 上面代码产生 `main.o`, 包括机器级别的代码或者编译的代码
+
+
+- `-save-temps`, 产生所有的中间步骤的文件
+
+```
+gcc -save-temps main.c
+``` 
+
+> 上面的代码将产生文件 `main.i`, `main.s`, `main.o`, `a.out`, 其中 `a.out` 是可执行文件 
+
+---
+
+
+- `-l`, 指定链接共享库.
+
+```
+gcc -Wall main.c -o main -l CPPfile
+```
+
+> 上面的代码会链接 `libCPPfile.so`, 产生可执行文件 `main`.
+
+
+- `-fPIC`, 产生位置无关的代码. 当产生 `共享库` 的时候, 应该创建位置无关的代码, 这会让共享库使用任意的地
+址而不是固定的地址, 要实现这个功能, 需要使用 `-fPIC` 参数. 概念上就是可执行程序装载它们的时候, 它们可以放
+置可执行程序的内存里的任何地方.
+
+```
+gcc -c -Wall -Werror -fPIC Cfile.c
+gcc -shared -o libCfile.so Cfile.o
+```
+
+- `-V`, 打印所有的执行命令. (打印出 gcc 编译一个文件的时候所有的步骤) 
+
+
+- `-ansi`, 支持 ISO C89 程序.
+
+- `-funsigned-char`, `char` 类型被看作为 `unsigned char` 类型.
+
+- `-fsigned-char`, `char` 类型被看作为 `signed char` 类型.
+
+
+- `-D`, 可以使用编译时的宏
+
+```c
+#include <stdio.h>
+
+int main() {
+#ifdef MY_MACRD
+    printf("\n Macro defined \n");
+#endif
+    char c = -10;
+    printf("\n char [%d] \n", c);
+    return 0;
+}
+```
+
+```
+$ gcc -Wall -D MY_MACRD main.c -o main
+$ ./main
+```
+
+
+- `-Werror`, 将所有的警告转换为错误信息.
+
+
+- `-I`, 指定头文件的文件夹
+
+```
+gcc -I /home/user/include input.c
+```
+
+- `-L`, 表示要链接的库所在目录
+
+
+- `-std`, 指定支持的 C++/C 的标准
+
+```
+gcc -std=c++11 main.cpp
+```
+
+> 标准如 `c++11`, `c++14`, `c90`, `c89` 等.
+
+
+- `-static`, 生成静态连接的文件. 静态编译文件(把动态库的函数和其他依赖都编译进最终文件)
+
+```
+gcc main.c -static -o main -l pthread
+```
+
+- `-shared`, 使用动态库链接.
+
+- `-static-libstdc++`, 静态链接 `libstdc++`. 如果没有使用 `-static`, 默认使用 `libstdc++` 共
+享库, 而 `-static-libstdc++` 可以指定使用 `libstdc++` 静态库.
+
 
 - `-Wl,options`, 把参数(options) 传递给链接库ld, 如果options中间有逗号, 就将options分成多个选项,
 然后传递给链接程序.
