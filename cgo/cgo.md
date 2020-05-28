@@ -375,7 +375,7 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 指针简单转换流程图:
 
-[!image](../images/xtoy.png)
+![image](../images/xtoy.png)
 
 
 ### 数值和指针的转换
@@ -386,7 +386,7 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
 
-[!image](../images/numtoptr.png)
+![image](../images/numtoptr.png)
 
 ### 切片间的转换
 
@@ -421,7 +421,7 @@ qHdr.Cap = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
 在一个 Go 源文件当中, 如果出现 `import "C"` 指令则表示将调用 cgo 命令生成对应的中间文件. 下面是生成的中间
 文件的简单示意图:
 
-[!image](../images/cgo_mid.png)
+![image](../images/cgo_mid.png)
 
 
 包含有 4 个 Go 文件, 其中 nocgo 开头的文件中没有 `import "C"` 指令, 其他的 2 个文件则包含了 cgo 代码. 
