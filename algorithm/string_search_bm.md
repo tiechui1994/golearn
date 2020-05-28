@@ -6,11 +6,11 @@
 
 Case1: 模式串中有对应的坏字符时, 让模式串中最靠右的对应字符与坏字符相对.
 
-![image](../../images/bad_case1.png)
+![image](../images/bad_case1.png)
 
 Case2: 模式串中不存在坏字符, 很好, 直接右移整个模式串长度的步数
 
-![image](../../images/bad_case2.png)
+![image](../images/bad_case2.png)
 
 
 
@@ -27,16 +27,16 @@ Case2: 模式串中不存在坏字符, 很好, 直接右移整个模式串长度
 
 Case1: 模式串中有子串和好后缀完全匹配, 则将最靠右的那个子串移动到好后缀的位置继续进行匹配.
 
-![image](../../images/good_case1.png)
+![image](../images/good_case1.png)
 
 Case2: 如果不存在和好后缀完全匹配的子串, 则在好后缀中找到具有如下特征的最长子串, 使得`p[m-s...m]=p[0...s]`
 
-![image](../../images/good_case2.png)
+![image](../images/good_case2.png)
 
 
 Case3: 如果完全不存在和好后缀匹配的子串, 则右移整个模式串.
 
-![image](../../images/good_case3.png)
+![image](../images/good_case3.png)
 
 
 ## BM 算法
@@ -65,7 +65,7 @@ No,想想也不是,比如前面举例说到利用bmBc算法还可能走回头路
 那么pattern实际右移的距离怎么算呢? 这个就要看text中坏字符的位置了, 前面说过坏字符算法是针对text的, 如下图,
 图中v是text中的坏字符 (对应位置i+j), 在pattern中对应不匹配的位置为i, 那么pattern实际要右移的距离就是: `bmBc['v'] - m + 1 + i`
 
-![image](../../images/compute_bad.png)
+![image](../images/compute_bad.png)
 
 
 - 计算好后缀数组bmGs
@@ -76,17 +76,17 @@ bmGs数组计算分三种情况, 与前一一对应, 假设图中好后缀长度
 
 Case1: 好后缀算法case1, 如下图, j是好后缀之前的那个位置.
 
-![image](../../images/compute_good1.png)
+![image](../images/compute_good1.png)
 
 
 Case2: 对应好后缀算法case2
 
-![image](../../images/compute_good2.png)
+![image](../images/compute_good2.png)
 
 
 Case3: 对应好后缀算法case3, `bmGs[i] = len(pattern)` 
 
-![image](../../images/compute_good3.png)
+![image](../images/compute_good3.png)
 
 ```
 var bmGs = make([]int, len(pattern))

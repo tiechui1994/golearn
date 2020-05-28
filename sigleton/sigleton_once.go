@@ -1,4 +1,4 @@
-package design
+package sigleton
 
 import "sync"
 
@@ -6,17 +6,15 @@ type sigleton struct {
 }
 
 var (
+	once     sync.Once
 	instance *sigleton
-	lock     sync.Mutex
 )
 
 func GetInstance() *sigleton {
 	if instance == nil {
-		lock.Lock()
-		if instance == nil {
+		once.Do(func() {
 			instance = &sigleton{}
-		}
-		lock.Unlock()
+		})
 	}
 
 	return instance

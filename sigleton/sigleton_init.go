@@ -1,4 +1,4 @@
-package design
+package sigleton
 
 type sigleton struct {
 }
