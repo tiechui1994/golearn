@@ -1,8 +1,18 @@
+export LIBRARY_PATH=$(CURDIR)
 SRC = $(wildcard *.go)
-test:$(SRC)
-#	g++ -c -o buffer.o buffer_c.c
-#	ar rcs libbuffer.a buffer.o
-	go build -o test -x ${SRC}
 
+main: $(SRC) libbuffer.a
+	go build -o main -ldflags "-w -z" -x $(SRC)
+
+test: libbuffer.a
+	$(CC) -o test test.c -l buffer
+
+libbuffer.a:
+	$(CXX) -c buffer_c.cpp buffer_cpp.cpp
+	$(AR) -r libbuffer.a buffer_c.o buffer_cpp.o
+
+.PHYON : clean
+clean:
+	-rm -rf test main *.o *.a *.gch
 
 

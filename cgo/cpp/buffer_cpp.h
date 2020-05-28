@@ -4,22 +4,14 @@
 C++ 类
 */
 
-struct Buffer {
-    std::string* s_;
+class Buffer {
+    private:
+        std::string* s_;
 
-    Buffer(int size) {
-        this->s_ = new std::string(size, char('\0'));
-    }
+    public:
+        Buffer(int size);
+        ~Buffer();
 
-    ~Buffer() {
-        delete this->s_;
-    }
-
-    int Size() const {
-        return this->s_->size();
-    }
-
-    char* Data() {
-        return (char*)this->s_->data();
-    }
+        int Size();
+        char* Data();
 };

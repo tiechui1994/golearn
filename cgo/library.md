@@ -254,3 +254,39 @@ gcc main.c -static -o main -l pthread
 
 - `-Wl,options`, 把参数(options) 传递给链接库ld, 如果options中间有逗号, 就将options分成多个选项,
 然后传递给链接程序.
+
+## GCC 编译器的环境变量
+
+- PATH
+
+在 `PATH` 中找到可执行文件程序的路径
+
+
+- C_INCLUDE_PATH
+
+gcc 找到头文件的路径  
+
+
+- CPLUS_INCLUDE_PATH
+
+g++ 找到头文件的路径
+
+
+- LD_LIBRARY_PATH
+
+动态链接库的路径
+
+
+- LIBRARY_PATH
+
+静态链接库的路径
+
+库文件在链接(静态库和共享库) 和 运行 (仅限于使用共享库的程序) 时被使用, 其搜索路径是在系统中进行设置的. 一般 Linux 
+系统把 `/lib` 和 `/usr/lib` 两个目录作为默认的库搜索路径, 所以使用这两个目录的库时不需要设置搜索路径即可使用. 对
+于处于默认库搜索路径之外的库, 需要将库的位置添加到库的搜索路径之中. 
+
+设置库文件的搜索路径有以下两种方式:
+
+方式一: 在环境变量 LD_LIBRARY_PATH 中指明动态库的搜索路径
+
+方式二: 在/etc/ld.so.conf 文件当中添加库的搜索路径

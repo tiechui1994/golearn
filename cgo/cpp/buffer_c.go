@@ -1,7 +1,8 @@
 package main
 
 /*
-#cgo CXXFLAGS: -std=c++11
+#cgo CXXFLAGS: -std=c++11 -I .
+#cgo LDFLAGS: -L . -l buffer
 
 #include "buffer_c.h"
 */
