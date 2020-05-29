@@ -1,6 +1,10 @@
-lib: lib_c.go
-	go build -o lib -ldflags '-w -s' lib_c.go
+golib: libmath.a
+	go build -o golib -ldflags '-w -s' lib_c.go
+
+libmath.a:
+	$(CC) -c lib/math.c
+	$(AR) -r libmath.a math.o
 
 .PHONY:clean
 clean:
-	-rm -rf lib
+	-rm -rf golib *.a *.o

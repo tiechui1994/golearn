@@ -1,7 +1,8 @@
 package main
 
 /*
-#cgo CFLAGS: -I ./math
+#cgo CFLAGS: -I ./lib
+#cgo LDFLAGS: -L . -l math
 #include "math.h"
 */
 import "C"
