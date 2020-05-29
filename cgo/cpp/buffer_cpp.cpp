@@ -6,10 +6,6 @@ Buffer::Buffer(int size) {
     this->s_ = new std::string(size, char('\0'));
 }
 
-Buffer::~Buffer() {
-        delete this->s_;
-}
-
 int Buffer::Size() {
     return this->s_->size();
 }

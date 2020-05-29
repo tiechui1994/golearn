@@ -10,7 +10,7 @@ class Buffer {
 
     public:
         Buffer(int size);
-        ~Buffer();
+        ~Buffer(){}
 
         int Size();
         char* Data();
