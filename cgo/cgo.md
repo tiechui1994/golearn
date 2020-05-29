@@ -60,11 +60,15 @@ import "C"
 
 `#cgo` 指令还支持条件选择, 当满足某个操作系统或某个CPU架构类型时类型时后面的编译或链接选项生效. 
 
+条件选择:
+
 ```cgo
 // #cgo windows CFLAGS: -D X86=1
 // #cgo !windows LDFLAGS: -l math
 ```
 
+
+宏定义案例:
 
 ```cgo
 package main
@@ -72,24 +76,32 @@ package main
 /*
 #cgo windows CFLAGS: -D CGO_OS_WINDOWS=1
 #cgo darwin  CFLAGS: -D CGO_OS_DRWIN=1
-#cgo linux CFLAGS: -D CGO_OS_LINUX=1
+#cgo linux   CFLAGS: -D CGO_OS_LINUX=1
 
 #if defined(CGO_OS_WINDOWS)
-#   const char* os = "windows";
+   const char* os = "windows";
 #elif defined(CGO_OS_DARWIN)
-#   const char* os = "darwin";
+   const char* os = "darwin";
 #elif defined(CGO_OS_LINUX)
-#   const char* os = "linux";
+   const char* os = "linux";
 #else
-#   error(unknown os)
+   const char* os = "unknown";
 #endif
 */
 import "C"
 
-func main(){
-    print(C.GoString(C.os))
+func main() {
+	print(C.GoString(C.os))
 }
 ```
+
+> 注意: 
+>
+> 1.在链接C库的使用, 不支持条件选择. 并且CGO参数有严格的格式 `#cgo CFLAGS:...` 或者 
+> `#cgo LDFLAGS: ... `, 即 `#cgo` 和 参数(`CFLAGS`, `LDFLAGS`) 
+> 
+> 2.对于C语言库(`.h` 文件定义内容 和 `.c` 文件实现 `.h` 的定义), 在CGO当中引用 `.h` 文件, 必须采用
+> `动态库/静态库` 链接的方式, 否则可能无法编译通过.  
 
 
 ## 常用的cgo类型
