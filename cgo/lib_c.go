@@ -1,11 +1,11 @@
 package main
 
 /*
-#cgo linux CFLAGS: -I ./lib
-#cgo LDFLAGS: -L ./lib -l math
-#include "lib/math.h"
+#cgo CFLAGS: -I ./math
+#include "math.h"
 */
 import "C"
+
 import "fmt"
 
 func main() {

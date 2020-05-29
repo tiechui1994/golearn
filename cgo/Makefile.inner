@@ -1,0 +1,6 @@
+inner: inner_c.go
+	go build -o inner -ldflags '-w -s' inner_c.go
+
+.PHONY:clean
+clean:
+	-rm -rf inner

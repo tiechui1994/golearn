@@ -14,6 +14,6 @@ libmid.so:
 	$(CXX) -fPIC -shared -o libmid.so cxx.cpp mid.cpp
 
 
-.PHYON: clean
+.PHONY: clean
 clean:
 	-rm -rf *test *.a *.o *.so

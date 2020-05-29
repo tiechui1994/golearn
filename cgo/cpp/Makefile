@@ -11,7 +11,7 @@ libbuffer.a:
 	$(CXX) $(CXXFLAGS) -c buffer_c.cpp buffer_cpp.cpp
 	$(AR) -r libbuffer.a buffer_c.o buffer_cpp.o
 
-.PHYON : clean
+.PHONY : clean
 clean:
 	-rm -rf ctest gomain *.o *.a *.gch
 

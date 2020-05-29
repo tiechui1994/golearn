@@ -1,0 +1,6 @@
+lib: lib_c.go
+	go build -o lib -ldflags '-w -s' lib_c.go
+
+.PHONY:clean
+clean:
+	-rm -rf lib
