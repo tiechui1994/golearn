@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+
 	"github.com/golang/protobuf/proto"
-	"rpc/pb"
+
+	"./pb"
 )
 
 type ServiceServer struct {

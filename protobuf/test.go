@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"os"
-	"rpc/pb"
+
+	"github.com/golang/protobuf/proto"
+
+	"./pb"
 )
 
 func main() {
