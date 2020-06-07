@@ -71,3 +71,55 @@ func TestUnZipFile(t *testing.T) {
 		t.Fatalf("[UnZipFile]\n%v", err)
 	}
 }
+
+func TestUnBizp2File(t *testing.T) {
+	err := UnBizp2File("/tmp/xx.go", "/home/quinn/Desktop/w/zip.go.bz2")
+	if err != nil {
+		t.Fatalf("[UnBizp2File] %v", err)
+	}
+}
+
+func TestLzw(t *testing.T) {
+	data := []byte("Hello")
+
+	lzwdata, err := Lzw(data)
+	if err != nil {
+		t.Fatalf("Lzw %v", err)
+	}
+	t.Logf("data len: %v", len(data))
+	t.Logf("lzw  len: %v", len(lzwdata))
+
+	lzrdata, err := UnLzw(lzwdata)
+	if err != nil {
+		t.Fatalf("UnLzw %v", err)
+	}
+
+	t.Logf("Equal: %v", bytes.Equal(lzrdata, data))
+}
+
+func TestLzwFile(t *testing.T) {
+	err := LzwFile("/tmp/xx.lz", "/home/quinn/go/src/golearn/compress/lzw.go")
+	if err != nil {
+		t.Fatalf("LzwFile %v", err)
+	}
+
+	err = UnLzwFile("/tmp/xx.go", "/tmp/xx.lz")
+	if err != nil {
+		t.Fatalf("UnLzwFile %v", err)
+	}
+}
+
+func TestTgz(t *testing.T) {
+	err := Tgz("/tmp/xxx.tar.gz", []string{
+		"/home/quinn/go/src/golearn/compress/bzip2.go",
+		"/home/quinn/go/src/golearn/compress/lzw.go",
+	})
+	if err != nil {
+		t.Fatalf("Tgz %v", err)
+	}
+
+	err = UnTgz("/tmp/", "/tmp/x.tar.gz")
+	if err != nil {
+		t.Fatalf("UnTgz %v", err)
+	}
+}
