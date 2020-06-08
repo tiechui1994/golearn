@@ -222,6 +222,11 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
     // 其他状况: 如果地址为IPv4, 则返回AF_INET, 否则返回AF_INET6. 它还返回一个布尔值, 该布尔值指定IPV6_V6ONLY选项.
     //
 	family, ipv6only := favoriteAddrFamily(net, laddr, raddr, mode)
+	
+	// net 是 tcp, tcp4, tcp6
+	// family 是 AF_INET 或 AF_INET6
+	// sotype 是 syscall.SOCK_STREAM
+	// proto 是 0
 	return socket(ctx, net, family, sotype, proto, ipv6only, laddr, raddr, ctrlFn)
 }
 ```
@@ -230,44 +235,40 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
 底层 socket 的创建:
 
 ```cgo
-// socket returns a network file descriptor that is ready for
-// asynchronous I/O using the network poller.
+// socket() 返回一个网络文件描述符, 该描述符已准备好使用网络轮询器进行异步I/O. 
 func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only bool, laddr, raddr sockaddr, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
+	// 创建 socket
 	s, err := sysSocket(family, sotype, proto)
 	if err != nil {
 		return nil, err
 	}
+	
+	// 设置 socket 的选项
 	if err = setDefaultSockopts(s, family, sotype, ipv6only); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
 	}
+	
+	// 创建文件描述符
 	if fd, err = newFD(s, family, sotype, net); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
 	}
 
-	// This function makes a network file descriptor for the
-	// following applications:
-	//
-	// - An endpoint holder that opens a passive stream
-	//   connection, known as a stream listener
-	//
-	// - An endpoint holder that opens a destination-unspecific
-	//   datagram connection, known as a datagram listener
-	//
-	// - An endpoint holder that opens an active stream or a
-	//   destination-specific datagram connection, known as a
-	//   dialer
-	//
-	// - An endpoint holder that opens the other connection, such
-	//   as talking to the protocol stack inside the kernel
-	//
-	// For stream and datagram listeners, they will only require
-	// named sockets, so we can assume that it's just a request
-	// from stream or datagram listeners when laddr is not nil but
-	// raddr is nil. Otherwise we assume it's just for dialers or
-	// the other connection holders.
-
+	// 此函数为以下应用程序创建 "网络文件描述符" :
+    //
+    //- 打开一个被动 stream connection 的 endpoint 持有者, 称为stream listener
+    //
+    //- 打开一个目标无关的 datagram connection 的 endpoint 持有者, 称为datagram listener
+    //
+    //- 打开 active stream 或特定于目标的 datagram connection 的 endpoint 持有者, 称为 dialer.
+    //
+    //- 打开另一个连接的 endpoint 持有者, 例如: 与内核内部的协议栈通信
+    //
+    // 对于 stream 和 datagram listener, 它们仅需要named socket, 因此当laddr不是nil, 而raddr为nil时, 
+    // 我们可以假设这只是来自 stream 或 datagram listener 的 request. 否则, 我们假定它仅适用于 dialer 或其他连接持有者.
+    
+    // stream, datagram
 	if laddr != nil && raddr == nil {
 		switch sotype {
 		case syscall.SOCK_STREAM, syscall.SOCK_SEQPACKET:
@@ -284,10 +285,85 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 			return fd, nil
 		}
 	}
+	
+	// dialer
 	if err := fd.dial(ctx, laddr, raddr, ctrlFn); err != nil {
 		fd.Close()
 		return nil, err
 	}
+	
+	// other
 	return fd, nil
+}
+```
+
+
+```cgo
+func sysSocket(family, sotype, proto int) (int, error) {
+    // 系统调用, 测试系统的  socket 否支持 syscall.SOCK_NONBLOCK, syscall.SOCK_CLOEXEC 属性
+	s, err := socketFunc(family, sotype|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, proto)
+	// On Linux the SOCK_NONBLOCK and SOCK_CLOEXEC flags were
+	// introduced in 2.6.27 kernel and on FreeBSD both flags were
+	// introduced in 10 kernel. If we get an EINVAL error on Linux
+	// or EPROTONOSUPPORT error on FreeBSD, fall back to using
+	// socket without them.
+	switch err {
+	case nil:
+		return s, nil
+	default:
+		return -1, os.NewSyscallError("socket", err)
+	case syscall.EPROTONOSUPPORT, syscall.EINVAL:
+	}
+
+	// 系统调用创建 socket
+	syscall.ForkLock.RLock()
+	s, err = socketFunc(family, sotype, proto)
+	if err == nil {
+		syscall.CloseOnExec(s) //  socket 属性设置为 FD_CLOEXEC
+	}
+	syscall.ForkLock.RUnlock()
+	if err != nil {
+		return -1, os.NewSyscallError("socket", err)
+	}
+	
+	// socket 属性设置为 O_NONBLOCK
+	if err = syscall.SetNonblock(s, true); err != nil {
+		poll.CloseFunc(s)
+		return -1, os.NewSyscallError("setnonblock", err)
+	}
+	return s, nil
+}
+
+
+func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, string, syscall.RawConn) error) error {
+	var err error
+	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {
+		return err
+	}
+	var lsa syscall.Sockaddr
+	if lsa, err = laddr.sockaddr(fd.family); err != nil {
+		return err
+	}
+	if ctrlFn != nil {
+		c, err := newRawConn(fd)
+		if err != nil {
+			return err
+		}
+		if err := ctrlFn(fd.ctrlNetwork(), laddr.String(), c); err != nil {
+			return err
+		}
+	}
+	if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
+		return os.NewSyscallError("bind", err)
+	}
+	if err = listenFunc(fd.pfd.Sysfd, backlog); err != nil {
+		return os.NewSyscallError("listen", err)
+	}
+	if err = fd.init(); err != nil {
+		return err
+	}
+	lsa, _ = syscall.Getsockname(fd.pfd.Sysfd)
+	fd.setAddr(fd.addrFunc()(lsa), nil)
+	return nil
 }
 ```
