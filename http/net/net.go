@@ -1,8 +1,11 @@
 package net
 
-import "net"
+import (
+	"fmt"
+	"net"
+)
 
 func Listen() {
-	listener, _ := net.Listen("tcp", "127.0.0.1:12345")
-	_ = listener
+	listener, err := net.Listen("udp", "127.0.0.1:12345")
+	fmt.Println(listener,err)
 }
