@@ -82,3 +82,74 @@ int getsockopt(int s, int level, int optname, const void* optval, socklen_t optl
 >> 2. ENOTSOCKET 参数 s 为文件描述符, 非 socket
 >> 3. ENOPROTOOPT 参数 optname 指定选项不正确
 >> 4. EFAULT 参数 optval 指针指向无法存取的内存空间
+
+
+- bind
+
+头文件: `#include <sys/types.h>`, `#include <sys/socket.h>`
+
+函数定义:
+
+```cgo
+int bind(int sockfd, struct sockaddr* addr, int addrlen);
+```
+
+> 函数说明: bind() 用来设置参数 sockfd 的 socket 一个名称. 此名称由参数 addr 指向一 sockaddr 结构, 对于不同的
+> socket domain 定义了一个通用的数据结构.
+>
+> ```
+> struct sockaddr {
+>   unsigned short int sa_family;
+>   char sa_data[14];
+> }
+> ```
+>
+> sa_family 为调用 socket() 时的 domain 参数, 即 AF_xxx; sa_data 最多使用 14 个字符长度.
+>
+> sockaddr 结构会因使用不同的socket domain 而有不同结构定义, 例如 AF_INET, 其sockadr 定义为:
+> 
+> ```
+> struct socketaddr_in {
+>   unsigned short int sin_family;
+>   uint16_t sin_port;
+>   struct in_addr sin_addr;
+>   unsigned char sin_zero[8];
+> }
+> 
+> struct in_addr {
+>   uint32_t s_addr;
+> } 
+> ```
+>
+> sin_family 为 sa_family; sin_port 为使用的端口号; sin_addr.s_addr 为IP地址; sin_zero未使用;
+>
+>
+> 返回值: 0表示成功, -1表示失败
+> 错误码:
+> 1. EBADF 参数 sockfd 非合法 socket 处理代码
+> 2. EACCESS 权限不足
+> 3. ENOTSOCK 参数 sockfd 为一文件描述符, 非 socket
+
+
+- listen
+
+头文件: `#include <sys/socket.h>`
+
+函数定义:
+
+```cgo
+int listen(int sockfd, int backlog);
+```
+
+> 函数说明: listen() 用来等待参数 sockfd 的 socket 连接. 参数 backlog 指定同时处理的最大连接请求, 如果连接数达
+> 此上限, 则 client 端将收到 ECONNREFUSED 的错误. listen()并未开始接受连接, 只是设置 socket 为 listen 模式,
+> 真正接收 client 端连接的是 accept(). 通常 listen() 会在 socket(), bind() 之后调用, 接着才调用 accept().
+>
+> 返回值: 0是成功, -1表示失败
+> 错误代码:
+> 1. EBADF 参数 sockfd 非合法 socket 处理代码
+> 2. EACCESS 权限不足
+> 3. EOPNOTSUPP指定的 socket 未支持 listen 模式
+>
+>> 说明: listen() 只适用于 SOCK_STREAM, SOCK_SEQPACKET 的 socket 类型. 如果 socket 为 AF_INET 则参数 
+>> backlog 最大值可设至 128

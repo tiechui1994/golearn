@@ -340,16 +340,23 @@ func sysSocket(family, sotype, proto int) (int, error) {
 
 listenStream() 设置 socket 的属性 SO_REUSEADDR. 
 
+> 系统调用 bind() 和 listen() 函数
+
 ```cgo
 func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, string, syscall.RawConn) error) error {
+	// 设置 socket 的 SO_REUSEADDR 属性
 	var err error
 	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {
 		return err
 	}
+	
+	// 获取 laddr(本地) 的地址
 	var lsa syscall.Sockaddr
 	if lsa, err = laddr.sockaddr(fd.family); err != nil {
 		return err
 	}
+	
+	// 调用控制函数
 	if ctrlFn != nil {
 		c, err := newRawConn(fd)
 		if err != nil {
@@ -359,17 +366,72 @@ func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, s
 			return err
 		}
 	}
+	
+	// 调用底层 bind()
 	if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
 		return os.NewSyscallError("bind", err)
 	}
+	
+	// 调用底层 listen() 
 	if err = listenFunc(fd.pfd.Sysfd, backlog); err != nil {
 		return os.NewSyscallError("listen", err)
 	}
+	
+	// 关键: 初始化socket与异步IO相关的内容
 	if err = fd.init(); err != nil {
 		return err
 	}
 	lsa, _ = syscall.Getsockname(fd.pfd.Sysfd)
 	fd.setAddr(fd.addrFunc()(lsa), nil)
+	return nil
+}
+```
+
+netFD.init() => FD.Init(net string, pollable bool) => pollDesc.init(*FD) 
+
+```cgo
+func (fd *netFD) init() error {
+	return fd.pfd.Init(fd.net, true)
+}
+            ||
+            \/
+    
+func (fd *FD) Init(net string, pollable bool) error {
+	// We don't actually care about the various network types.
+	if net == "file" {
+		fd.isFile = true
+	}
+	if !pollable {
+		fd.isBlocking = 1
+		return nil
+	}
+	err := fd.pd.init(fd)
+	if err != nil {
+		// If we could not initialize the runtime poller,
+		// assume we are using blocking mode.
+		fd.isBlocking = 1
+	}
+	return err
+}
+            ||
+            \/
+
+func (pd *pollDesc) init(fd *FD) error {
+    // runtime_pollServerInit => runtime.netpollServerInit
+	serverInit.Do(runtime_pollServerInit)
+	
+	// runtime_pollOpen => runtime.netpollOpen
+	ctx, errno := runtime_pollOpen(uintptr(fd.Sysfd))
+	if errno != 0 {
+		if ctx != 0 {
+		    // runtime_pollUnblock => runtime.netpollUnblock
+			runtime_pollUnblock(ctx)
+			// runtime_pollClose => runtime.netpollClose
+			runtime_pollClose(ctx)
+		}
+		return errnoErr(syscall.Errno(errno))
+	}
+	pd.runtimeCtx = ctx
 	return nil
 }
 ```
