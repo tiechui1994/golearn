@@ -8,10 +8,35 @@
 int socket(int domain, int type, int protocol);
 ```
 
-> 说明:
+> 说明: socket() 用来建立一个新的socket. 也就是系统注册, 通知系统建立一通信端口. 参数 domain 指定使用何种的地址类
+> 型, 完整的定义在 `/usr/include/bits/socket.h` 内. 常见的地址类型:
 >
+> PF_UNIX/PF_LOCAL/AF_UNIX/AF_LOCAL, unix进程通信协议
+> PF_INET/AF_INET, ipv4网络协议
+> PF_INET6/AF_INET6, ipv6网络协议
+> PF_PACKET/AF_PACKET, 初级封包接口
 >
-
+> 参数 type 有以下几种值:
+> 
+> 1. SOCK_STREAM 提供双相连接且可信赖的数据流, 即 TCP. 支持 OOB 机制, 在所有数据传送前必须使用connect()来建立连
+> 线状态. 
+> 2. SOCK_DGRAM 使用不连续不可信赖的数据包连接
+> 3. SOCK_SEQPACKET 提供连续可信赖的数据包连接
+> 4. SOCK_RAW 提供原始网络协议存取
+> 5. SOCK_RDM 提供可信赖的数据包连接
+> 6. SOCK_PACKET 提供和网络驱动程序直接通信. 
+> 
+> protocol 用来指定 socket 所使用的传输协议编号, 通常此参数不用管, 设为 0 即可.
+>
+> 
+> 返回值: 0表示成功, -1表示失败
+> 错误代码:
+> 1. EPROTONOSUPPORT 参数 domain 指定的类型不支持参数 type 或 protocol 指定的协议
+> 2. ENFILE 核心内存不足, 无法建立新的 socket 结构
+> 3. EMFILE 进程文件表溢出, 无法再建立新的socket
+> 4. EACCESS 权限不足, 无法建立 type 或 protocol 指定的协议
+> 5. ENOBUFS/ENOMEM 内存不足
+> 6. EINVAL 参数domain/type/protocol不合法
 
 
 - setsockopt, 设置 socket 状态
@@ -26,8 +51,8 @@ int setsockopt(int s, int level, int optname, const void* optval, socklen_t optl
 int getsockopt(int s, int level, int optname, const void* optval, socklen_t optlen);
 ``` 
 
-> 说明: 设置参数 s 所指定的 socket 状态. 参数 level 代表欲设置的网络层, 一般设为 SOL_SOCKET 以存取 socket 层. 参数 optname 代表设置的
-> 选项, 有以下几种值:
+> 说明: 设置参数 s 所指定的 socket 状态. 参数 level 代表欲设置的网络层, 一般设为 SOL_SOCKET 以存取 socket 层. 
+> 参数 optname 代表设置的选项, 有以下几种值:
 >
 > - SO_DEBUG, 打开或关闭debug模式
 > - SO_REUSEADDR, 允许在 bind() 过程中本地地址可重复使用
