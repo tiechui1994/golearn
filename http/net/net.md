@@ -232,7 +232,7 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
 ```
 
 
-底层 socket 的创建:
+socket() 创建 socket, 并设置 socket 的属性.
 
 ```cgo
 // socket() 返回一个网络文件描述符, 该描述符已准备好使用网络轮询器进行异步I/O. 
@@ -249,7 +249,7 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 		return nil, err
 	}
 	
-	// 创建文件描述符
+	// 创建文件描述符, 并且绑定 socket 
 	if fd, err = newFD(s, family, sotype, net); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
@@ -298,6 +298,8 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 ```
 
 
+sysSocket() 进行系统调用创建 socket, 并且设置socket的属性 FD_CLOEXEC, O_NONBLOCK
+
 ```cgo
 func sysSocket(family, sotype, proto int) (int, error) {
     // 系统调用, 测试系统的  socket 否支持 syscall.SOCK_NONBLOCK, syscall.SOCK_CLOEXEC 属性
@@ -333,8 +335,12 @@ func sysSocket(family, sotype, proto int) (int, error) {
 	}
 	return s, nil
 }
+```
 
 
+listenStream() 设置 socket 的属性 SO_REUSEADDR. 
+
+```cgo
 func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, string, syscall.RawConn) error) error {
 	var err error
 	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {

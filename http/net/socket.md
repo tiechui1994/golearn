@@ -1,5 +1,12 @@
 # socket 
 
+##  socket 编程的流程
+
+![image](/images/socket.png)
+
+
+## socket 相关的函数
+
 - socket
 
 头文件: `#include <sys/types.h>`, `#include <sys/socket.h>`
