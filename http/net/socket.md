@@ -153,3 +153,29 @@ int listen(int sockfd, int backlog);
 >
 >> 说明: listen() 只适用于 SOCK_STREAM, SOCK_SEQPACKET 的 socket 类型. 如果 socket 为 AF_INET 则参数 
 >> backlog 最大值可设至 128
+
+
+- accpet
+
+头文件: `#include <sys/types.h>`, `#include <sys/socket.h>`
+
+定义函数:
+
+```cgo
+int accpet(int sockfd, struct sockaddr* addr, int addrlen);
+```
+
+> 函数说明: accpet() 用来接收参数 sockfd 的 socket 连接. 参数 sockfd 必须先经过 bind(), listen() 函数处理过,
+> 当有连接进来时 accpet() 会返回一个新的 socket, 往后的数据传送和读取都是经由此socket处理, 而原来的参数 sockfd 的
+> socket 继续使用 accpet() 来接收新的连接请求. 连接成功时, 参数 addr 所指的结构会被系统填入远程主机的地址数据, 参数
+> addrlen 为 sockaddr 的结构长度.
+>
+> 返回值: 成功则返回新的 socket, 失败返回 -1
+> 错误码:
+> 1. EBADF 参数 sockfd 非合法的 socket
+> 2. EFAULT 参数 addr 指针指向无法读取的内存空间
+> 3. ENOTSOCK 参数 sockfd 为文件描述符, 非 socket
+> 4. EOPNOTSUPP 指定的socket并非 SOCK_STREAM
+> 5. EPERM 防火墙拒绝此连接
+> 6. ENOBUFS 系统缓存内存不足
+> 7. ENOMEM 内存不足

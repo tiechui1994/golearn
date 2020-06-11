@@ -435,3 +435,105 @@ func (pd *pollDesc) init(fd *FD) error {
 	return nil
 }
 ```
+
+
+## Accept
+
+TCPListener.Accept() => TCPListener.accept() => netFD.accept() => FD.Accept()
+
+```cgo
+// Accept在侦听器接口中实现Accept方法; 它等待下一个调用并返回通用Conn.
+func (l *TCPListener) Accept() (Conn, error) {
+	if !l.ok() {
+		return nil, syscall.EINVAL
+	}
+	c, err := l.accept()
+	if err != nil {
+		return nil, &OpError{Op: "accept", Net: l.fd.net, Source: nil, Addr: l.fd.laddr, Err: err}
+	}
+	return c, nil
+}
+```
+
+TCPListener.accept(), 获取接收请求socket, 并将socket包装成一个 TCPConn
+
+```cgo
+func (ln *TCPListener) accept() (*TCPConn, error) {
+	fd, err := ln.fd.accept()
+	if err != nil {
+		return nil, err
+	}
+	tc := newTCPConn(fd)
+	if ln.lc.KeepAlive >= 0 {
+		setKeepAlive(fd, true)
+		ka := ln.lc.KeepAlive
+		if ln.lc.KeepAlive == 0 {
+			ka = defaultTCPKeepAlive
+		}
+		setKeepAlivePeriod(fd, ka)
+	}
+	return tc, nil
+}
+```
+
+
+netFD.accept(), 调用底层 socket 的 accpet() 方法, 获取 `客户端` 的 socket.
+
+```cgo
+func (fd *netFD) accept() (netfd *netFD, err error) {
+	d, rsa, errcall, err := fd.pfd.Accept()
+	if err != nil {
+		if errcall != "" {
+			err = wrapSyscallError(errcall, err)
+		}
+		return nil, err
+	}
+
+	if netfd, err = newFD(d, fd.family, fd.sotype, fd.net); err != nil {
+		poll.CloseFunc(d)
+		return nil, err
+	}
+	if err = netfd.init(); err != nil {
+		fd.Close()
+		return nil, err
+	}
+	lsa, _ := syscall.Getsockname(netfd.pfd.Sysfd)
+	netfd.setAddr(netfd.addrFunc()(lsa), netfd.addrFunc()(rsa))
+	return netfd, nil
+}
+```
+
+
+```cgo
+// Accept wraps the accept network call.
+func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
+	if err := fd.readLock(); err != nil {
+		return -1, nil, "", err
+	}
+	defer fd.readUnlock()
+
+	if err := fd.pd.prepareRead(fd.isFile); err != nil {
+		return -1, nil, "", err
+	}
+	for {
+		s, rsa, errcall, err := accept(fd.Sysfd)
+		if err == nil {
+			return s, rsa, "", err
+		}
+		switch err {
+		case syscall.EAGAIN:
+			if fd.pd.pollable() {
+				if err = fd.pd.waitRead(fd.isFile); err == nil {
+					continue
+				}
+			}
+		case syscall.ECONNABORTED:
+			// This means that a socket on the listen
+			// queue was closed before we Accept()ed it;
+			// it's a silly error, so try again.
+			continue
+		}
+		return -1, nil, errcall, err
+	}
+}
+```
