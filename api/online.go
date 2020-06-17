@@ -222,6 +222,7 @@ const (
 	probe_req  = "2probe"
 	probe_resp = "3probe"
 
+	start_req  = "5"
 	heart_req  = "2"
 	heart_resp = "3"
 )
@@ -238,13 +239,21 @@ type Socket struct {
 	}
 }
 
+func (s *Socket) Close() {
+	if s.done != nil {
+		close(s.done)
+	}
+
+	if s.Conn != nil {
+		s.Conn.Close()
+	}
+}
+
 func (s *Socket) polling1() error {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", Unix())
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("origin", "https://online-audio-converter.com")
-	request.Header.Set("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
+	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
-
 	if err != nil {
 		return err
 	}
@@ -275,31 +284,33 @@ func (s *Socket) polling1() error {
 
 	s.sid = result.Sid
 
-	log.Printf("data: %v", string(data))
+	log.Printf("polling1: %v", string(data))
 	return nil
 }
 
 func (s *Socket) polling2() error {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", Unix(), s.sid)
+	log.Println(u)
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("origin", "https://online-audio-converter.com")
 	request.Header.Set("cookie", "io="+s.sid)
-	request.Header.Set("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
 	resonse, err := oclient.Do(request)
 	if err != nil {
+		log.Println("polling2 Do:", err)
 		return err
 	}
 	defer resonse.Body.Close()
 	if resonse.StatusCode != http.StatusOK {
-		return errors.New("invalid status code")
+		log.Println("polling2 Code:", resonse.StatusCode)
+		return fmt.Errorf("invalid status code: %v", resonse.StatusCode)
 	}
 
 	data, err := ioutil.ReadAll(resonse.Body)
 	if err != nil {
+		log.Println("polling2 Read:", err)
 		return err
 	}
 
-	log.Printf("data: %v", string(data))
+	log.Printf("polling2: %v", string(data))
 	return nil
 }
 
@@ -310,9 +321,6 @@ func (s *Socket) socket() error {
 		HandshakeTimeout: 45 * time.Second,
 	}
 	header := make(http.Header)
-	header.Set("Accept-Encoding", "gzip, deflate, br")
-	header.Set("Origin", "https://online-audio-converter.com")
-	header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
 	conn, _, err := dailer.Dial(u, header)
 	if err != nil {
 		log.Println(err)
@@ -326,8 +334,6 @@ func (s *Socket) socket() error {
 		goto close
 	}
 
-	go s.heartbeat()
-
 	for {
 		data, ok := s.ReadMessage()
 		if ok {
@@ -336,7 +342,8 @@ func (s *Socket) socket() error {
 
 		switch data {
 		case probe_resp:
-			log.Println("probe success")
+			go s.heartbeat()
+			log.Println("probe success,", data)
 		case heart_resp:
 			atomic.AddInt64(&s.heart.counter, -1)
 			log.Printf("receive heart: %v", atomic.LoadInt64(&s.heart.counter))
@@ -346,7 +353,6 @@ func (s *Socket) socket() error {
 	}
 
 close:
-	s.Close()
 	return errors.New("exception cloded")
 }
 
@@ -372,7 +378,7 @@ func (s *Socket) socketError(err error) (isclose bool) {
 	}
 
 	if _, ok := err.(*websocket.CloseError); ok {
-		log.Printf("client: %+v close err: %v", s, err)
+		log.Printf("err: %v", err)
 		s.Close()
 		return true
 	}
@@ -383,6 +389,10 @@ func (s *Socket) socketError(err error) (isclose bool) {
 
 func (s *Socket) heartbeat() {
 	log.Println("start heart beat")
+	s.WriteMessage(start_req)
+	s.WriteMessage(heart_req)
+	atomic.AddInt64(&s.heart.counter, 1)
+	log.Printf("heartbeat send: %v", atomic.LoadInt64(&s.heart.counter))
 	s.heart.ticker = time.NewTicker(25 * time.Second)
 	for {
 		select {
