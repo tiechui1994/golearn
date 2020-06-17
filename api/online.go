@@ -14,6 +14,12 @@ import (
 	"mime/multipart"
 	"io/ioutil"
 	"encoding/json"
+	mrand "math/rand"
+	"regexp"
+	"github.com/gorilla/websocket"
+	"sync"
+	"sync/atomic"
+	"errors"
 )
 
 //https://s113.123apps.com/aconv/upload/flow/?uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
@@ -210,4 +216,219 @@ func Flow(vals url.Values, data []byte) error {
 
 	log.Printf("result: %+v", result)
 	return nil
+}
+
+const (
+	probe_req  = "2probe"
+	probe_resp = "3probe"
+
+	heart_req  = "2"
+	heart_resp = "3"
+)
+
+type Socket struct {
+	*websocket.Conn
+	sync.Mutex
+	sid  string
+	done chan struct{}
+
+	heart struct {
+		ticker  *time.Ticker
+		counter int64
+	}
+}
+
+func (s *Socket) polling1() error {
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", Unix())
+	request, _ := http.NewRequest("GET", u, nil)
+	request.Header.Set("origin", "https://online-audio-converter.com")
+	request.Header.Set("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
+	resonse, err := oclient.Do(request)
+
+	if err != nil {
+		return err
+	}
+	defer resonse.Body.Close()
+
+	if resonse.StatusCode != http.StatusOK {
+		return errors.New("invalid status code")
+	}
+
+	data, err := ioutil.ReadAll(resonse.Body)
+	if err != nil {
+		return err
+	}
+
+	data = regexp.MustCompile(`{.*}`).Find(data)
+
+	var result struct {
+		Sid          string   `json:"sid"`
+		Upgrades     []string `json:"upgrades"`
+		PingInterval int      `json:"pingInterval"`
+		PingTimeout  int      `json:"pingTimeout"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return err
+	}
+
+	s.sid = result.Sid
+
+	log.Printf("data: %v", string(data))
+	return nil
+}
+
+func (s *Socket) polling2() error {
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", Unix(), s.sid)
+	request, _ := http.NewRequest("GET", u, nil)
+	request.Header.Set("origin", "https://online-audio-converter.com")
+	request.Header.Set("cookie", "io="+s.sid)
+	request.Header.Set("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
+	resonse, err := oclient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer resonse.Body.Close()
+	if resonse.StatusCode != http.StatusOK {
+		return errors.New("invalid status code")
+	}
+
+	data, err := ioutil.ReadAll(resonse.Body)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("data: %v", string(data))
+	return nil
+}
+
+func (s *Socket) socket() error {
+	u := fmt.Sprintf("wss://s113.123apps.com/socket.io/?EIO=3&transport=websocket&sid=%v", s.sid)
+	dailer := websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 45 * time.Second,
+	}
+	header := make(http.Header)
+	header.Set("Accept-Encoding", "gzip, deflate, br")
+	header.Set("Origin", "https://online-audio-converter.com")
+	header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36")
+	conn, _, err := dailer.Dial(u, header)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	s.Conn = conn
+	s.done = make(chan struct{})
+
+	if s.WriteMessage(probe_req) {
+		goto close
+	}
+
+	go s.heartbeat()
+
+	for {
+		data, ok := s.ReadMessage()
+		if ok {
+			goto close
+		}
+
+		switch data {
+		case probe_resp:
+			log.Println("probe success")
+		case heart_resp:
+			atomic.AddInt64(&s.heart.counter, -1)
+			log.Printf("receive heart: %v", atomic.LoadInt64(&s.heart.counter))
+		default:
+			log.Println("data", string(data))
+		}
+	}
+
+close:
+	s.Close()
+	return errors.New("exception cloded")
+}
+
+func (s *Socket) ReadMessage() (data string, isclose bool) {
+	_, message, err := s.Conn.ReadMessage()
+	if s.socketError(err) {
+		return data, true
+	}
+
+	return string(message), false
+}
+
+func (s *Socket) WriteMessage(data string) (isclose bool) {
+	s.Lock()
+	defer s.Unlock()
+	err := s.Conn.WriteMessage(websocket.TextMessage, []byte(data))
+	return s.socketError(err)
+}
+
+func (s *Socket) socketError(err error) (isclose bool) {
+	if err == nil {
+		return false
+	}
+
+	if _, ok := err.(*websocket.CloseError); ok {
+		log.Printf("client: %+v close err: %v", s, err)
+		s.Close()
+		return true
+	}
+
+	log.Printf("failed, %v", err)
+	return
+}
+
+func (s *Socket) heartbeat() {
+	log.Println("start heart beat")
+	s.heart.ticker = time.NewTicker(25 * time.Second)
+	for {
+		select {
+		case <-s.heart.ticker.C:
+			atomic.AddInt64(&s.heart.counter, 1)
+			log.Printf("heartbeat send: %v", atomic.LoadInt64(&s.heart.counter))
+			s.WriteMessage(heart_req)
+
+		case <-s.done:
+			return
+		}
+	}
+}
+
+// 随机字符串
+func randomStr(length int) string {
+	bs := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
+	result := make([]byte, 0)
+	r := mrand.New(mrand.NewSource(time.Now().UnixNano())) // 产生随机数实例
+	for i := 0; i < length; i++ {
+		result = append(result, bs[r.Intn(len(bs))]) // 获取随机
+	}
+	return string(result)
+}
+
+func Unix() string {
+	var (
+		s, u = 64, 0
+	)
+
+	a := map[string]int{}
+	i := strings.Split("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_", "")
+	for ; u < s; u++ {
+		a[i[u]] = u
+	}
+
+	n := func(t int) string {
+		var e string
+		e = i[t%s] + e
+		t = int(t / s)
+		for t > 0 {
+			e = i[t%s] + e
+			t = int(t / s)
+		}
+		return e
+	}
+
+	return n(int(time.Now().UnixNano() / 1e6))
 }
