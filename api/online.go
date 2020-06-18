@@ -249,10 +249,9 @@ func (s *Socket) Close() {
 	}
 }
 
-func (s *Socket) polling1() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", Unix())
+func (s *Socket) polling() error {
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", encode())
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
 	if err != nil {
 		return err
@@ -284,14 +283,38 @@ func (s *Socket) polling1() error {
 
 	s.sid = result.Sid
 
+	log.Printf("polling: %v", string(data))
+	return nil
+}
+
+func (s *Socket) polling1() error {
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", encode(), s.sid)
+	request, _ := http.NewRequest("GET", u, nil)
+	request.Header.Set("cookie", "io="+s.sid)
+	resonse, err := oclient.Do(request)
+	if err != nil {
+		log.Println("polling1 Do:", err)
+		return err
+	}
+	defer resonse.Body.Close()
+	data, err := ioutil.ReadAll(resonse.Body)
+	if err != nil {
+		return err
+	}
+
 	log.Printf("polling1: %v", string(data))
+
+	if resonse.StatusCode != http.StatusOK {
+		log.Println("polling1 Code:", resonse.StatusCode)
+		return fmt.Errorf("invalid status code: %v", resonse.StatusCode)
+	}
+
 	return nil
 }
 
 func (s *Socket) polling2() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", Unix(), s.sid)
-	log.Println(u)
-	request, _ := http.NewRequest("GET", u, nil)
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", encode(), s.sid)
+	request, _ := http.NewRequest("POST", u, bytes.NewBufferString("1:2"))
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
 	if err != nil {
@@ -299,11 +322,6 @@ func (s *Socket) polling2() error {
 		return err
 	}
 	defer resonse.Body.Close()
-	if resonse.StatusCode != http.StatusOK {
-		log.Println("polling2 Code:", resonse.StatusCode)
-		return fmt.Errorf("invalid status code: %v", resonse.StatusCode)
-	}
-
 	data, err := ioutil.ReadAll(resonse.Body)
 	if err != nil {
 		log.Println("polling2 Read:", err)
@@ -311,6 +329,12 @@ func (s *Socket) polling2() error {
 	}
 
 	log.Printf("polling2: %v", string(data))
+
+	if resonse.StatusCode != http.StatusOK {
+		log.Println("polling2 Code:", resonse.StatusCode)
+		return fmt.Errorf("invalid status code: %v", resonse.StatusCode)
+	}
+
 	return nil
 }
 
@@ -418,7 +442,7 @@ func randomStr(length int) string {
 	return string(result)
 }
 
-func Unix() string {
+func encode() string {
 	var (
 		s, u = 64, 0
 	)
@@ -441,4 +465,23 @@ func Unix() string {
 	}
 
 	return n(int(time.Now().UnixNano() / 1e6))
+}
+
+func decode(t string) int {
+	var (
+		s, u = 64, 0
+	)
+
+	a := map[string]int{}
+	i := strings.Split("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_", "")
+	for ; u < s; u++ {
+		a[i[u]] = u
+	}
+
+	var e = 0
+	for u = 0; u < len(t); u++ {
+		e = e*s + a[string(t[u])]
+	}
+
+	return e
 }

@@ -2,7 +2,6 @@ package api
 
 import (
 	"testing"
-	"sync"
 	"time"
 )
 
@@ -11,31 +10,79 @@ func TestUploadFlow(t *testing.T) {
 	t.Log("err", err)
 }
 
-func TestSocket(t *testing.T) {
-	s := Socket{sid: "XtRcAa1_UKMr4579BJIi"}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+func TestPoll(t *testing.T) {
+	s := Socket{}
+
+	err := s.polling()
+	if err != nil {
+		t.Fatalf("polling1: %v", err)
+	}
+
+	for {
 		err := s.polling1()
 		if err != nil {
-			t.Fatalf("polling1: %v", err)
+			t.Logf("polling1: %v", err)
+			break
 		}
-	}()
 
-	go func() {
-		time.Sleep(10000*time.Microsecond)
-		defer wg.Done()
+		err = s.polling()
+		if err != nil {
+			t.Logf("polling: %v", err)
+			break
+		}
+	}
+
+}
+
+func TestPolling(t *testing.T) {
+	s := Socket{}
+
+	err := s.polling()
+	if err != nil {
+		t.Fatalf("polling1: %v", err)
+	}
+
+	var i = 0
+
+	for {
+		i++
 		err := s.polling2()
 		if err != nil {
-			t.Fatalf("polling2: %v", err)
+			t.Logf("polling2: %v", err)
+			break
 		}
-	}()
 
-	wg.Wait()
-
-	err := s.socket()
-	if err != nil {
-		t.Fatalf("socket: %v", err)
+		i++
+		err = s.polling1()
+		if err != nil {
+			t.Logf("polling1: %v", err)
+			break
+		}
 	}
+
+	t.Logf("total: %v", i)
+}
+
+func TestSocket(t *testing.T) {
+	s := Socket{}
+
+	err := s.polling()
+	if err != nil {
+		t.Logf("polling1: %v", err)
+		return
+	}
+
+	err = s.socket()
+	if err != nil {
+		t.Logf("socket: %v", err)
+		return
+	}
+}
+
+func TestUnix(t *testing.T) {
+	t.Logf("Now: %v", time.Now().UnixNano()/1e6)
+	s := encode()
+	t.Logf("Unix: %v", s)
+	ts := decode("NB5mBqc")
+	t.Logf("Timestamp: %v", ts)
 }
