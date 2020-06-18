@@ -14,12 +14,13 @@ import (
 	"mime/multipart"
 	"io/ioutil"
 	"encoding/json"
-	mrand "math/rand"
 	"regexp"
-	"github.com/gorilla/websocket"
 	"sync"
 	"sync/atomic"
 	"errors"
+	mrand "math/rand"
+
+	"github.com/gorilla/websocket"
 )
 
 //https://s113.123apps.com/aconv/upload/flow/?uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
@@ -88,7 +89,7 @@ type audio struct {
 	} `json:"disposition"`
 }
 
-func UploadFlow(filename string) error {
+func UploadFlow(filename string) (tmpfile string, err error) {
 	fd, _ := os.Open(filename)
 	stat, _ := os.Stat(filename)
 	n := stat.Size() / flowChunkSize
@@ -124,23 +125,23 @@ func UploadFlow(filename string) error {
 		u := "https://s113.123apps.com/aconv/upload/flow/?" + values.Encode()
 		request, err := http.NewRequest("GET", u, nil)
 		if err != nil {
-			return err
+			return tmpfile, err
 		}
 
 		response, err := oclient.Do(request)
 		if err != nil {
-			return err
+			return tmpfile, err
 		}
 
 		log.Println("Status:", response.StatusCode)
 
-		Flow(values, data)
+		tmpfile, err = Flow(values, data)
 	}
 
-	return nil
+	return tmpfile, nil
 }
 
-func Flow(vals url.Values, data []byte) error {
+func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -150,7 +151,7 @@ func Flow(vals url.Values, data []byte) error {
 
 	fd, err := writer.CreateFormFile("file", vals.Get("flowFilename"))
 	if err != nil {
-		return err
+		return tmpfile, err
 	}
 	fd.Write(data)
 
@@ -163,13 +164,13 @@ func Flow(vals url.Values, data []byte) error {
 
 	response, err := oclient.Do(request)
 	if err != nil {
-		return err
+		return tmpfile, err
 	}
 	defer response.Body.Close()
 
 	bs, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return err
+		return tmpfile, err
 	}
 
 	log.Printf("%v", string(bs))
@@ -211,11 +212,48 @@ func Flow(vals url.Values, data []byte) error {
 	}
 	err = json.Unmarshal(bs, &result)
 	if err != nil {
-		return err
+		return tmpfile, err
 	}
 
 	log.Printf("result: %+v", result)
-	return nil
+	return result.TmpFilename, nil
+}
+
+func Zip(files []string) (uri string, err error) {
+	values := make(url.Values)
+	values.Set("files", strings.Join(files, ","))
+	values.Set("uid", uid)
+	u := "https://s112.123apps.com/aconv/zip/"
+	request, err := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
+	request.Header.Set("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+	response, err := oclient.Do(request)
+	if err != nil {
+		return uri, err
+	}
+	defer response.Body.Close()
+
+	bs, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return uri, err
+	}
+
+	log.Println("zip:", string(bs))
+
+	var result struct {
+		Error           int    `json:"error"`
+		BrowserFilename string `json:"browser_filename"`
+		PublicFilename  string `json:"public_filename"`
+		DownloadUrl     string `json:"download_url"`
+		FileSize        int    `json:"filesize"`
+		Zipped          int    `json:"zipped"`
+	}
+
+	err = json.Unmarshal(bs, &result)
+	if err != nil {
+		return uri, err
+	}
+
+	return result.DownloadUrl, nil
 }
 
 const (
@@ -225,13 +263,78 @@ const (
 	start_req  = "5"
 	heart_req  = "2"
 	heart_resp = "3"
+
+	cmd_prefix = "42"
 )
+
+type param struct {
+	BitrateType     string
+	ConstantBitrate string
+	VariableBitrate string
+	SampleRate      string
+	Channels        int
+	Fadein          bool
+	Fadeout         bool
+	Reverse         bool
+}
+
+var config = map[string]param{
+	"mp3": {
+		BitrateType:     "constant",
+		ConstantBitrate: "128",
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"wav": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",      //
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"m4r": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"m4a": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"flac": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",      //
+		SampleRate:      "48000",
+		Channels:        2,
+	},
+	"ogg": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"mp2": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "160",
+		SampleRate:      "44100",
+		Channels:        2,
+	},
+	"amr": {
+		BitrateType:     "constant", //
+		ConstantBitrate: "12.20",
+		SampleRate:      "8000", //
+		Channels:        1,      //
+	},
+}
 
 type Socket struct {
 	*websocket.Conn
 	sync.Mutex
-	sid  string
-	done chan struct{}
+	sid    string
+	closed bool
+	done   chan struct{}
 
 	heart struct {
 		ticker  *time.Ticker
@@ -240,6 +343,12 @@ type Socket struct {
 }
 
 func (s *Socket) Close() {
+	if s.closed {
+		return
+	}
+
+	s.closed = true
+
 	if s.done != nil {
 		close(s.done)
 	}
@@ -250,7 +359,7 @@ func (s *Socket) Close() {
 }
 
 func (s *Socket) polling() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", encode())
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", tencode())
 	request, _ := http.NewRequest("GET", u, nil)
 	resonse, err := oclient.Do(request)
 	if err != nil {
@@ -288,7 +397,7 @@ func (s *Socket) polling() error {
 }
 
 func (s *Socket) polling1() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", encode(), s.sid)
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("GET", u, nil)
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
@@ -313,7 +422,7 @@ func (s *Socket) polling1() error {
 }
 
 func (s *Socket) polling2() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", encode(), s.sid)
+	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString("1:2"))
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
@@ -372,7 +481,7 @@ func (s *Socket) socket() error {
 			atomic.AddInt64(&s.heart.counter, -1)
 			log.Printf("receive heart: %v", atomic.LoadInt64(&s.heart.counter))
 		default:
-			log.Println("data", string(data))
+			cmdResponse(data)
 		}
 	}
 
@@ -380,7 +489,25 @@ close:
 	return errors.New("exception cloded")
 }
 
+func (s *Socket) socketJob(src, format string) (error) {
+	tempfile, err := UploadFlow(src)
+	if err != nil {
+		return err
+	}
+	operationid := fmt.Sprintf("%v_%v",
+		time.Now().UnixNano()/1e6, random(10))
+
+	data := cmdRequest(tempfile, operationid, format)
+	s.WriteMessage(data)
+
+	return nil
+}
+
 func (s *Socket) ReadMessage() (data string, isclose bool) {
+	if s.closed {
+		return data, s.closed
+	}
+
 	_, message, err := s.Conn.ReadMessage()
 	if s.socketError(err) {
 		return data, true
@@ -390,6 +517,10 @@ func (s *Socket) ReadMessage() (data string, isclose bool) {
 }
 
 func (s *Socket) WriteMessage(data string) (isclose bool) {
+	if s.closed {
+		return s.closed
+	}
+
 	s.Lock()
 	defer s.Unlock()
 	err := s.Conn.WriteMessage(websocket.TextMessage, []byte(data))
@@ -431,18 +562,7 @@ func (s *Socket) heartbeat() {
 	}
 }
 
-// 随机字符串
-func randomStr(length int) string {
-	bs := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
-	result := make([]byte, 0)
-	r := mrand.New(mrand.NewSource(time.Now().UnixNano())) // 产生随机数实例
-	for i := 0; i < length; i++ {
-		result = append(result, bs[r.Intn(len(bs))]) // 获取随机
-	}
-	return string(result)
-}
-
-func encode() string {
+func tencode() string {
 	var (
 		s, u = 64, 0
 	)
@@ -467,7 +587,7 @@ func encode() string {
 	return n(int(time.Now().UnixNano() / 1e6))
 }
 
-func decode(t string) int {
+func tdecode(t string) int {
 	var (
 		s, u = 64, 0
 	)
@@ -484,4 +604,138 @@ func decode(t string) int {
 	}
 
 	return e
+}
+
+func random(length int) string {
+	bs := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
+	result := make([]byte, 0, length)
+	r := mrand.New(mrand.NewSource(time.Now().UnixNano())) // 产生随机数实例
+	for i := 0; i < length; i++ {
+		result = append(result, bs[r.Intn(len(bs))]) // 获取随机
+	}
+	return string(result)
+}
+
+func cmdRequest(tmpfilename, operationid, format string) string {
+	var common = map[string]interface{}{
+		"site_id":            "aconv",
+		"uid":                uid,
+		"user_id":            nil,
+		"enable_user_system": false,
+		"trackinfo": map[string]interface{}{
+			"set_tag":           false,
+			"track_tag_title":   "",
+			"track_tag_artist":  "",
+			"track_tag_album":   "",
+			"track_tag_year":    "",
+			"track_tag_genre":   "",
+			"track_tag_comment": "",
+		},
+		"lang_id":  "cn",
+		"host":     "online-audio-converter.com",
+		"protocol": "https:",
+	}
+
+	common["tmp_filename"] = tmpfilename
+	common["operation_id"] = operationid
+	common["format"] = format // 目标格式, mp3,wav,m4a,flac,ogg,mp2,amr,m4r
+	common["duration_in_seconds"] = 3
+	common["preset"] = 2
+	common["action_type"] = "encode"
+	common["format_type"] = "audio"
+
+	param := config[format]
+	common["bitrate_type"] = param.BitrateType         // 比特率, constant, variable
+	common["constant_bitrate"] = param.ConstantBitrate // 固定码率 32,40,48,56,64,80,96,112,128,160,192,224,256,320 kbps
+	common["variable_bitrate"] = param.VariableBitrate // 可变码率 0,1,2,3,4,5,6,7,8,9
+	common["sample_rate"] = param.SampleRate           // 采样率
+	common["channels"] = param.Channels                // 通道 1,2
+	common["fadein"] = param.Fadein                    // 淡入
+	common["fadeout"] = param.Fadeout                  // 淡出
+	common["reverse"] = param.Reverse                  // 倒放
+	common["fastmode"] = false
+	common["remove_voice"] = false
+	common["preset_priority"] = false
+
+	/*
+	[
+    "encode",
+    {
+        "site_id":"aconv",
+        "uid":"WzOJjPokRKpPPgnJ9P85eeb1b4d3c035",
+        "user_id":null,
+        "operation_id":"1592467396827_fsanxfdbcp",
+        "action_type":"encode",
+        "enable_user_system":false,
+        "format":"ogg",
+        "preset":2,
+        "format_type":"audio",
+        "trackinfo":{
+            "set_tag":false,
+            "track_tag_title":"",
+            "track_tag_artist":"",
+            "track_tag_album":"",
+            "track_tag_year":"",
+            "track_tag_genre":"",
+            "track_tag_comment":""
+        },
+        "bitrate_type":"constant",
+        "constant_bitrate":"160",
+        "variable_bitrate":"5",
+        "sample_rate":"8000",
+        "channels":"2",
+        "fastmode":false,
+        "fadein":true,
+        "fadeout":true,
+        "remove_voice":false,
+        "reverse":true,
+        "preset_priority":false,
+        "tmp_filename":"s111RuUGertW.amr",
+        "duration_in_seconds":3,
+        "lang_id":"cn",
+        "host":"online-audio-converter.com",
+        "protocol":"https:"
+    }
+]*/
+
+	data, _ := json.Marshal(common)
+
+	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))
+
+	return cmd
+}
+
+const (
+	step_handshake    = "handshake"
+	step_progress     = "progress"
+	step_final_result = "final_result"
+)
+
+func cmdResponse(data string) error {
+	data = strings.TrimPrefix(data, cmd_prefix)
+	var cmd [2]interface{}
+	err := json.Unmarshal([]byte(data), &cmd)
+	if err != nil {
+		return err
+	}
+
+	realstu, ok := cmd[1].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid data")
+	}
+
+	switch realstu["message_type"] {
+	case step_handshake:
+		log.Printf("step:%v, pid:%v, operation_id:%v", step_handshake, realstu["pid"],
+			realstu["operation_id"])
+	case step_progress:
+		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,
+			realstu["progress_value"], realstu["operation_id"])
+	case step_final_result:
+		log.Printf("step:%v, success:%v, tmp_filename:%v, convertd:%v, download_url:%v, download_url:%v",
+			step_final_result, realstu["success"], realstu["tmp_filename"], realstu["convertd"],
+			realstu["download_url"], realstu["download_url"])
+	}
+
+	return nil
 }
