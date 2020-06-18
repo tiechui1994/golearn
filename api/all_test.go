@@ -13,64 +13,8 @@ func TestUploadFlow(t *testing.T) {
 func TestPoll(t *testing.T) {
 	s := Socket{}
 
-	err := s.polling()
-	if err != nil {
-		t.Fatalf("polling1: %v", err)
-	}
-
-	for {
-		err := s.polling1()
-		if err != nil {
-			t.Logf("polling1: %v", err)
-			break
-		}
-
-		err = s.polling()
-		if err != nil {
-			t.Logf("polling: %v", err)
-			break
-		}
-	}
-
-}
-
-func TestPolling(t *testing.T) {
-	s := Socket{}
-
-	err := s.polling()
-	if err != nil {
-		t.Fatalf("polling1: %v", err)
-	}
-
 	go func() {
-		for {
-			err := s.polling2()
-			if err != nil {
-				t.Logf("polling2: %v", err)
-				break
-			}
-
-			err = s.polling1()
-			if err != nil {
-				t.Logf("polling1: %v", err)
-				break
-			}
-		}
-	}()
-
-}
-
-func TestSocket(t *testing.T) {
-	s := Socket{}
-
-	err := s.polling()
-	if err != nil {
-		t.Logf("polling1: %v", err)
-		return
-	}
-
-	go func() {
-		err = s.socket()
+		err := s.Poll()
 		if err != nil {
 			t.Logf("socket: %v", err)
 		}
@@ -78,18 +22,24 @@ func TestSocket(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 
-	s.socketJob("/home/user/Downloads/china.mp3", "ogg")
-	select {
-
-	}
+	s.PollJob("/home/user/Downloads/china.mp3", "ogg")
+	select {}
 }
 
-func TestUnix(t *testing.T) {
-	t.Logf("Now: %v", time.Now().UnixNano()/1e6)
-	s := tencode()
-	t.Logf("Unix: %v", s)
-	ts := tdecode("NB5mBqc")
-	t.Logf("Timestamp: %v", ts)
+func TestSocket(t *testing.T) {
+	s := Socket{}
+
+	go func() {
+		err := s.Socket()
+		if err != nil {
+			t.Logf("socket: %v", err)
+		}
+	}()
+
+	time.Sleep(5 * time.Second)
+
+	s.SocketJob("/home/user/Downloads/china.mp3", "ogg")
+	select {}
 }
 
 func TestZip(t *testing.T) {

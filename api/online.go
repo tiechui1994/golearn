@@ -136,6 +136,11 @@ func UploadFlow(filename string) (tmpfile string, err error) {
 		log.Println("Status:", response.StatusCode)
 
 		tmpfile, err = Flow(values, data)
+		if err != nil {
+			return tmpfile, err
+		}
+
+		log.Println("tmpfile", tmpfile)
 	}
 
 	return tmpfile, nil
@@ -189,13 +194,13 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 			DurationInSeconds   int    `json:"duration_in_seconds"`
 		} `json:"id3"`
 		Ff struct {
-			FfprobeSuccess         bool `json:"ffprobe_success"`
-			DurationInSeconds      int  `json:"duration_in_seconds"`
-			DurationInMilliseconds int  `json:"duration_in_milliseconds"`
-			Bitrate                int  `json:"bitrate"`
-			HasAudioStreams        bool `json:"has_audio_streams"`
-			HasVedioStreams        bool `json:"has_vedio_streams"`
-			Filesize               int  `json:"filesize"`
+			FfprobeSuccess         bool   `json:"ffprobe_success"`
+			DurationInSeconds      int    `json:"duration_in_seconds"`
+			DurationInMilliseconds int    `json:"duration_in_milliseconds"`
+			Bitrate                int    `json:"bitrate"`
+			HasAudioStreams        bool   `json:"has_audio_streams"`
+			HasVedioStreams        bool   `json:"has_vedio_streams"`
+			Filesize               string `json:"filesize"`
 			Streams struct {
 				Audio []audio `json:"audio"`
 			} `json:"streams"`
@@ -212,6 +217,7 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	}
 	err = json.Unmarshal(bs, &result)
 	if err != nil {
+		log.Println("json", err)
 		return tmpfile, err
 	}
 
@@ -334,11 +340,16 @@ type Socket struct {
 	sync.Mutex
 	sid    string
 	closed bool
+	mode   string
 	done   chan struct{}
 
 	heart struct {
 		ticker  *time.Ticker
 		counter int64
+	}
+
+	poll struct {
+		job chan string
 	}
 }
 
@@ -396,34 +407,34 @@ func (s *Socket) polling() error {
 	return nil
 }
 
-func (s *Socket) polling1() error {
+func (s *Socket) polling1() (result string, err error) {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("GET", u, nil)
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
 	if err != nil {
 		log.Println("polling1 Do:", err)
-		return err
+		return result, err
 	}
 	defer resonse.Body.Close()
 	data, err := ioutil.ReadAll(resonse.Body)
 	if err != nil {
-		return err
+		return result, err
 	}
 
 	log.Printf("polling1: %v", string(data))
 
 	if resonse.StatusCode != http.StatusOK {
 		log.Println("polling1 Code:", resonse.StatusCode)
-		return fmt.Errorf("invalid status code: %v", resonse.StatusCode)
+		return result, fmt.Errorf("invalid status code: %v", resonse.StatusCode)
 	}
 
-	return nil
+	return result, nil
 }
 
-func (s *Socket) polling2() error {
+func (s *Socket) polling2(body string) error {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString("1:2"))
+	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
 	if err != nil {
@@ -447,7 +458,17 @@ func (s *Socket) polling2() error {
 	return nil
 }
 
-func (s *Socket) socket() error {
+func (s *Socket) Socket() error {
+	if s.mode != "" {
+		return fmt.Errorf("mode has set")
+	}
+
+	err := s.polling()
+	if err != nil {
+		return err
+	}
+
+	s.mode = "socket"
 	u := fmt.Sprintf("wss://s113.123apps.com/socket.io/?EIO=3&transport=websocket&sid=%v", s.sid)
 	dailer := websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
@@ -489,16 +510,66 @@ close:
 	return errors.New("exception cloded")
 }
 
-func (s *Socket) socketJob(src, format string) (error) {
+func (s *Socket) Poll() error {
+	if s.mode != "" {
+		return fmt.Errorf("mode has set")
+	}
+	err := s.polling()
+	if err != nil {
+		return err
+	}
+
+	s.mode = "poll"
+	s.done = make(chan struct{})
+	s.poll.job = make(chan string)
+	s.heart.ticker = time.NewTicker(25 * time.Second)
+	for {
+		select {
+		case <-s.heart.ticker.C:
+			s.polling2("1:2")
+		case job := <-s.poll.job:
+			s.polling2(job)
+		case <-s.done:
+			return nil
+		default:
+			result, err := s.polling1()
+			if err != nil {
+				log.Println(err)
+			}
+
+			if strings.HasPrefix(result, "1") {
+				log.Println("heart", result)
+			}
+
+			if strings.HasPrefix(result, cmd_prefix) {
+				cmdResponse(result)
+			}
+		}
+	}
+}
+
+func (s *Socket) SocketJob(src, format string) (error) {
 	tempfile, err := UploadFlow(src)
 	if err != nil {
 		return err
 	}
-	operationid := fmt.Sprintf("%v_%v",
-		time.Now().UnixNano()/1e6, random(10))
+	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
 	data := cmdRequest(tempfile, operationid, format)
 	s.WriteMessage(data)
+
+	return nil
+}
+
+func (s *Socket) PollJob(src, format string) (error) {
+	tempfile, err := UploadFlow(src)
+	if err != nil {
+		return err
+	}
+	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
+
+	data := cmdRequest(tempfile, operationid, format)
+	s.poll.job <- data
 
 	return nil
 }
@@ -617,6 +688,7 @@ func random(length int) string {
 }
 
 func cmdRequest(tmpfilename, operationid, format string) string {
+	log.Println("args", tmpfilename, operationid, format)
 	var common = map[string]interface{}{
 		"site_id":            "aconv",
 		"uid":                uid,
@@ -701,6 +773,7 @@ func cmdRequest(tmpfilename, operationid, format string) string {
 	data, _ := json.Marshal(common)
 
 	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))
+	log.Println("cmd", cmd)
 
 	return cmd
 }
@@ -732,9 +805,8 @@ func cmdResponse(data string) error {
 		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,
 			realstu["progress_value"], realstu["operation_id"])
 	case step_final_result:
-		log.Printf("step:%v, success:%v, tmp_filename:%v, convertd:%v, download_url:%v, download_url:%v",
-			step_final_result, realstu["success"], realstu["tmp_filename"], realstu["convertd"],
-			realstu["download_url"], realstu["download_url"])
+		log.Printf("step:%v, success:%v, tmp_filename:%v, download_url:%v",
+			step_final_result, realstu["success"], realstu["convertd"], realstu["download_url"])
 	}
 
 	return nil
