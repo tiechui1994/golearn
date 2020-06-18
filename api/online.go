@@ -21,6 +21,7 @@ import (
 	mrand "math/rand"
 
 	"github.com/gorilla/websocket"
+	"strconv"
 )
 
 //https://s113.123apps.com/aconv/upload/flow/?uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
@@ -425,8 +426,8 @@ func (s *Socket) polling1() (result string, err error) {
 	log.Printf("polling1: %v", string(data))
 
 	if resonse.StatusCode != http.StatusOK {
-		log.Println("polling1 Code:", resonse.StatusCode)
-		return result, fmt.Errorf("invalid status code: %v", resonse.StatusCode)
+		s.polling()
+		return
 	}
 
 	return result, nil
@@ -523,27 +524,46 @@ func (s *Socket) Poll() error {
 	s.done = make(chan struct{})
 	s.poll.job = make(chan string)
 	s.heart.ticker = time.NewTicker(25 * time.Second)
+
 	for {
+		var result string
 		select {
 		case <-s.heart.ticker.C:
 			s.polling2("1:2")
+			result, err = s.polling1()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			goto cmd
+
 		case job := <-s.poll.job:
+			log.Println("job", job)
 			s.polling2(job)
 		case <-s.done:
 			return nil
 		default:
-			result, err := s.polling1()
+			result, err = s.polling1()
 			if err != nil {
 				log.Println(err)
+				continue
 			}
 
-			if strings.HasPrefix(result, "1") {
-				log.Println("heart", result)
-			}
+			goto cmd
+		}
 
-			if strings.HasPrefix(result, cmd_prefix) {
-				cmdResponse(result)
-			}
+	cmd:
+		if strings.HasPrefix(result, "1") {
+			log.Println("heart", result)
+			continue
+		}
+
+		for len(result) > 3 {
+			i := strings.Index(result, ":")
+			length, _ := strconv.ParseInt(result[:i], 10, 64)
+			data := result[i+1:i+1+int(length)]
+			cmdResponse(data)
+			result = result[i+1+int(length):]
 		}
 	}
 }
@@ -555,8 +575,8 @@ func (s *Socket) SocketJob(src, format string) (error) {
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
-	data := cmdRequest(tempfile, operationid, format)
-	s.WriteMessage(data)
+	cmd := cmdRequest(tempfile, operationid, format)
+	s.WriteMessage(cmd)
 
 	return nil
 }
@@ -568,8 +588,8 @@ func (s *Socket) PollJob(src, format string) (error) {
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
-	data := cmdRequest(tempfile, operationid, format)
-	s.poll.job <- data
+	cmd := cmdRequest(tempfile, operationid, format)
+	s.poll.job <- fmt.Sprintf("%v:%v", len(cmd), cmd)
 
 	return nil
 }
