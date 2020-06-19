@@ -40,7 +40,7 @@ var oclient = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
 		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Second*10)
+			return net.DialTimeout(network, addr, time.Second*30)
 		},
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
@@ -49,7 +49,7 @@ var oclient = &http.Client{
 }
 
 const (
-	uid           = "2VlBGJGDkxWMXGYGHs65e5cba075f488"
+	uid           = "MzjycdJYT3eFIabPmFK5eeb1ee17ad8e"
 	flowChunkSize = 52428800
 )
 
@@ -222,7 +222,6 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 		return tmpfile, err
 	}
 
-	log.Printf("result: %+v", result)
 	return result.TmpFilename, nil
 }
 
@@ -411,7 +410,7 @@ func (s *Socket) polling() error {
 func (s *Socket) polling1() (result string, err error) {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("cookie", "io="+s.sid)
+	request.Header.Set("cookie", fmt.Sprintf("uid=%v; io=%v", uid, s.sid))
 	resonse, err := oclient.Do(request)
 	if err != nil {
 		log.Println("polling1 Do:", err)
@@ -426,11 +425,14 @@ func (s *Socket) polling1() (result string, err error) {
 	log.Printf("polling1: %v", string(data))
 
 	if resonse.StatusCode != http.StatusOK {
-		s.polling()
+		log.Printf("polling1 StatusCode: %v", resonse.StatusCode)
+		if resonse.StatusCode == http.StatusBadRequest {
+			s.polling()
+		}
 		return
 	}
 
-	return result, nil
+	return string(data), nil
 }
 
 func (s *Socket) polling2(body string) error {
@@ -511,63 +513,6 @@ close:
 	return errors.New("exception cloded")
 }
 
-func (s *Socket) Poll() error {
-	if s.mode != "" {
-		return fmt.Errorf("mode has set")
-	}
-	err := s.polling()
-	if err != nil {
-		return err
-	}
-
-	s.mode = "poll"
-	s.done = make(chan struct{})
-	s.poll.job = make(chan string)
-	s.heart.ticker = time.NewTicker(25 * time.Second)
-
-	for {
-		var result string
-		select {
-		case <-s.heart.ticker.C:
-			s.polling2("1:2")
-			result, err = s.polling1()
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			goto cmd
-
-		case job := <-s.poll.job:
-			log.Println("job", job)
-			s.polling2(job)
-		case <-s.done:
-			return nil
-		default:
-			result, err = s.polling1()
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-
-			goto cmd
-		}
-
-	cmd:
-		if strings.HasPrefix(result, "1") {
-			log.Println("heart", result)
-			continue
-		}
-
-		for len(result) > 3 {
-			i := strings.Index(result, ":")
-			length, _ := strconv.ParseInt(result[:i], 10, 64)
-			data := result[i+1:i+1+int(length)]
-			cmdResponse(data)
-			result = result[i+1+int(length):]
-		}
-	}
-}
-
 func (s *Socket) SocketJob(src, format string) (error) {
 	tempfile, err := UploadFlow(src)
 	if err != nil {
@@ -581,15 +526,67 @@ func (s *Socket) SocketJob(src, format string) (error) {
 	return nil
 }
 
+func (s *Socket) Poll() error {
+	err := s.polling()
+	if err != nil {
+		return err
+	}
+	s.polling2("1:2")
+	s.polling1()
+
+	s.done = make(chan struct{})
+	s.poll.job = make(chan string)
+
+	for {
+		var job string
+		select {
+		case <-s.done:
+			return nil
+		case val := <-s.poll.job:
+			job = val
+			log.Println("job is comming....")
+		default:
+			job = "1:2"
+		}
+
+		s.polling2(job)
+
+		result, err := s.polling1()
+		if err != nil {
+			log.Println("err:", err)
+			continue
+		}
+
+		if !strings.Contains(result, "[") || !strings.Contains(result, "]") {
+			log.Println("heart", result)
+			continue
+		}
+
+		if strings.HasPrefix(result, "1:") {
+			result = result[2:]
+		}
+
+		for len(result) > 3 {
+			i := strings.Index(result, ":")
+			length, _ := strconv.ParseInt(result[:i], 10, 64)
+			data := result[i+1:i+1+int(length)]
+			cmdResponse(data)
+			result = result[i+1+int(length):]
+		}
+	}
+
+}
+
 func (s *Socket) PollJob(src, format string) (error) {
 	tempfile, err := UploadFlow(src)
 	if err != nil {
 		return err
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
-
 	cmd := cmdRequest(tempfile, operationid, format)
-	s.poll.job <- fmt.Sprintf("%v:%v", len(cmd), cmd)
+	job := fmt.Sprintf("%v:%v", len(cmd), cmd)
+	log.Println("job", job)
+	s.poll.job <- job
 
 	return nil
 }
@@ -793,7 +790,6 @@ func cmdRequest(tmpfilename, operationid, format string) string {
 	data, _ := json.Marshal(common)
 
 	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))
-	log.Println("cmd", cmd)
 
 	return cmd
 }
@@ -819,7 +815,7 @@ func cmdResponse(data string) error {
 
 	switch realstu["message_type"] {
 	case step_handshake:
-		log.Printf("step:%v, pid:%v, operation_id:%v", step_handshake, realstu["pid"],
+		log.Printf("step:%v, pid:%d, operation_id:%v", step_handshake, realstu["pid"],
 			realstu["operation_id"])
 	case step_progress:
 		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,

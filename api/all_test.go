@@ -3,6 +3,8 @@ package api
 import (
 	"testing"
 	"time"
+	"log"
+	"math/rand"
 )
 
 func TestUploadFlow(t *testing.T) {
@@ -10,20 +12,37 @@ func TestUploadFlow(t *testing.T) {
 	t.Log("err", err, tmpfile)
 }
 
+func TestPolling(t *testing.T) {
+	s := Socket{}
+	s.polling()
+	s.polling2("1:2") // 请求 2
+	s.polling1()      // 响应 3(使用polling)  1(未知) 6 (切换到websocket)
+}
+
 func TestPoll(t *testing.T) {
 	s := Socket{}
+	go func() {
+		s.Poll()
+	}()
+
+	done := make(chan struct{})
 
 	go func() {
-		err := s.Poll()
-		if err != nil {
-			t.Logf("socket: %v", err)
+		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
+		for {
+			select {
+			case <-timer.C:
+				s.PollJob("/home/user/Downloads/china.mp3", "amr")
+				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
+			case <-done:
+				return
+			}
 		}
 	}()
 
-	time.Sleep(5 * time.Second)
-
-	s.PollJob("/home/user/Downloads/china.mp3", "ogg")
-	select {}
+	time.Sleep(10 * time.Minute)
+	close(done)
 }
 
 func TestSocket(t *testing.T) {
