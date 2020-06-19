@@ -815,7 +815,7 @@ func cmdResponse(data string) error {
 
 	switch realstu["message_type"] {
 	case step_handshake:
-		log.Printf("step:%v, pid:%d, operation_id:%v", step_handshake, realstu["pid"],
+		log.Printf("step:%v, pid:%d, operation_id:%v", step_handshake, int64(realstu["pid"].(float64)),
 			realstu["operation_id"])
 	case step_progress:
 		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,
