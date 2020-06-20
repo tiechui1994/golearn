@@ -19,9 +19,9 @@ import (
 	"sync/atomic"
 	"errors"
 	mrand "math/rand"
+	"strconv"
 
 	"github.com/gorilla/websocket"
-	"strconv"
 )
 
 //https://s113.123apps.com/aconv/upload/flow/?uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
@@ -91,8 +91,16 @@ type audio struct {
 }
 
 func UploadFlow(filename string) (tmpfile string, err error) {
-	fd, _ := os.Open(filename)
-	stat, _ := os.Stat(filename)
+	fd, err := os.Open(filename)
+	if err != nil {
+		return tmpfile, err
+	}
+
+	stat, err := os.Stat(filename)
+	if err != nil {
+		return tmpfile, err
+	}
+
 	n := stat.Size() / flowChunkSize
 	if stat.Size()%flowChunkSize != 0 {
 		n += 1
@@ -487,12 +495,12 @@ func (s *Socket) Socket() error {
 	s.Conn = conn
 	s.done = make(chan struct{})
 
-	if s.WriteMessage(probe_req) {
+	if s.write(probe_req) {
 		goto close
 	}
 
 	for {
-		data, ok := s.ReadMessage()
+		data, ok := s.read()
 		if ok {
 			goto close
 		}
@@ -521,7 +529,7 @@ func (s *Socket) SocketJob(src, format string) (error) {
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
 	cmd := cmdRequest(tempfile, operationid, format)
-	s.WriteMessage(cmd)
+	s.write(cmd)
 
 	return nil
 }
@@ -591,7 +599,7 @@ func (s *Socket) PollJob(src, format string) (error) {
 	return nil
 }
 
-func (s *Socket) ReadMessage() (data string, isclose bool) {
+func (s *Socket) read() (data string, isclose bool) {
 	if s.closed {
 		return data, s.closed
 	}
@@ -604,7 +612,7 @@ func (s *Socket) ReadMessage() (data string, isclose bool) {
 	return string(message), false
 }
 
-func (s *Socket) WriteMessage(data string) (isclose bool) {
+func (s *Socket) write(data string) (isclose bool) {
 	if s.closed {
 		return s.closed
 	}
@@ -632,8 +640,8 @@ func (s *Socket) socketError(err error) (isclose bool) {
 
 func (s *Socket) heartbeat() {
 	log.Println("start heart beat")
-	s.WriteMessage(start_req)
-	s.WriteMessage(heart_req)
+	s.write(start_req)
+	s.write(heart_req)
 	atomic.AddInt64(&s.heart.counter, 1)
 	log.Printf("heartbeat send: %v", atomic.LoadInt64(&s.heart.counter))
 	s.heart.ticker = time.NewTicker(25 * time.Second)
@@ -642,7 +650,7 @@ func (s *Socket) heartbeat() {
 		case <-s.heart.ticker.C:
 			atomic.AddInt64(&s.heart.counter, 1)
 			log.Printf("heartbeat send: %v", atomic.LoadInt64(&s.heart.counter))
-			s.WriteMessage(heart_req)
+			s.write(heart_req)
 
 		case <-s.done:
 			return

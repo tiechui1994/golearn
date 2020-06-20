@@ -64,7 +64,7 @@ func TestSocket(t *testing.T) {
 		for {
 			select {
 			case <-timer.C:
-				s.SocketJob("/home/user/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
+				s.SocketJob("/home/quinn/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
 				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 			case <-done:
 				return
