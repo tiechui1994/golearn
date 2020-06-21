@@ -91,3 +91,13 @@ func TestZip(t *testing.T) {
 	uri, err := Zip(files)
 	t.Log(uri, err)
 }
+
+func TestConfig(t *testing.T) {
+	config := New(
+		"ya29.a0AfH6SMCz2ifEl8c5eTE7zgJr_jT8cJ0Udf4BLuwGNls8lbu0uRt4orhtlVH3Dwu1Z4WXrcoXHIoJ5w8y0XZb-5QWbfMdc7Kl_UXZ8aoba12qYFTwmzstkTjmqYZf0Yv93ZJs-d6N6AgtMFDU3e6VL2deZpgRGkPRoVY",
+		"1//04yyh3J4Xm7AuCgYIARAAGAQSNwF-L9IrQbs2CS9iDooSSkeO_b7IBHoRyDoWFb0u1fudz_6jEWydFSqFJXMfHdr00OCN5vTRNpM",
+	)
+
+	err := config.refreshToken()
+	t.Log("err", err)
+}
