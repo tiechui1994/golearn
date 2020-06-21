@@ -24,18 +24,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-//https://s113.123apps.com/aconv/upload/flow/?uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
-// id3=true&
-// ff=true&
-// flowChunkNumber=1&
-// flowChunkSize=52428800&
-// flowCurrentChunkSize=6182&
-// flowTotalSize=6182&
-// flowIdentifier=6182-Light_Google_002_set50_enamr&
-// flowFilename=Light_Google_002_set50_en.amr&
-// flowRelativePath=Light_Google_002_set50_en.amr&
-// flowTotalChunks=1
-
 var oclient = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
@@ -53,7 +41,7 @@ const (
 	flowChunkSize = 52428800
 )
 
-type audio struct {
+type Audio struct {
 	Index          int    `json:"index"`
 	CodecName      string `json:"codec_name"`
 	CodecLongName  string `json:"codec_long_name"`
@@ -90,7 +78,19 @@ type audio struct {
 	} `json:"disposition"`
 }
 
-func UploadFlow(filename string) (tmpfile string, err error) {
+// https://s113.123apps.com/aconv/upload/flow/?
+// uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
+// id3=true&
+// ff=true&
+// flowChunkNumber=1&
+// flowChunkSize=52428800&
+// flowCurrentChunkSize=6182&
+// flowTotalSize=6182&
+// flowIdentifier=6182-Light_Google_002_set50_enamr&
+// flowFilename=Light_Google_002_set50_en.amr&
+// flowRelativePath=Light_Google_002_set50_en.amr&
+// flowTotalChunks=1
+func Flow(filename string) (tmpfile string, err error) {
 	fd, err := os.Open(filename)
 	if err != nil {
 		return tmpfile, err
@@ -132,11 +132,7 @@ func UploadFlow(filename string) (tmpfile string, err error) {
 		total += flowChunkSize
 
 		u := "https://s113.123apps.com/aconv/upload/flow/?" + values.Encode()
-		request, err := http.NewRequest("GET", u, nil)
-		if err != nil {
-			return tmpfile, err
-		}
-
+		request, _ := http.NewRequest("GET", u, nil)
 		response, err := oclient.Do(request)
 		if err != nil {
 			return tmpfile, err
@@ -144,7 +140,7 @@ func UploadFlow(filename string) (tmpfile string, err error) {
 
 		log.Println("Status:", response.StatusCode)
 
-		tmpfile, err = Flow(values, data)
+		tmpfile, err = flow(values, data)
 		if err != nil {
 			return tmpfile, err
 		}
@@ -155,7 +151,7 @@ func UploadFlow(filename string) (tmpfile string, err error) {
 	return tmpfile, nil
 }
 
-func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
+func flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -173,7 +169,7 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	writer.Close()
 
 	u := "https://s113.123apps.com/aconv/upload/flow/"
-	request, err := http.NewRequest("POST", u, &body)
+	request, _ := http.NewRequest("POST", u, &body)
 	request.Header.Set("Content-Type", contentType)
 
 	response, err := oclient.Do(request)
@@ -211,7 +207,7 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 			HasVedioStreams        bool   `json:"has_vedio_streams"`
 			Filesize               string `json:"filesize"`
 			Streams struct {
-				Audio []audio `json:"audio"`
+				Audio []Audio `json:"audio"`
 			} `json:"streams"`
 			Format struct {
 				NbStreams      int    `json:"nb_streams"`
@@ -235,10 +231,10 @@ func Flow(vals url.Values, data []byte) (tmpfile string, err error) {
 
 func Zip(files []string) (uri string, err error) {
 	values := make(url.Values)
-	values.Set("files", strings.Join(files, ","))
 	values.Set("uid", uid)
+	values.Set("files", strings.Join(files, ","))
 	u := "https://s112.123apps.com/aconv/zip/"
-	request, err := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
+	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
 	request.Header.Set("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
 	response, err := oclient.Do(request)
 	if err != nil {
@@ -281,7 +277,7 @@ const (
 	cmd_prefix = "42"
 )
 
-type param struct {
+type audio struct {
 	BitrateType     string
 	ConstantBitrate string
 	VariableBitrate string
@@ -292,7 +288,7 @@ type param struct {
 	Reverse         bool
 }
 
-var config = map[string]param{
+var config = map[string]audio{
 	"mp3": {
 		BitrateType:     "constant",
 		ConstantBitrate: "128",
@@ -377,6 +373,10 @@ func (s *Socket) Close() {
 	}
 }
 
+// https://s113.123apps.com/socket.io/?
+// EIO=3&
+// transport=polling&
+// t=Nlbxcde
 func (s *Socket) polling() error {
 	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", tencode())
 	request, _ := http.NewRequest("GET", u, nil)
@@ -513,7 +513,7 @@ func (s *Socket) Socket() error {
 			atomic.AddInt64(&s.heart.counter, -1)
 			log.Printf("receive heart: %v", atomic.LoadInt64(&s.heart.counter))
 		default:
-			cmdResponse(data)
+			s.cmdDecode(data)
 		}
 	}
 
@@ -522,13 +522,13 @@ close:
 }
 
 func (s *Socket) SocketJob(src, format string) (error) {
-	tempfile, err := UploadFlow(src)
+	tempfile, err := Flow(src)
 	if err != nil {
 		return err
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
-	cmd := cmdRequest(tempfile, operationid, format)
+	cmd := s.cmdEncode(tempfile, operationid, format)
 	s.write(cmd)
 
 	return nil
@@ -578,7 +578,7 @@ func (s *Socket) Poll() error {
 			i := strings.Index(result, ":")
 			length, _ := strconv.ParseInt(result[:i], 10, 64)
 			data := result[i+1:i+1+int(length)]
-			cmdResponse(data)
+			s.cmdDecode(data)
 			result = result[i+1+int(length):]
 		}
 	}
@@ -586,12 +586,12 @@ func (s *Socket) Poll() error {
 }
 
 func (s *Socket) PollJob(src, format string) (error) {
-	tempfile, err := UploadFlow(src)
+	tempfile, err := Flow(src)
 	if err != nil {
 		return err
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
-	cmd := cmdRequest(tempfile, operationid, format)
+	cmd := s.cmdEncode(tempfile, operationid, format)
 	job := fmt.Sprintf("%v:%v", len(cmd), cmd)
 	log.Println("job", job)
 	s.poll.job <- job
@@ -658,6 +658,130 @@ func (s *Socket) heartbeat() {
 	}
 }
 
+func (s *Socket) cmdEncode(tmpfilename, operationid, format string) string {
+	log.Println("args", tmpfilename, operationid, format)
+	var common = map[string]interface{}{
+		"site_id":            "aconv",
+		"uid":                uid,
+		"user_id":            nil,
+		"enable_user_system": false,
+		"trackinfo": map[string]interface{}{
+			"set_tag":           false,
+			"track_tag_title":   "",
+			"track_tag_artist":  "",
+			"track_tag_album":   "",
+			"track_tag_year":    "",
+			"track_tag_genre":   "",
+			"track_tag_comment": "",
+		},
+		"lang_id":  "cn",
+		"host":     "online-audio-converter.com",
+		"protocol": "https:",
+	}
+
+	common["tmp_filename"] = tmpfilename
+	common["operation_id"] = operationid
+	common["format"] = format // 目标格式, mp3,wav,m4a,flac,ogg,mp2,amr,m4r
+	common["duration_in_seconds"] = 3
+	common["preset"] = 2
+	common["action_type"] = "encode"
+	common["format_type"] = "audio"
+
+	param := config[format]
+	common["bitrate_type"] = param.BitrateType         // 比特率, constant, variable
+	common["constant_bitrate"] = param.ConstantBitrate // 固定码率 32,40,48,56,64,80,96,112,128,160,192,224,256,320 kbps
+	common["variable_bitrate"] = param.VariableBitrate // 可变码率 0,1,2,3,4,5,6,7,8,9
+	common["sample_rate"] = param.SampleRate           // 采样率
+	common["channels"] = param.Channels                // 通道 1,2
+	common["fadein"] = param.Fadein                    // 淡入
+	common["fadeout"] = param.Fadeout                  // 淡出
+	common["reverse"] = param.Reverse                  // 倒放
+	common["fastmode"] = false
+	common["remove_voice"] = false
+	common["preset_priority"] = false
+
+	/*[
+    	"encode",
+		{
+			"site_id":"aconv",
+			"uid":"WzOJjPokRKpPPgnJ9P85eeb1b4d3c035",
+			"user_id":null,
+			"operation_id":"1592467396827_fsanxfdbcp",
+			"action_type":"encode",
+			"enable_user_system":false,
+			"format":"ogg",
+			"preset":2,
+			"format_type":"audio",
+			"trackinfo":{
+				"set_tag":false,
+				"track_tag_title":"",
+				"track_tag_artist":"",
+				"track_tag_album":"",
+				"track_tag_year":"",
+				"track_tag_genre":"",
+				"track_tag_comment":""
+			},
+			"bitrate_type":"constant",
+			"constant_bitrate":"160",
+			"variable_bitrate":"5",
+			"sample_rate":"8000",
+			"channels":"2",
+			"fastmode":false,
+			"fadein":true,
+			"fadeout":true,
+			"remove_voice":false,
+			"reverse":true,
+			"preset_priority":false,
+			"tmp_filename":"s111RuUGertW.amr",
+			"duration_in_seconds":3,
+			"lang_id":"cn",
+			"host":"online-audio-converter.com",
+			"protocol":"https:"
+		}
+	]*/
+
+	data, _ := json.Marshal(common)
+	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))
+
+	return cmd
+}
+
+const (
+	step_handshake    = "handshake"
+	step_progress     = "progress"
+	step_final_result = "final_result"
+)
+
+func (s *Socket) cmdDecode(data string) error {
+	data = strings.TrimPrefix(data, cmd_prefix)
+	var cmd [2]interface{}
+	err := json.Unmarshal([]byte(data), &cmd)
+	if err != nil {
+		return err
+	}
+
+	realstu, ok := cmd[1].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid data")
+	}
+
+	switch realstu["message_type"] {
+	case step_handshake:
+		log.Printf("step:%v, pid:%d, operation_id:%v", step_handshake, int64(realstu["pid"].(float64)),
+			realstu["operation_id"])
+	case step_progress:
+		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,
+			realstu["progress_value"], realstu["operation_id"])
+	case step_final_result:
+		log.Printf("step:%v, success:%v, tmp_filename:%v, download_url:%v",
+			step_final_result, realstu["success"], realstu["convertd"], realstu["download_url"])
+	}
+
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 func tencode() string {
 	var (
 		s, u = 64, 0
@@ -710,128 +834,4 @@ func random(length int) string {
 		result = append(result, bs[r.Intn(len(bs))]) // 获取随机
 	}
 	return string(result)
-}
-
-func cmdRequest(tmpfilename, operationid, format string) string {
-	log.Println("args", tmpfilename, operationid, format)
-	var common = map[string]interface{}{
-		"site_id":            "aconv",
-		"uid":                uid,
-		"user_id":            nil,
-		"enable_user_system": false,
-		"trackinfo": map[string]interface{}{
-			"set_tag":           false,
-			"track_tag_title":   "",
-			"track_tag_artist":  "",
-			"track_tag_album":   "",
-			"track_tag_year":    "",
-			"track_tag_genre":   "",
-			"track_tag_comment": "",
-		},
-		"lang_id":  "cn",
-		"host":     "online-audio-converter.com",
-		"protocol": "https:",
-	}
-
-	common["tmp_filename"] = tmpfilename
-	common["operation_id"] = operationid
-	common["format"] = format // 目标格式, mp3,wav,m4a,flac,ogg,mp2,amr,m4r
-	common["duration_in_seconds"] = 3
-	common["preset"] = 2
-	common["action_type"] = "encode"
-	common["format_type"] = "audio"
-
-	param := config[format]
-	common["bitrate_type"] = param.BitrateType         // 比特率, constant, variable
-	common["constant_bitrate"] = param.ConstantBitrate // 固定码率 32,40,48,56,64,80,96,112,128,160,192,224,256,320 kbps
-	common["variable_bitrate"] = param.VariableBitrate // 可变码率 0,1,2,3,4,5,6,7,8,9
-	common["sample_rate"] = param.SampleRate           // 采样率
-	common["channels"] = param.Channels                // 通道 1,2
-	common["fadein"] = param.Fadein                    // 淡入
-	common["fadeout"] = param.Fadeout                  // 淡出
-	common["reverse"] = param.Reverse                  // 倒放
-	common["fastmode"] = false
-	common["remove_voice"] = false
-	common["preset_priority"] = false
-
-	/*
-	[
-    "encode",
-    {
-        "site_id":"aconv",
-        "uid":"WzOJjPokRKpPPgnJ9P85eeb1b4d3c035",
-        "user_id":null,
-        "operation_id":"1592467396827_fsanxfdbcp",
-        "action_type":"encode",
-        "enable_user_system":false,
-        "format":"ogg",
-        "preset":2,
-        "format_type":"audio",
-        "trackinfo":{
-            "set_tag":false,
-            "track_tag_title":"",
-            "track_tag_artist":"",
-            "track_tag_album":"",
-            "track_tag_year":"",
-            "track_tag_genre":"",
-            "track_tag_comment":""
-        },
-        "bitrate_type":"constant",
-        "constant_bitrate":"160",
-        "variable_bitrate":"5",
-        "sample_rate":"8000",
-        "channels":"2",
-        "fastmode":false,
-        "fadein":true,
-        "fadeout":true,
-        "remove_voice":false,
-        "reverse":true,
-        "preset_priority":false,
-        "tmp_filename":"s111RuUGertW.amr",
-        "duration_in_seconds":3,
-        "lang_id":"cn",
-        "host":"online-audio-converter.com",
-        "protocol":"https:"
-    }
-]*/
-
-	data, _ := json.Marshal(common)
-
-	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))
-
-	return cmd
-}
-
-const (
-	step_handshake    = "handshake"
-	step_progress     = "progress"
-	step_final_result = "final_result"
-)
-
-func cmdResponse(data string) error {
-	data = strings.TrimPrefix(data, cmd_prefix)
-	var cmd [2]interface{}
-	err := json.Unmarshal([]byte(data), &cmd)
-	if err != nil {
-		return err
-	}
-
-	realstu, ok := cmd[1].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid data")
-	}
-
-	switch realstu["message_type"] {
-	case step_handshake:
-		log.Printf("step:%v, pid:%d, operation_id:%v", step_handshake, int64(realstu["pid"].(float64)),
-			realstu["operation_id"])
-	case step_progress:
-		log.Printf("step:%v, progress_value:%v, operation_id:%v", step_progress,
-			realstu["progress_value"], realstu["operation_id"])
-	case step_final_result:
-		log.Printf("step:%v, success:%v, tmp_filename:%v, download_url:%v",
-			step_final_result, realstu["success"], realstu["convertd"], realstu["download_url"])
-	}
-
-	return nil
 }

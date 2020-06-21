@@ -7,7 +7,7 @@ import (
 )
 
 func TestUploadFlow(t *testing.T) {
-	tmpfile, err := UploadFlow("/home/user/Downloads/china.mp3")
+	tmpfile, err := Flow("/home/user/Downloads/china.mp3")
 	t.Log("err", err, tmpfile)
 }
 
