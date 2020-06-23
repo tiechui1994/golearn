@@ -107,3 +107,11 @@ func TestConfig(t *testing.T) {
 		config.Task()
 	}
 }
+
+func TestSpeech(t *testing.T) {
+	speech := Speech{Region: us_west_2}
+	err := speech.Identity()
+	t.Log("err", err)
+	err = speech.Speech("/home/user/Videos/test.mp3")
+	t.Log("err", err)
+}

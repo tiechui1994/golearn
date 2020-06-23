@@ -1,0 +1,10 @@
+AWS4-HMAC-SHA256
+Credential=ASIA4A5ISZFMZNAF2VFU/20200623/us-west-2/polly/aws4_request,
+SignedHeaders=content-type;host;user-agent;x-amz-date;x-amz-security-token,
+Signature=c7db818aec9fb7ab738287d548927c42d65dcef367b3737997d6db58fe425e62
+
+
+AWS4-HMAC-SHA256
+Credential=ASIA4A5ISZFM4WHQGEN6/20200623/us-west-2/polly/aws4_request,
+SignedHeaders=content-type;host;user-agent;x-amz-date;x-amz-security-token,
+Signature=662a8c82bf22da905e2ee827d4a4f3b21d800cb4fee159ace54574331f0745e7
