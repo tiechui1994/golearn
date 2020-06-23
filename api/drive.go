@@ -76,6 +76,20 @@ func (c *Config) refreshToken() error {
 
 	log.Println("data:", string(data))
 
+	var result struct {
+		AccessToken  string `json:"access_token"`  //accesstoken
+		RefreshToken string `json:"refresh_token"` //refreshtoken
+		ExpiresIn    int64  `json:"expires_in"`    //accesstoken有效期
+	}
+
+	err = json.Unmarshal(data, &result)
+	if nil != err {
+		return err
+	}
+
+	c.AccessToken = result.AccessToken
+	c.Expired = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+
 	return nil
 }
 

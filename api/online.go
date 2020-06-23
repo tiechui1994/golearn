@@ -37,6 +37,7 @@ var oclient = &http.Client{
 }
 
 const (
+	host          = "s113.123apps.com"
 	uid           = "MzjycdJYT3eFIabPmFK5eeb1ee17ad8e"
 	flowChunkSize = 52428800
 )
@@ -131,7 +132,7 @@ func Flow(filename string) (tmpfile string, err error) {
 		data = data[:n]
 		total += flowChunkSize
 
-		u := "https://s113.123apps.com/aconv/upload/flow/?" + values.Encode()
+		u := "https://" + host + "/aconv/upload/flow/?" + values.Encode()
 		request, _ := http.NewRequest("GET", u, nil)
 		response, err := oclient.Do(request)
 		if err != nil {
@@ -168,7 +169,7 @@ func flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	contentType := writer.FormDataContentType()
 	writer.Close()
 
-	u := "https://s113.123apps.com/aconv/upload/flow/"
+	u := "https://" + host + "/aconv/upload/flow/"
 	request, _ := http.NewRequest("POST", u, &body)
 	request.Header.Set("Content-Type", contentType)
 
@@ -233,7 +234,7 @@ func Zip(files []string) (uri string, err error) {
 	values := make(url.Values)
 	values.Set("uid", uid)
 	values.Set("files", strings.Join(files, ","))
-	u := "https://s112.123apps.com/aconv/zip/"
+	u := "https://" + host + "/aconv/zip/"
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
 	request.Header.Set("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
 	response, err := oclient.Do(request)
@@ -267,14 +268,20 @@ func Zip(files []string) (uri string, err error) {
 }
 
 const (
-	probe_req  = "2probe"
+	probe_req  = "3probe"
 	probe_resp = "3probe"
 
 	start_req  = "5"
 	heart_req  = "2"
 	heart_resp = "3"
 
+	sid_prefix = "0"
 	cmd_prefix = "42"
+)
+
+const (
+	mode_polling = "polling"
+	mode_socket  = "socket"
 )
 
 type audio struct {
@@ -343,17 +350,20 @@ type Socket struct {
 	*websocket.Conn
 	sync.Mutex
 	sid    string
-	closed bool
-	mode   string
+	closed bool   // 是否已经关闭
+	mode   string // 模式
 	done   chan struct{}
+	task struct {
+		job chan string
+		result chan struct {
+			err error
+			url string
+		}
+	}
 
 	heart struct {
 		ticker  *time.Ticker
 		counter int64
-	}
-
-	poll struct {
-		job chan string
 	}
 }
 
@@ -378,7 +388,7 @@ func (s *Socket) Close() {
 // transport=polling&
 // t=Nlbxcde
 func (s *Socket) polling() error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v", tencode())
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v", tencode())
 	request, _ := http.NewRequest("GET", u, nil)
 	resonse, err := oclient.Do(request)
 	if err != nil {
@@ -416,9 +426,15 @@ func (s *Socket) polling() error {
 }
 
 func (s *Socket) polling1() (result string, err error) {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("cookie", fmt.Sprintf("uid=%v; io=%v", uid, s.sid))
+	request.Header.Set("cookie", fmt.Sprintf("io=%v", s.sid))
+	request.Header.Set("origin", "https://online-audio-converter.com")
+	request.Header.Set("pragma", "no-cache")
+	request.Header.Set("referer", "https://online-audio-converter.com/cn/")
+	request.Header.Set("sec-fetch-dest", "empty")
+	request.Header.Set("sec-fetch-mode", "cors")
+	request.Header.Set("sec-fetch-site", "cross-site")
 	resonse, err := oclient.Do(request)
 	if err != nil {
 		log.Println("polling1 Do:", err)
@@ -444,7 +460,7 @@ func (s *Socket) polling1() (result string, err error) {
 }
 
 func (s *Socket) polling2(body string) error {
-	u := fmt.Sprintf("https://s113.123apps.com/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
@@ -470,31 +486,50 @@ func (s *Socket) polling2(body string) error {
 }
 
 func (s *Socket) Socket() error {
-	if s.mode != "" {
-		return fmt.Errorf("mode has set")
+	if s.mode == "" {
+		s.mode = mode_socket
+	}
+	if s.mode != mode_socket {
+		return fmt.Errorf("invalid mode")
 	}
 
+	u := fmt.Sprintf("wss://"+host+"/socket.io/?EIO=3&transport=websocket&sid=%v", s.sid)
+	dailer := websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 45 * time.Second,
+	}
+
+	var retryTimeout = time.Second
+
+again:
 	err := s.polling()
 	if err != nil {
 		return err
 	}
 
-	s.mode = "socket"
-	u := fmt.Sprintf("wss://s113.123apps.com/socket.io/?EIO=3&transport=websocket&sid=%v", s.sid)
-	dailer := websocket.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
-		HandshakeTimeout: 45 * time.Second,
-	}
 	header := make(http.Header)
 	conn, _, err := dailer.Dial(u, header)
+	if err != nil && retryTimeout < 64*time.Second {
+		log.Println("dailer.Dial", err)
+		time.Sleep(retryTimeout)
+		retryTimeout *= 2
+		goto again
+	}
+
 	if err != nil {
-		log.Println(err)
+		log.Println("dailer.Dial", err)
 		return err
 	}
 
 	s.Conn = conn
 	s.done = make(chan struct{})
+	s.task.job = make(chan string)
+	s.task.result = make(chan struct {
+		err error
+		url string
+	})
 
+	// start cmd
 	if s.write(probe_req) {
 		goto close
 	}
@@ -507,13 +542,39 @@ func (s *Socket) Socket() error {
 
 		switch data {
 		case probe_resp:
-			go s.heartbeat()
+			go s.heartbeat() // heartbeat after probe
 			log.Println("probe success,", data)
 		case heart_resp:
 			atomic.AddInt64(&s.heart.counter, -1)
 			log.Printf("receive heart: %v", atomic.LoadInt64(&s.heart.counter))
 		default:
-			s.cmdDecode(data)
+			if strings.HasPrefix(data, sid_prefix) {
+				resolved := regexp.MustCompile(`{.*}`).FindString(data)
+				var result struct {
+					Sid          string   `json:"sid"`
+					Upgrades     []string `json:"upgrades"`
+					PingInterval int      `json:"pingInterval"`
+					PingTimeout  int      `json:"pingTimeout"`
+				}
+
+				err = json.Unmarshal([]byte(resolved), &result)
+				if err != nil {
+					log.Println("cmd unmarshal", err, string(data))
+					continue
+				}
+
+				s.sid = result.Sid
+
+				go s.heartbeat() // heartbeat after probe
+				continue
+			}
+
+			if strings.HasPrefix(data, cmd_prefix) {
+				s.cmdDecode(data)
+				continue
+			}
+
+			log.Println("origin data", data)
 		}
 	}
 
@@ -521,20 +582,32 @@ close:
 	return errors.New("exception cloded")
 }
 
-func (s *Socket) SocketJob(src, format string) (error) {
+func (s *Socket) SocketJob(src, format string) (url string, err error) {
+	if s.mode != mode_socket {
+		return url, fmt.Errorf("invalid job")
+	}
+
 	tempfile, err := Flow(src)
 	if err != nil {
-		return err
+		return url, err
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 
 	cmd := s.cmdEncode(tempfile, operationid, format)
 	s.write(cmd)
+	val := <-s.task.result
 
-	return nil
+	return val.url, val.err
 }
 
 func (s *Socket) Poll() error {
+	if s.mode == "" {
+		s.mode = mode_polling
+	}
+	if s.mode != mode_polling {
+		return fmt.Errorf("invalid mode")
+	}
+
 	err := s.polling()
 	if err != nil {
 		return err
@@ -543,14 +616,18 @@ func (s *Socket) Poll() error {
 	s.polling1()
 
 	s.done = make(chan struct{})
-	s.poll.job = make(chan string)
+	s.task.job = make(chan string)
+	s.task.result = make(chan struct {
+		err error
+		url string
+	})
 
 	for {
 		var job string
 		select {
 		case <-s.done:
 			return nil
-		case val := <-s.poll.job:
+		case val := <-s.task.job:
 			job = val
 			log.Println("job is comming....")
 		default:
@@ -566,7 +643,7 @@ func (s *Socket) Poll() error {
 		}
 
 		if !strings.Contains(result, "[") || !strings.Contains(result, "]") {
-			log.Println("heart", result)
+			log.Println("heart cmd", result)
 			continue
 		}
 
@@ -582,21 +659,25 @@ func (s *Socket) Poll() error {
 			result = result[i+1+int(length):]
 		}
 	}
-
 }
 
-func (s *Socket) PollJob(src, format string) (error) {
+func (s *Socket) PollJob(src, format string) (url string, err error) {
+	if s.mode != mode_polling {
+		return url, fmt.Errorf("invalid job")
+	}
+
 	tempfile, err := Flow(src)
 	if err != nil {
-		return err
+		return url, err
 	}
 	operationid := fmt.Sprintf("%v_%v", time.Now().UnixNano()/1e6, random(10))
 	cmd := s.cmdEncode(tempfile, operationid, format)
 	job := fmt.Sprintf("%v:%v", len(cmd), cmd)
 	log.Println("job", job)
-	s.poll.job <- job
+	s.task.job <- job
+	val := <-s.task.result
 
-	return nil
+	return val.url, val.err
 }
 
 func (s *Socket) read() (data string, isclose bool) {
@@ -752,17 +833,19 @@ const (
 	step_final_result = "final_result"
 )
 
-func (s *Socket) cmdDecode(data string) error {
-	data = strings.TrimPrefix(data, cmd_prefix)
+func (s *Socket) cmdDecode(origin string) {
+	data := strings.TrimPrefix(origin, cmd_prefix)
 	var cmd [2]interface{}
 	err := json.Unmarshal([]byte(data), &cmd)
 	if err != nil {
-		return err
+		log.Println("invalid format", origin)
+		return
 	}
 
 	realstu, ok := cmd[1].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("invalid data")
+		log.Println("invalid data", origin)
+		return
 	}
 
 	switch realstu["message_type"] {
@@ -775,9 +858,21 @@ func (s *Socket) cmdDecode(data string) error {
 	case step_final_result:
 		log.Printf("step:%v, success:%v, tmp_filename:%v, download_url:%v",
 			step_final_result, realstu["success"], realstu["convertd"], realstu["download_url"])
-	}
+		var (
+			err error
+			uri string
+		)
+		if realstu["success"].(bool) {
+			uri = realstu["download_url"].(string)
+		} else {
+			err = fmt.Errorf("convert failed")
+		}
 
-	return nil
+		s.task.result <- struct {
+			err error
+			url string
+		}{err: err, url: uri}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 	"math/rand"
+	"log"
 )
 
 func TestUploadFlow(t *testing.T) {
@@ -33,7 +34,8 @@ func TestPoll(t *testing.T) {
 		for {
 			select {
 			case <-timer.C:
-				s.PollJob("/home/user/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
+				url, _ := s.PollJob("/home/user/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
+				log.Println("success,", url)
 				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 			case <-done:
 				return
@@ -41,7 +43,7 @@ func TestPoll(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(10 * time.Minute)
+	time.Sleep(5 * time.Minute)
 	close(done)
 }
 
@@ -56,24 +58,28 @@ func TestSocket(t *testing.T) {
 	}()
 
 	done := make(chan struct{})
-
 	go func() {
 		musics := []string{"11.mp3", "22.mp3", "33.mp3", "44.mp3", "55.mp3"}
 		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
+		var count int64
 		for {
+			if count > 200 {
+				close(done)
+				break
+			}
+
 			select {
 			case <-timer.C:
-				s.SocketJob("/home/quinn/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
+				count++
+				uri, _ := s.SocketJob("/home/user/Downloads/"+musics[int(rnd.Int31n(5))], "amr")
+				log.Println("download", uri)
 				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
-			case <-done:
-				return
 			}
 		}
 	}()
 
-	time.Sleep(3 * time.Minute)
-	close(done)
+	<-done
 }
 
 func TestZip(t *testing.T) {
