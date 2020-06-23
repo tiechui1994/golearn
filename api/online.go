@@ -4,7 +4,6 @@ import (
 	"time"
 	"net/http"
 	"net"
-	"crypto/tls"
 	"net/url"
 	"os"
 	"fmt"
@@ -28,12 +27,10 @@ var oclient = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
 		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Second*30)
-		},
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			return net.DialTimeout(network, addr, time.Minute)
 		},
 	},
+	Timeout: time.Minute,
 }
 
 const (
@@ -79,7 +76,7 @@ type Audio struct {
 	} `json:"disposition"`
 }
 
-// https://s113.123apps.com/aconv/upload/flow/?
+// /aconv/upload/flow/?
 // uid=2VlBGJGDkxWMXGYGHs65e5cba075f488&
 // id3=true&
 // ff=true&
@@ -383,7 +380,7 @@ func (s *Socket) Close() {
 	}
 }
 
-// https://s113.123apps.com/socket.io/?
+// /socket.io/?
 // EIO=3&
 // transport=polling&
 // t=Nlbxcde
