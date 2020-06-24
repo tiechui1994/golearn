@@ -5,6 +5,8 @@ import (
 	"time"
 	"math/rand"
 	"log"
+	"encoding/gob"
+	"os"
 )
 
 func TestUploadFlow(t *testing.T) {
@@ -108,10 +110,42 @@ func TestConfig(t *testing.T) {
 	}
 }
 
-func TestSpeech(t *testing.T) {
-	speech := Speech{Region: us_west_2}
-	err := speech.Identity()
+func init() {
+	gob.Register(Speech{})
+}
+
+func TestOCR(t *testing.T) {
+	_, err := OCR("./chn.png", Lan_zhs)
 	t.Log("err", err)
+}
+
+func TestToken(t *testing.T) {
+	token, err := getSecureToken()
+	t.Log(token, err)
+}
+
+func TestConvertPDFToText(t *testing.T) {
+	_, err := ConvertPDFToText("./test.pdf")
+	t.Log("err", err)
+}
+
+func TestSpeech(t *testing.T) {
+	speech := Speech{Region: "us-west-2"}
+	fd, err := os.Open("./speech.data")
+	if err != nil || time.Now().Unix() > int64(speech.Expiration) {
+		err := speech.Identity()
+		if err != nil {
+			t.Fatal("err", err)
+		}
+		fd, _ = os.Create("./speech.data")
+		gob.NewEncoder(fd).Encode(&speech)
+	} else {
+		gob.NewDecoder(fd).Decode(&speech)
+	}
+
+	err = speech.TextSplit()
+	t.Log("err", err)
+
 	err = speech.Speech("/home/user/Videos/test.mp3")
 	t.Log("err", err)
 }
