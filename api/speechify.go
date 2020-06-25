@@ -17,7 +17,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/url"
-	"go-uuid"
+
+	"github.com/pborman/uuid"
 )
 
 var scleint = &http.Client{

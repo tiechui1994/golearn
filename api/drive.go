@@ -12,7 +12,8 @@ import (
 	"strings"
 	"fmt"
 	"encoding/json"
-	"go-uuid"
+
+	"github.com/pborman/uuid"
 )
 
 /**
