@@ -102,8 +102,8 @@ const (
 )
 
 const (
-	eu_west_1 = "eu-west-1:2b30bfe4-8100-4a06-9503-72d408b480ed"
-	us_west_2 = "us-west-2:11efc284-3bdf-41aa-8f0d-a0c8956ab1e6"
+	eu_west_1 = ""
+	us_west_2 = ""
 
 	user_agent   = "aws-sdk-iOS/2.10.3 iOS/13.5.1 en_US"
 	time_formate = "20060102T150405Z"
@@ -307,7 +307,7 @@ func ConvertPDFToText(src string) (msg string, err error) {
 }
 
 const (
-	google_key = "AIzaSyDGXMWz_oHUC8A6z1K6ge5n0PZ8LUMkgl4"
+	google_key = ""
 )
 
 type tokeninfo struct {
@@ -660,6 +660,10 @@ func getPDFText() {
 
 }
 
+const (
+	ocr_key = ""
+)
+
 // Microsoft OCR
 func OCR(src, lan string) (msg string, err error) {
 	fd, err := os.Open(src)
@@ -685,15 +689,8 @@ func OCR(src, lan string) (msg string, err error) {
 	u := "https://westus.api.cognitive.microsoft.com/vision/v2.0/ocr?detectOrientation=1&language=" + lan
 	request, _ := http.NewRequest("POST", u, &body)
 	request.Header.Set("content-type", contentType)
-	request.Header.Set("ocp-apim-subscription-key", "6bcc78216edd472eb4b2c902d1f2e6a0")
+	request.Header.Set("ocp-apim-subscription-key", ocr_key)
 	request.Header.Set("user-agent", "SpeechifyMobile/2.2.1 (com.cliffweitzman.speechifyMobile2; build:56918.5.26344858; iOS 13.5.1) Alamofire/4.8.2")
-
-	/*
-	Host: westus.api.cognitive.microsoft.com
-	Content-Type: multipart/form-data; boundary=alamofire.boundary.72cf606a58ffdeeb
-	Ocp-Apim-Subscription-Key: 6bcc78216edd472eb4b2c902d1f2e6a0
-	User-Agent: SpeechifyMobile/2.2.1 (com.cliffweitzman.speechifyMobile2; build:56918.5.26344858; iOS 13.5.1) Alamofire/4.8.2
-	*/
 
 	response, err := scleint.Do(request)
 	if err != nil {
