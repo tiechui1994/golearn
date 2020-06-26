@@ -173,12 +173,12 @@ func (s *Speech) Identity() error {
 	return nil
 }
 
-func (s *Speech) Speech(dest string) error {
+func (s *Speech) Speech(text, dest string) error {
 	if _, ok := resions[s.Region]; !ok {
 		return fmt.Errorf("invalid regions")
 	}
 
-	body := fmt.Sprintf(`{"VoiceId": "Zhiyu", "OutputFormat": "mp3", "Text": "123456789"}`)
+	body := fmt.Sprintf(`{"VoiceId": "Zhiyu", "OutputFormat": "mp3", "Text": "%v"}`, text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
 	now := time.Now()
@@ -215,10 +215,11 @@ func (s *Speech) Speech(dest string) error {
 	}
 	defer response.Body.Close()
 
-	log.Println("speech len", response.ContentLength)
+	log.Println("speech content-length", response.ContentLength)
 
 	fd, err := os.Create(dest)
 	if err != nil {
+		log.Println("Create", err)
 		return err
 	}
 
@@ -280,6 +281,7 @@ func (s *Speech) TextSplit() error {
 func ConvertPDFToText(src string) (msg string, err error) {
 	token, err := getSecureToken()
 	if err != nil {
+		log.Println("getSecureToken", err)
 		return msg, err
 	}
 
@@ -346,12 +348,14 @@ func getSecureToken() (token tokeninfo, err error) {
 
 	response, err := scleint.Do(request)
 	if err != nil {
+		log.Println("err", err)
 		return token, err
 	}
 	defer response.Body.Close()
 
 	data, err := ioutil.ReadAll(response.Body)
 	if err != nil {
+		log.Println("data", err)
 		return token, err
 	}
 

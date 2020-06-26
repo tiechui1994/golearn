@@ -115,7 +115,7 @@ func init() {
 }
 
 func TestOCR(t *testing.T) {
-	_, err := OCR("./chn.png", Lan_zhs)
+	_, err := OCR("./data/chn.png", Lan_zhs)
 	t.Log("err", err)
 }
 
@@ -125,19 +125,19 @@ func TestToken(t *testing.T) {
 }
 
 func TestConvertPDFToText(t *testing.T) {
-	_, err := ConvertPDFToText("./test.pdf")
+	_, err := ConvertPDFToText("./data/test.pdf")
 	t.Log("err", err)
 }
 
 func TestSpeech(t *testing.T) {
 	speech := Speech{Region: "us-west-2"}
-	fd, err := os.Open("./speech.data")
+	fd, err := os.Open("./data/speech.data")
 	if err != nil || time.Now().Unix() > int64(speech.Expiration) {
 		err := speech.Identity()
 		if err != nil {
 			t.Fatal("err", err)
 		}
-		fd, _ = os.Create("./speech.data")
+		fd, _ = os.Create("./data/speech.data")
 		gob.NewEncoder(fd).Encode(&speech)
 	} else {
 		gob.NewDecoder(fd).Decode(&speech)
@@ -146,6 +146,7 @@ func TestSpeech(t *testing.T) {
 	err = speech.TextSplit()
 	t.Log("err", err)
 
-	err = speech.Speech("/home/user/Videos/test.mp3")
+	text := `中华人民共和国中央人民政府`
+	err = speech.Speech(text, "./data/test.mp3")
 	t.Log("err", err)
 }
