@@ -14,13 +14,6 @@ func TestUploadFlow(t *testing.T) {
 	t.Log("err", err, tmpfile)
 }
 
-func TestPolling(t *testing.T) {
-	s := Socket{}
-	s.polling()
-	s.polling2("1:2") // 请求 2
-	s.polling1()      // 响应 3(使用polling)  1(未知) 6 (切换到websocket)
-}
-
 func TestPoll(t *testing.T) {
 	s := Socket{}
 	go func() {
@@ -116,16 +109,6 @@ func init() {
 
 func TestOCR(t *testing.T) {
 	_, err := OCR("./data/chn.png", Lan_zhs)
-	t.Log("err", err)
-}
-
-func TestToken(t *testing.T) {
-	token, err := getSecureToken()
-	t.Log(token, err)
-}
-
-func TestConvertPDFToText(t *testing.T) {
-	_, err := ConvertPDFToText("./data/test.pdf")
 	t.Log("err", err)
 }
 

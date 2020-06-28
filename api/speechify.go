@@ -16,9 +16,10 @@ import (
 	"os"
 	"io"
 	"mime/multipart"
-	"net/url"
-
-	"github.com/pborman/uuid"
+	"crypto/cipher"
+	"crypto/aes"
+	"crypto/md5"
+	"encoding/gob"
 )
 
 var scleint = &http.Client{
@@ -102,16 +103,32 @@ const (
 )
 
 const (
-	eu_west_1 = ""
-	us_west_2 = ""
-
 	user_agent   = "aws-sdk-iOS/2.10.3 iOS/13.5.1 en_US"
 	time_formate = "20060102T150405Z"
 )
 
-var resions = map[string]string{
-	"eu-west-1": eu_west_1,
-	"us-west-2": us_west_2,
+var (
+	eu_west_1 string
+	us_west_2 string
+	resions   map[string]string
+
+	ocr_key string
+)
+
+func init() {
+	var private = map[string]string{}
+	data, _ := ioutil.ReadFile("./data/key.data")
+	plain := aesDecrypt(string(data), "")
+	gob.NewDecoder(bytes.NewBuffer(plain)).Decode(&private)
+
+	eu_west_1 = private["eu_west_1"]
+	us_west_2 = private["us_west_2"]
+	ocr_key = private["ocr_key"]
+
+	resions = map[string]string{
+		"eu-west-1": eu_west_1,
+		"us-west-2": us_west_2,
+	}
 }
 
 type Speech struct {
@@ -277,393 +294,6 @@ func (s *Speech) TextSplit() error {
 	return nil
 }
 
-// upload pdf
-func ConvertPDFToText(src string) (msg string, err error) {
-	token, err := getSecureToken()
-	if err != nil {
-		log.Println("getSecureToken", err)
-		return msg, err
-	}
-
-	uid := strings.ToUpper(uuid.New())
-	log.Println("uuid", uid)
-	u, err := applayUrl(uid, token.AccessToken, src)
-	if err != nil {
-		log.Println("applayUrl err", err)
-		return msg, err
-	}
-
-	log.Println("upload uri", u)
-
-	_, err = uploadToGoogle(u, src)
-	//if err != nil {
-	//	log.Println("uploadToGoogle err", err)
-	//	return msg, err
-	//}
-
-	waitGoogleConvert(uid)
-
-	return msg, nil
-}
-
-const (
-	google_key = ""
-)
-
-type tokeninfo struct {
-	AccessToken  string `json:"access_token"`
-	ExpiresIn    string `json:"expires_in"`
-	RefreshToken string `json:"refresh_token"`
-	IdToken      string `json:"id_token"`
-	UserID       string `json:"user_id"`
-	ProjectID    string `json:"project_id"`
-}
-
-type uploadinfo struct {
-	Name               string `json:"name"`
-	Bucket             string `json:"bucket"`
-	Generation         string `json:"generation"`
-	Metageneration     string `json:"metageneration"`
-	ContentType        string `json:"contentType"`
-	StorageClass       string `json:"storageClass"`
-	Size               string `json:"size"`
-	Md5Hash            string `json:"md5Hash"`
-	ContentEncoding    string `json:"contentEncoding"`
-	ContentDisposition string `json:"contentDisposition"`
-	Etag               string `json:"etag"`
-	DownloadTokens     string `json:"downloadTokens"`
-}
-
-// 1 get token
-func getSecureToken() (token tokeninfo, err error) {
-	body := `{
-		"grantType":"refresh_token",
-		"refresh_token":"AE0u-NfPxMI2g12FPjPk9Tf_gtakLHi4KOsc2aThtRxdRN9kgBcNWmPKTmo_jBy8cjhZCHlk1E64ElqV8DSZfSw7szl05f58zrO_wQ36bX2GtC6juYhghACSqf0in4k9euTo7IPty3MLsJUNVC7rpx3BMEN06okf1fIoCwFMFw4AyYpWe-PIoPa1d8G9RAaoNq-gE1JsM2wz"
-	}`
-	u := "https://securetoken.googleapis.com/v1/token?key=" + google_key
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
-
-	request.Header.Set("content-type", "application/json")
-	request.Header.Set("user-agent", user_agent)
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		log.Println("err", err)
-		return token, err
-	}
-	defer response.Body.Close()
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Println("data", err)
-		return token, err
-	}
-
-	log.Println("data", string(data))
-
-	err = json.Unmarshal(data, &token)
-	if err != nil {
-		return token, err
-	}
-
-	return token, nil
-}
-
-// 1. applay
-func applayUrl(uid, token, src string) (uploadurl string, err error) {
-	name := fmt.Sprintf("pdfDocuments/%v.pdf", uid)
-	endpoint := "https://firebasestorage.googleapis.com/v0/b/speechifymobile.appspot.com/o/"
-
-	params := fmt.Sprintf("uploadType=%v&name=%v", "resumable", url.PathEscape(name))
-	u := endpoint + url.PathEscape(name) + "?" + params
-	body := fmt.Sprintf(`{"contentType":"%v","name":"%v"}`, Escape("application/pdf"), Escape(name))
-
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
-	log.Println("body", body)
-	log.Println("u", u)
-
-	stats, err := os.Stat(src)
-	if err != nil {
-		return uploadurl, err
-	}
-
-	request.Header.Set("accept", "*/*")
-	request.Header.Set("content-type", "application/json")
-	request.Header.Set("user-agent", user_agent)
-	request.Header.Set("x-goog-upload-command", "start")
-	request.Header.Set("x-goog-upload-content-type", "application/pdf")
-	request.Header.Set("authorization", "Firebase "+token)
-	request.Header.Set("x-goog-upload-content-length", fmt.Sprintf("%v", stats.Size()))
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		return uploadurl, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != 200 {
-		return uploadurl, fmt.Errorf("invalid code: %v", response.StatusCode)
-	}
-
-	log.Println("header", response.Header)
-
-	xGuploaderUploadId := response.Header.Get("x-guploader-uploadid")
-	//xGoogUploadStatus := response.Header.Get("x-goog-upload-status")
-	//xGoogUploadControlUrl := response.Header.Get("x-goog-upload-control-url")
-	//xGoogUploadUrl := response.Header.Get("x-goog-upload-url")
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return uploadurl, err
-	}
-
-	log.Println("upload data", string(data))
-
-	var info uploadinfo
-	err = json.Unmarshal(data, &info)
-	if err != nil {
-		return uploadurl, err
-	}
-
-	params = fmt.Sprintf("%v&upload_id=%v&upload_protocol=%v", params, xGuploaderUploadId, "resumable")
-	uploadurl = endpoint + url.PathEscape(name) + "?" + params
-
-	return uploadurl, nil
-}
-
-// 2. upload
-func uploadToGoogle(uploadurl, src string) (info uploadinfo, err error) {
-	fd, err := os.Open(src)
-	if err != nil {
-		return info, err
-	}
-
-	request, _ := http.NewRequest("PUT", uploadurl, fd)
-
-	up, _ := url.ParseQuery(uploadurl)
-	request.Header.Set("content-type", "application/octet-stream")
-	request.Header.Set("user-agent", "com.cliffweitzman.speechifyMobile2/2.2.1 iPhone/13.5.1 hw/iPhone9_1 (GTMSUF/1)")
-	request.Header.Set("x-goog-upload-protocol", up.Get("upload_protocol"))
-	request.Header.Set("x-goog-upload-offsete", "0")
-	request.Header.Set("x-goog-upload-command", "upload, finalize")
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		return info, err
-	}
-	defer response.Body.Close()
-
-	log.Println("code", response.StatusCode)
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return info, err
-	}
-
-	log.Println("upload data", string(data))
-
-	err = json.Unmarshal(data, &info)
-	return info, err
-}
-
-// 3. vision
-func waitGoogleConvert(uid string) (ok bool, err error) {
-	acccesstoken, err := getAccessToken()
-	if err != nil {
-		return ok, err
-	}
-	acccesstoken = "ya29.c.Ko8B0Ad3FEClEzP7oTcKv-D8-BRgmy8w_zLcDxXmXJk2sMVV2c-0uR9ID2Tm6Rnay-umB-pbGfIqDM7TtDOTmBU7ofIB2NWrl8nUh29Z0HtLERnrnymuapktroygffa6iAGuYSo-MLBTN2_3FWD08ODulCpVbxxAJBzTBh3Vq4FOd4Huooe6poK6OxHQvAoyhRc"
-	uri, err := getVisionUri(uid, acccesstoken)
-	if err != nil {
-		log.Println("getVisionUri", err)
-		return ok, err
-	}
-
-	log.Println("uri is", uri)
-
-	for {
-		config, err := isStoped(uri, acccesstoken)
-		if err != nil {
-			return ok, err
-		}
-		if config.Done {
-			ok = true
-			break
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	return ok, nil
-}
-
-func getAccessToken() (token string, err error) {
-	params := make(url.Values)
-	params.Set("assertion", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE1OTI5ODg1NjgsImV4cCI6MTU5Mjk5MjE2OCwiYXVkIjoiaHR0cHM6XC9cL3d3dy5nb29nbGVhcGlzLmNvbVwvb2F1dGgyXC92NFwvdG9rZW4iLCJzY29wZSI6Imh0dHBzOlwvXC93d3cuZ29vZ2xlYXBpcy5jb21cL2F1dGhcL2Nsb3VkLXBsYXRmb3JtIiwiaXNzIjoic3BlZWNoaWZ5LXByb2R1Y3Rpb24tYWNjb3VudEBzcGVlY2hpZnltb2JpbGUuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20ifQ.Q9rbQgsE6iKeRJ5_NoVpICDhwtjf7uNq9Tr543FGpoRlHD0aEcaAXP34oTNd4vcppmzSZhcqc2rxFZ4dl7XaI8lQSzdNIVrBhUZ2NfYVMEPsEtdYKpRp5IyrkOCe1rZQQIFzSFyPeDQuil9iObhL48ErU31vvG7BER6MYIv_pw2rtv1ruQstWcJo6Uwh886byygXSwUr6Nm68J39F4gDEfBOSyhPco7dY_byGRQIj0Mtf3QUrzj0viobL2Rz1rgM_xq8ZB6ILnqPYJkJuxMUHwssi5nqbSQgs9lvInywS-wjtRxlkwXmbn4Vb8_DOkl8HTvn_uVapCZC5tlc1-OaDw")
-	params.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-
-	u := "https://www.googleapis.com/oauth2/v4/token"
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(params.Encode()))
-
-	request.Header.Set("content-type", "application/x-www-form-urlencoded")
-	request.Header.Set("user-agent", user_agent)
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		return token, err
-	}
-	defer response.Body.Close()
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return token, err
-	}
-
-	log.Println("data", response.StatusCode, string(data))
-
-	var result struct {
-		AccessToken string `json:"access_token"`
-	}
-
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return token, err
-	}
-
-	return result.AccessToken, nil
-}
-
-func getVisionUri(uid, token string) (uri string, err error) {
-	input := fmt.Sprintf("gs://pdf-speechifymobile/extraction/%v/", uid)
-	output := fmt.Sprintf("gs://speechifymobile.appspot.com/pdfDocuments/%v.pdf", uid)
-	body := fmt.Sprintf(`{
-		"requests":[{
-			"outputConfig":{
-				"batchSize":100,
-				"gcsDestination":{
-					"uri":"%v"
-				}
-			},
-			"inputConfig":{
-				"gcsSource":{
-					"uri":"%v"
-				},
-				"mimeType":"application\/pdf"
-			},
-			"features":[{"type":"DOCUMENT_TEXT_DETECTION"}]
-		}]
-	}`, Escape(input), Escape(output))
-
-	u := "https://vision.googleapis.com/v1/files:asyncBatchAnnotate?prettyPrint=false&key=" + google_key
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
-
-	request.Header.Set("content-type", "application/json")
-	request.Header.Set("user-agent", user_agent)
-	request.Header.Set("authorization", "Bearer "+token)
-	request.Header.Set("accept", "application/json")
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		return uri, err
-	}
-	defer response.Body.Close()
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return uri, err
-	}
-
-	log.Println("getVisionUri", string(data))
-
-	var result struct {
-		Name string `json:"name"`
-	}
-
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return uri, err
-	}
-
-	return result.Name, nil
-}
-
-type visionresult struct {
-	Name string `json:"name"`
-	Metadata struct {
-		State      string `json:"state"`
-		CreateTime string `json:"createTime"`
-		UpdateTime string `json:"updateTime"`
-	} `json:"metadata"`
-	Done bool `json:"done"`
-	Response struct {
-		Responses []struct {
-			OutputConfig struct {
-				GcsDestination struct {
-					Uri string `json:"uri"`
-				} `json:"gcsDestination"`
-				BatchSize int `json:"batchSize"`
-			} `json:"outputConfig"`
-		} `json:"responses"`
-	} `json:"response"`
-}
-
-func isStoped(uri, token string) (config visionresult, err error) {
-	u := "https://vision.googleapis.com/v1/" + uri
-	request, _ := http.NewRequest("GET", u, nil)
-
-	request.Header.Set("user-agent", user_agent)
-	request.Header.Set("authorization", "Bearer "+token)
-
-	/*
-	{
-	"name": "projects/speechifymobile/operations/43bff3dff849cd17",
-	"metadata": {
-		"@type": "type.googleapis.com/google.cloud.vision.v1.OperationMetadata",
-		"state": "DONE",
-		"createTime": "2020-06-24T08:49:32.067379449Z",
-		"updateTime": "2020-06-24T08:49:40.891103406Z"
-	},
-	"done": true,
-	"response": {
-		"@type": "type.googleapis.com/google.cloud.vision.v1.AsyncBatchAnnotateFilesResponse",
-		"responses": [{
-			"outputConfig": {
-				"gcsDestination": {
-					"uri": "gs://pdf-speechifymobile/extraction/35C6582F-14B9-428B-84FF-23B55191A42A/"
-				},
-				"batchSize": 100
-			}
-		}]
-	}
-	}
-	*/
-
-	response, err := scleint.Do(request)
-	if err != nil {
-		return config, err
-	}
-	defer response.Body.Close()
-
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return config, err
-	}
-
-	log.Println("data", string(data))
-
-	err = json.Unmarshal(data, &config)
-	return config, err
-}
-
-// 4. getetxt
-func getPDFText() {
-
-}
-
-const (
-	ocr_key = ""
-)
-
 // Microsoft OCR
 func OCR(src, lan string) (msg string, err error) {
 	fd, err := os.Open(src)
@@ -827,6 +457,48 @@ func Sha256(msg string) string {
 	return hex.EncodeToString(sha.Sum(nil))
 }
 
+func MD5(msg string) string {
+	sha := md5.New()
+	sha.Write([]byte(msg))
+	return hex.EncodeToString(sha.Sum(nil))
+}
+
 func Escape(data string) string {
 	return strings.Replace(data, "/", "\\/", -1)
+}
+
+func aesEncrypt(msg, key string) (data []byte) {
+	iv := []byte{
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
+	// 创建加密算法aes
+	c, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		log.Printf("Error: NewCipher(%d bytes) = %s", len(key), err)
+		os.Exit(-1)
+	}
+
+	//加密字符串
+	cfb := cipher.NewCFBEncrypter(c, iv)
+	ciphertext := make([]byte, len(msg))
+	cfb.XORKeyStream(ciphertext, []byte(msg))
+	return ciphertext
+}
+
+func aesDecrypt(msg, key string) (data []byte) {
+	iv := []byte{
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
+	// 创建加密算法aes
+	c, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		log.Printf("Error: NewCipher(%d bytes) = %s", len(key), err)
+		os.Exit(-1)
+	}
+
+	//加密字符串
+	cfb := cipher.NewCFBDecrypter(c, iv)
+	plaintext := make([]byte, len(msg))
+	cfb.XORKeyStream(plaintext, []byte(msg))
+	return plaintext
 }
