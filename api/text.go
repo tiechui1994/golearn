@@ -40,9 +40,22 @@ type speechtotext struct {
 	closed    bool
 	done      chan struct{}
 	text      chan string
+	phrase    map[string]time.Time
 
-	ID string
+	ConnID string
+	JobID  string
 }
+
+const (
+	phrase_conn_listen = "conn.listen"
+	phrase_conn_start  = "conn.start"
+	phrase_conn_end    = "conn.end"
+
+	phrase_turn_start         = "turn.start"
+	phrase_turn_end           = "turn.end"
+	phrase_speech_enddetected = "speech.endDetected"
+	phrase_speech_phrase      = "speech.phrase"
+)
 
 func (s *speechtotext) Socket(region, language, format, authorization string) error {
 	timeoutMs := 5000
@@ -56,12 +69,17 @@ func (s *speechtotext) Socket(region, language, format, authorization string) er
 		HandshakeTimeout: 45 * time.Second,
 	}
 
+	s.ConnID = xConnectionId
 	s.text = make(chan string)
 	s.done = make(chan struct{})
+	s.phrase = map[string]time.Time{
+		phrase_conn_listen: time.Now(),
+	}
 	var retryTimeout = time.Second
 
 again:
 	header := make(http.Header)
+	s.phrase[phrase_conn_start] = time.Now()
 	conn, response, err := dailer.Dial(u, header)
 	if err != nil && retryTimeout < 64*time.Second {
 		log.Println("dailer.Dial", err)
@@ -79,10 +97,11 @@ again:
 
 	log.Println("success to connect ....")
 
+	s.phrase[phrase_conn_end] = time.Now()
 	s.Conn = conn
-	s.ID = strings.ToUpper(MD5(time.Now().String()))
-	s.write(getConfigCmd(s.ID), websocket.BinaryMessage)
-	s.write(getContextCmd(s.ID), websocket.BinaryMessage)
+	s.JobID = strings.ToUpper(MD5(time.Now().String()))
+	s.write(getConfigCmd(s.JobID), websocket.BinaryMessage)
+	s.write(getContextCmd(s.JobID), websocket.BinaryMessage)
 
 	log.Println("success to send config ....")
 
@@ -93,17 +112,23 @@ again:
 		}
 
 		text := jsonCmdDecode(data)
-		if text.RecognitionStatus != "" {
+		if text.RecognitionStatus == "Success" {
 			select {
 			case <-s.done:
 				return nil
 			case s.text <- text.DisplayText:
 			}
+		} else if text.RecognitionStatus == "InitialSilenceTimeout" {
+			getTelemetryCmd(s.JobID, s.ConnID, s.phrase)
+			s.JobID = strings.ToUpper(MD5(time.Now().String()))
+			getContextCmd(s.JobID)
+			close(s.text)
 		} else {
 			select {
 			case <-s.done:
 				return nil
 			default:
+				s.phrase[text.Phrase] = time.Now()
 			}
 		}
 	}
@@ -168,12 +193,13 @@ func (s *speechtotext) SendSpeech(src string) (msg string, err error) {
 
 	log.Println("data len", len(data))
 
+retry:
 	var (
 		n      int64
 		length = int64(len(data))
 	)
 	header := data[0:len_header]
-	cmd := getBinaryCmd(s.ID, true, header)
+	cmd := getBinaryCmd(s.JobID, true, header)
 	s.write(cmd, websocket.BinaryMessage)
 	n += len_header
 
@@ -184,17 +210,21 @@ func (s *speechtotext) SendSpeech(src string) (msg string, err error) {
 		} else {
 			body = data[n:]
 		}
-		cmd = getBinaryCmd(s.ID, false, body)
+		cmd = getBinaryCmd(s.JobID, false, body)
 		s.write(cmd, websocket.BinaryMessage)
 		n += len_body
 	}
 
-	cmd = getBinaryCmd(s.ID, false, nil)
+	cmd = getBinaryCmd(s.JobID, false, nil)
 	s.write(cmd, websocket.BinaryMessage)
 	log.Println("write success")
-
-	s.ID = strings.ToUpper(MD5(time.Now().String()))
-	msg = <-s.text
+	msg, ok := <-s.text
+	if !ok {
+		log.Println("retury....")
+		s.text = make(chan string)
+		goto retry
+	}
+	s.JobID = strings.ToUpper(MD5(time.Now().String()))
 
 	return msg, nil
 }
@@ -273,6 +303,44 @@ func getContextCmd(id string) []byte {
 	return jsonCmdEncode(path, id, "{}")
 }
 
+func getTelemetryCmd(id, connid string, times map[string]time.Time) []byte {
+	listen := times[phrase_conn_listen].UTC().Format(timeformat)
+	cstart := times[phrase_conn_start].UTC().Format(timeformat)
+	cend := times[phrase_conn_end].UTC().Format(timeformat)
+
+	tt := times[phrase_turn_start].UTC().Format(timeformat)
+	td := times[phrase_turn_end].UTC().Format(timeformat)
+	sd := times[phrase_speech_enddetected].UTC().Format(timeformat)
+	se := times[phrase_speech_phrase].UTC().Format(timeformat)
+	ms := times[phrase_turn_end].Sub(times[phrase_conn_listen]).Nanoseconds() / 1e6
+	path := "telemetry"
+	body := fmt.Sprintf(`{
+		"Metrics":[
+			{
+				"End":"%v",
+				"Name":"ListeningTrigger",
+				"Start":"%v"
+			},
+  			{
+				"End":"%v",
+				"Id":"%v",
+				"Name":"Connection",
+				"Start":"%v"
+			},
+			{
+				"PhraseLatencyMs":[%v]
+			}
+		],
+		"ReceivedMessages": {
+			"turn.start":["%v"],
+			"speech.endDetected":["%v"],
+			"speech.phrase":["%v"],
+			"turn.end":["%v"]
+		}
+	}`, listen, listen, cend, connid, cstart, ms, tt, sd, se, td)
+	return jsonCmdEncode(path, id, body)
+}
+
 const (
 	timeformat = "2006-01-02T15:04:05.000Z"
 	sep        = "\r\n"
@@ -317,6 +385,7 @@ func jsonCmdEncode(path, id, data string) []byte {
 
 type textresponse struct {
 	Requestid         string
+	Phrase            string
 	Id                string
 	RecognitionStatus string
 	DisplayText       string
@@ -331,17 +400,22 @@ func jsonCmdDecode(data string) (text textresponse) {
 		return
 	}
 
-	var requestid string
+	var requestid, pharse string
 	for i := 0; i < len(tokens); i++ {
 		log.Println(tokens[i])
 		if strings.Contains(tokens[i], "X-RequestId") {
 			k := strings.Index(tokens[i], ":")
 			requestid = strings.TrimSpace(tokens[i][k+1:])
 		}
+		if strings.Contains(tokens[i], "Path") {
+			k := strings.Index(tokens[i], ":")
+			pharse = strings.TrimSpace(tokens[i][k+1:])
+		}
 	}
 
 	json.Unmarshal([]byte(tokens[4]), &text)
 	text.Requestid = requestid
+	text.Phrase = pharse
 
 	return text
 }

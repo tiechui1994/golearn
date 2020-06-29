@@ -7,8 +7,6 @@ import (
 	"log"
 	"encoding/gob"
 	"os"
-	"io/ioutil"
-	"sync"
 )
 
 func TestUploadFlow(t *testing.T) {
@@ -159,7 +157,7 @@ func TestSpeechToText(t *testing.T) {
 	go func() {
 		region := "eastus"
 		format := "simple"
-		authorization := "eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTI1NiIsInR5cCI6IkpXVCJ9.eyJyZWdpb24iOiJlYXN0dXMiLCJzdWJzY3JpcHRpb24taWQiOiIwOWIyNTQwZTg3Yjk0ZDgwYmUyMzAyYTc5OTcyNTIyOSIsInByb2R1Y3QtaWQiOiJTcGVlY2hTZXJ2aWNlcy5TMCIsImNvZ25pdGl2ZS1zZXJ2aWNlcy1lbmRwb2ludCI6Imh0dHBzOi8vYXBpLmNvZ25pdGl2ZS5taWNyb3NvZnQuY29tL2ludGVybmFsL3YxLjAvIiwiYXp1cmUtcmVzb3VyY2UtaWQiOiIvc3Vic2NyaXB0aW9ucy81NmI4ZjEwYS04M2NiLTQwYzYtYTU3ZS00OGQ2MWRlNjEzZjUvcmVzb3VyY2VHcm91cHMvY29nbml0aXZlLXNlcnZpY2VzLXByb2QvcHJvdmlkZXJzL01pY3Jvc29mdC5Db2duaXRpdmVTZXJ2aWNlcy9hY2NvdW50cy9hY29tLXByb2Qtc3BlZWNoLWVhc3R1cyIsInNjb3BlIjoic3BlZWNoc2VydmljZXMiLCJhdWQiOiJ1cm46bXMuc3BlZWNoc2VydmljZXMuZWFzdHVzIiwiZXhwIjoxNTkzNDMzMTk2LCJpc3MiOiJ1cm46bXMuY29nbml0aXZlc2VydmljZXMifQ.puBuflcMurQZlDJ_ShbAhkie1RAtdR038-XpLCUtdE0"
+		authorization := "eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTI1NiIsInR5cCI6IkpXVCJ9.eyJyZWdpb24iOiJlYXN0dXMiLCJzdWJzY3JpcHRpb24taWQiOiIwOWIyNTQwZTg3Yjk0ZDgwYmUyMzAyYTc5OTcyNTIyOSIsInByb2R1Y3QtaWQiOiJTcGVlY2hTZXJ2aWNlcy5TMCIsImNvZ25pdGl2ZS1zZXJ2aWNlcy1lbmRwb2ludCI6Imh0dHBzOi8vYXBpLmNvZ25pdGl2ZS5taWNyb3NvZnQuY29tL2ludGVybmFsL3YxLjAvIiwiYXp1cmUtcmVzb3VyY2UtaWQiOiIvc3Vic2NyaXB0aW9ucy81NmI4ZjEwYS04M2NiLTQwYzYtYTU3ZS00OGQ2MWRlNjEzZjUvcmVzb3VyY2VHcm91cHMvY29nbml0aXZlLXNlcnZpY2VzLXByb2QvcHJvdmlkZXJzL01pY3Jvc29mdC5Db2duaXRpdmVTZXJ2aWNlcy9hY2NvdW50cy9hY29tLXByb2Qtc3BlZWNoLWVhc3R1cyIsInNjb3BlIjoic3BlZWNoc2VydmljZXMiLCJhdWQiOiJ1cm46bXMuc3BlZWNoc2VydmljZXMuZWFzdHVzIiwiZXhwIjoxNTkzNDM5NTA4LCJpc3MiOiJ1cm46bXMuY29nbml0aXZlc2VydmljZXMifQ.AeRaTLycanPaUAtBizcggHR8deerGtXGgISQlp4wcL4"
 		err := s.Socket(region, lang_zh_cn, format, authorization)
 		if err != nil {
 			t.Logf("socket:%v", err)
@@ -168,7 +166,7 @@ func TestSpeechToText(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		musics := []string{"11.wav", "22.wav", "33.wav", "44.wav", "55.wav"}
+		musics := []string{"11.wav", "22.wav", "33.wav", "44.wav", "55.wav", "66.wav"}
 		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(5*time.Second))) + time.Second)
 		var count int64
@@ -191,32 +189,24 @@ func TestSpeechToText(t *testing.T) {
 	<-done
 }
 
-func TestEscape(t *testing.T) {
-	data, _ := ioutil.ReadFile("/home/user/Downloads/test.wav")
-	// header: 42
-	// body: 2976
+func TestLongSpeech(t *testing.T) {
+	s := speechtotext{}
+	go func() {
+		region := "eastus"
+		format := "simple"
+		authorization := "eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTI1NiIsInR5cCI6IkpXVCJ9.eyJyZWdpb24iOiJlYXN0dXMiLCJzdWJzY3JpcHRpb24taWQiOiIwOWIyNTQwZTg3Yjk0ZDgwYmUyMzAyYTc5OTcyNTIyOSIsInByb2R1Y3QtaWQiOiJTcGVlY2hTZXJ2aWNlcy5TMCIsImNvZ25pdGl2ZS1zZXJ2aWNlcy1lbmRwb2ludCI6Imh0dHBzOi8vYXBpLmNvZ25pdGl2ZS5taWNyb3NvZnQuY29tL2ludGVybmFsL3YxLjAvIiwiYXp1cmUtcmVzb3VyY2UtaWQiOiIvc3Vic2NyaXB0aW9ucy81NmI4ZjEwYS04M2NiLTQwYzYtYTU3ZS00OGQ2MWRlNjEzZjUvcmVzb3VyY2VHcm91cHMvY29nbml0aXZlLXNlcnZpY2VzLXByb2QvcHJvdmlkZXJzL01pY3Jvc29mdC5Db2duaXRpdmVTZXJ2aWNlcy9hY2NvdW50cy9hY29tLXByb2Qtc3BlZWNoLWVhc3R1cyIsInNjb3BlIjoic3BlZWNoc2VydmljZXMiLCJhdWQiOiJ1cm46bXMuc3BlZWNoc2VydmljZXMuZWFzdHVzIiwiZXhwIjoxNTkzNDQ1NjExLCJpc3MiOiJ1cm46bXMuY29nbml0aXZlc2VydmljZXMifQ.ecMRtMzXn0NJg5K-FEYqexDXB3_eRAOKWX8-WkSvYAM"
+		err := s.Socket(region, lang_zh_cn, format, authorization)
+		if err != nil {
+			t.Logf("socket:%v", err)
+		}
+	}()
 
-	id := "28B0477EA6074BD9A3E075F6B8CE5FEE"
-	var n int64
-	header := data[0:44]
-	cmd := getBinaryCmd(id, true, header)
-	ioutil.WriteFile("./header", cmd, 0777)
-	t.Log(len(cmd))
-	n += 44
-
-	var o sync.Once
-	var step int64 = 3200
-	for n < int64(len(data)) && n+step < int64(len(data)) {
-		body := data[n:n+step]
-		cmd = getBinaryCmd(id, false, body)
-		o.Do(func() {
-			ioutil.WriteFile("./body", cmd, 0777)
-		})
-		t.Log(len(cmd))
-		n += 2976
-	}
-
-	cmd = getBinaryCmd(id, false, nil)
-	ioutil.WriteFile("./tail", cmd, 0777)
-	t.Log(len(cmd))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		time.Sleep(3*time.Second)
+		msg, _ := s.SendSpeech("./data/66.wav")
+		log.Println("msg", msg)
+	}()
+	<-done
 }
