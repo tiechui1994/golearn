@@ -118,7 +118,11 @@ var (
 func init() {
 	var private = map[string]string{}
 	data, _ := ioutil.ReadFile("./data/key.data")
-	plain := aesDecrypt(string(data), "")
+	plain, err := aesDecrypt(string(data), "")
+	if err != nil {
+		return
+	}
+
 	gob.NewDecoder(bytes.NewBuffer(plain)).Decode(&private)
 
 	eu_west_1 = private["eu_west_1"]
@@ -195,6 +199,7 @@ func (s *Speech) Speech(text, dest string) error {
 		return fmt.Errorf("invalid regions")
 	}
 
+	// OutputFormat: ogg_vorbis, json, mp3, pcm
 	body := fmt.Sprintf(`{"VoiceId": "Zhiyu", "OutputFormat": "mp3", "Text": "%v"}`, text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
@@ -485,7 +490,7 @@ func aesEncrypt(msg, key string) (data []byte) {
 	return ciphertext
 }
 
-func aesDecrypt(msg, key string) (data []byte) {
+func aesDecrypt(msg, key string) (data []byte, err error) {
 	iv := []byte{
 		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
@@ -493,12 +498,12 @@ func aesDecrypt(msg, key string) (data []byte) {
 	c, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		log.Printf("Error: NewCipher(%d bytes) = %s", len(key), err)
-		os.Exit(-1)
+		return data, err
 	}
 
 	//加密字符串
 	cfb := cipher.NewCFBDecrypter(c, iv)
 	plaintext := make([]byte, len(msg))
 	cfb.XORKeyStream(plaintext, []byte(msg))
-	return plaintext
+	return plaintext, nil
 }
