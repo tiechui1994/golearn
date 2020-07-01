@@ -52,7 +52,7 @@ func Server() {
 
 	server.TLSConfig.BuildNameToCertificate() // 生成NameToCertificate
 
-	server.ListenAndServe()
+	server.ListenAndServeTLS("", "")
 }
 
 func main() {
