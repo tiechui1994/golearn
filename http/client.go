@@ -41,8 +41,8 @@ func InitClient() *http.Client {
 	caCertPool.AppendCertsFromPEM(caCrt)
 
 	config := tls.Config{
-		Certificates:       []tls.Certificate{cliCert},
-		RootCAs:            caCertPool, // 校验服务端证书的 CA Pool
+		Certificates:       []tls.Certificate{cliCert}, // 客户端证书
+		RootCAs:            caCertPool,                 // 校验服务端证书 [CA证书]
 		InsecureSkipVerify: false,
 	}
 	config.BuildNameToCertificate()
@@ -98,8 +98,9 @@ curl -X GET \
 **/
 
 func ClientRequest() {
+	request, _ := http.NewRequest("GET", "https://localhost/", nil)
 	// 这里必须是 localhost, 因为证书当中的 `Common Name(服务器的名称)` 是 localhost
-	response, err := client.Get("https://localhost/")
+	response, err := client.Do(request)
 	if err != nil {
 		log.Println("DO err", err)
 		return
@@ -110,8 +111,5 @@ func ClientRequest() {
 }
 
 func main() {
-	for i := 0; i < 10; i++ {
-		ClientRequest()
-	}
+	ClientRequest()
 }
-

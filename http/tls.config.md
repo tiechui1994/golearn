@@ -150,3 +150,82 @@ type Config struct {
 	sessionTicketKeys []ticketKey
 }
 ```
+
+> ClientAuth, TLS Client Authentication 服务器的策略, 只有 Server 才会使用
+
+```cgo
+type ClientAuthType int
+
+const (
+	NoClientCert ClientAuthType = iota  // 不校验客户端证书
+	RequestClientCert // 需要客户端的证书
+	RequireAnyClientCert // 需要客户端的证书
+	VerifyClientCertIfGiven // 验证客户端证书
+	RequireAndVerifyClientCert // 需要客户端的证书且需要校验
+)
+```
+
+
+- x509.CertPool
+
+> CertPool 是 certificates 的集合
+
+```cgo
+// SystemCertPool返回系统证书池的副本.
+//
+// 对返回的池的任何更改都不会写入磁盘, 并且不会影响 SystemCertPool 返回的任何其他池.
+//
+// 系统证书池中的新更改不会影响在后续调用中.
+// 
+// 系统证书池的证书(PEM格式):
+// 如果设置了环境变量SSL_CERT_FILE, 则从文件SSL_CERT_FILE中加载, 否则直接加载 /var/ssl/certs/ca-bundle.crt
+// 如果设置了环境变量SSL_CERT_DIR, 则从目录SSL_CERT_DIR中加载, 否则从以下目录加载
+//      /etc/ssl/certs                // SLES10/SLES11, Ubuntu
+//      /system/etc/security/cacerts, // Android
+//      /usr/local/share/certs,       // FreeBSD
+//      /etc/pki/tls/certs,           // Fedora/RHEL
+//      /etc/openssl/certs,           // NetBSD
+//      /var/ssl/certs,     
+// 
+func SystemCertPool() (*CertPool, error) {
+	if runtime.GOOS == "windows" {
+		// Issue 16736, 18609:
+		return nil, errors.New("crypto/x509: system root pool is not available on Windows")
+	}
+
+	if sysRoots := systemRootsPool(); sysRoots != nil {
+		return sysRoots.copy(), nil
+	}
+
+	return loadSystemRoots()
+}
+```
+
+
+```cgo
+// AppendCertsFromPEM 添加 PEM 格式的证书文件
+func (s *CertPool) AppendCertsFromPEM(pemCerts []byte) (ok bool) {
+	for len(pemCerts) > 0 {
+	    // 解析 pemCerts 
+		var block *pem.Block
+		block, pemCerts = pem.Decode(pemCerts)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+        
+        // 解析 Cert
+		cert, err := ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+
+		s.AddCert(cert) // 也可以调用此方法添加证书
+		ok = true
+	}
+
+	return
+}
+```

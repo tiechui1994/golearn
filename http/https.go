@@ -42,8 +42,8 @@ func Server() {
 		Addr:    ":443",
 		Handler: mux,
 		TLSConfig: &tls.Config{
-			Certificates:       []tls.Certificate{srvCert},
-			ClientCAs:          caCertPool,                     // 专门校验客户端证书的 CA
+			Certificates:       []tls.Certificate{srvCert},     // 服务器证书
+			ClientCAs:          caCertPool,                     // 专门校验客户端的证书 [CA证书]
 			InsecureSkipVerify: false,                          // 必须校验
 			ClientAuth:         tls.RequireAndVerifyClientCert, // 校验客户端证书
 		},
