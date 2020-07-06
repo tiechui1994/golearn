@@ -46,13 +46,21 @@ func Server() {
 			ClientCAs:          caCertPool,                     // 专门校验客户端的证书 [CA证书]
 			InsecureSkipVerify: false,                          // 必须校验
 			ClientAuth:         tls.RequireAndVerifyClientCert, // 校验客户端证书
+
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			},
 		},
 		ErrorLog: log.New(os.Stdout, "", log.Lshortfile|log.Ldate|log.Ltime),
 	}
 
 	server.TLSConfig.BuildNameToCertificate() // 生成NameToCertificate
 
-	server.ListenAndServeTLS("", "")
+	err = server.ListenAndServeTLS("", "")
+	if err != nil {
+		log.Println("ListenAndServeTLS err", err)
+		return
+	}
 }
 
 func main() {

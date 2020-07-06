@@ -52,3 +52,28 @@ openssl req -new -key client.key -out client.csr
 ```bash
 openssl x509 -req -days 365 -in client.csr -CA ca.crt -CAkey ca.key -set_serial 01 -out client.crt
 ```
+
+
+### tls 流程 (ECDHE为例)
+
+- Client Hello (client -> server)
+
+![image](/images/https_clienthello.png)
+
+
+- Server Hello (server -> client)
+
+![image](/images/https_serverhello.png)
+
+
+- Certificate, Server Key Exchange, Server Hello Done (server -> client)
+
+![image](/images/https_certs.png)
+
+- Client Key Exchange, Change Cipher Spec, Encrypted Handshake Messsage (client -> server)
+
+![images](/images/https_process.png)
+
+- New Session Ticket, Change Cipher Spec, Encrypted Handshake Message (server -> client)
+
+![image](/images/https_sessionticket.png)

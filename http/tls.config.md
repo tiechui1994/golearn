@@ -65,39 +65,40 @@ type Config struct {
     // RequestClientCert或RequireAnyClientCert时, 则将考虑此回调, 但verifiedChains参数始终为nil.
 	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 
-    // RootCA定义了客户端在验证服务器证书时使用的一组根证书集合.
+    // RootCA定义了 "客户端" 在验证服务器证书时使用的一组根证书集合. 在 Client 请求当中使用
     // 如果RootCAs为nil, 则TLS使用主机的根CA集合.
 	RootCAs *x509.CertPool
 
-    // NextProtos按优先顺序列出了受支持的应用程序级别协议.
+    // NextProtos按优先顺序列出了受支持的应用程序级别协议. (ALPN)
 	NextProtos []string
 
-    // 除非设置InsecureSkipVerify, 否则ServerName用于验证返回的证书上的主机名.
+    // 除非设置InsecureSkipVerify, 否则ServerName用于验证返回的证书上的主机名. (客户端)
     // 除非它是IP地址, 否则它也包含在客户端的握手中以支持虚拟主机.
 	ServerName string
 
-    // ClientAuth 确定 TLS Client Authentication 服务器的策略. 默认值为NoClientCert.
+    // ClientAuth 确定 TLS Client Authentication 服务器的策略. 默认值为 NoClientCert. (双向认证)
 	ClientAuth ClientAuthType
     
-    // ClientCAs定义了一组根证书集合, 如果ClientAuth中的策略要求验证客户端证书, 服务器将使用这些证书.
+    // ClientCAs定义了 "服务器" 在验证客户端证书时使用的一组根证书集合. 在 Server 配置当中(双向认证)
+    // 如果ClientAuth中的策略要求验证客户端证书, 服务器将使用这些证书.
 	ClientCAs *x509.CertPool
     
-    // InsecureSkipVerify控制客户端是否验证服务器的证书链和主机名.
+    // InsecureSkipVerify控制 "客户端" 是否验证服务器的证书链和主机名.
     // 如果InsecureSkipVerify为true, 则TLS接受服务器提供的任何证书以及该证书中的任何主机名.
     // 在这种模式下, TLS容易受到中间人攻击。. 这仅应用于测试.
 	InsecureSkipVerify bool
     
     // CipherSuites是受支持的密码套件的列表, 适用于TLS 1.2以下的TLS版本. 
     // 如果CipherSuites为nil, 则使用默认的安全密码套件列表, 其优先级顺序基于硬件性能. 
-    // 默认密码套件可能会在Go版本上更改. 请注意, TLS 1.3密码套件不可配置.
+    // 默认密码套件可能会在Go版本上更改. 请注意, TLS 1.3密码套件不可配置. (客户端和服务器都可以配置)
 	CipherSuites []uint16
-
-    // PreferServerCipherSuites控制服务器是选择客户端的首选密码套件, 还是选择服务器的首选密码套件.
-    // 如果为true, 则使用按CipherSuites中的元素顺序表示的服务器首选项.
+    
+    // PreferServerCipherSuites 控制服务器是选择客户端的首选密码套件, 还是选择服务器的首选密码套件.
+    // 如果为true, 则使用按CipherSuites中的元素顺序表示的服务器首选项. (服务器)
 	PreferServerCipherSuites bool
     
-    // SessionTicketsDisabled可以设置为true以禁用会话票证和PSK(resumption [恢复])支持. 
-    // 请注意, 在客户端上, 如果ClientSessionCache为nil, 会话票证支持也会被禁用.
+    // SessionTicketsDisabled可以设置为true以禁用 Session Ticket 和 PSK(resumption [恢复])支持. 
+    // 请注意, 在客户端上, 如果ClientSessionCache为nil, Session Ticket也会被禁用.
 	SessionTicketsDisabled bool
     
     // [session resumption] https://wiki.jikexueyuan.com/project/openresty/ssl/session_resumption.html
@@ -120,7 +121,7 @@ type Config struct {
     // 如果为0, 则使用此程序包支持的最高版本, 当前版本为TLS 1.3.
 	MaxVersion uint16
     
-    // CurvePreferences包含将以优先顺序在ECDHE握手中使用的椭圆曲线. 
+    // CurvePreferences包含将以优先顺序在ECDHE握手中使用的椭圆曲线. (参数) 
     // 如果为空, 将使用默认值. 客户端将使用第一个首选项作为其TLS 1.3中密钥共享的类型. 
     // 将来可能会改变.
 	CurvePreferences []CurveID
