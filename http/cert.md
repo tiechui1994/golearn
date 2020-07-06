@@ -56,6 +56,10 @@ openssl x509 -req -days 365 -in client.csr -CA ca.crt -CAkey ca.key -set_serial 
 
 ### tls 流程 (ECDHE为例)
 
+整体流程:
+
+![image](/images/https_process.png)
+
 - Client Hello (client -> server)
 
 ![image](/images/https_clienthello.png)
@@ -72,7 +76,7 @@ openssl x509 -req -days 365 -in client.csr -CA ca.crt -CAkey ca.key -set_serial 
 
 - Client Key Exchange, Change Cipher Spec, Encrypted Handshake Messsage (client -> server)
 
-![images](/images/https_process.png)
+![images](/images/https_clientkey.png)
 
 - New Session Ticket, Change Cipher Spec, Encrypted Handshake Message (server -> client)
 
