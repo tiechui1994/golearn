@@ -566,7 +566,7 @@ struct {
 		int p1;
 		int r;
 		char __pad12[4];
-	} __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
+} __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
 ```
 
 其中, p0, p1分别对应 sum 的第一个和第二个参数, r 对应 sum 的返回值. `_pad12` 用于填充结构体保证对齐CPU机器字
@@ -580,16 +580,7 @@ struct {
 
 调用链:
 
-```
-main.go     main.cgo1.go    _cgo_types.go       runtime.cgocall     main.cgo2.c
-C.sum(1,1)
-            _Cfunc_sum(1,1)
-                            _cgo_runtime_cgocall(...)
-                                                _cgo_runtime_cgocall(...)   
-                                                                    _cgo_xxx_Cfunc_sum(void*)
-                                                _cgo_runtime_cgocall(...)
-2
-``` 
+![image](/images/cgo_call_process.png)
 
 文件链:
 

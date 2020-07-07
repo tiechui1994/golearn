@@ -58,6 +58,9 @@ func InitClient() *http.Client {
 }
 
 /*
+// --cert, --key 是客户端的证书
+// --cacert 是服务器的CA证书
+
 curl -X GET \
 	 --cert certs/client/client.crt --key certs/client/client.key.text \
 	 --cacert certs/ca/ca.crt \
