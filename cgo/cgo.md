@@ -398,7 +398,7 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 指针简单转换流程图:
 
-![image](../images/xtoy.png)
+![image](/images/xtoy.png)
 
 
 ### 数值和指针的转换
@@ -409,7 +409,7 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
 
-![image](../images/numtoptr.png)
+![image](/images/numtoptr.png)
 
 ### 切片间的转换
 
@@ -441,21 +441,20 @@ qHdr.Cap = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
 
 对于比较简单的 cgo 代码可以直接手工调用 `go tool cgo` 命令来查看生成的中间文件.
 
-在一个 Go 源文件当中, 如果出现 `import "C"` 指令则表示将调用 cgo 命令生成对应的中间文件. 下面是生成的中间
-文件的简单示意图:
+在一个 Go 源文件当中, 如果出现 `import "C"` 指令则表示将调用 cgo 命令生成对应的中间文件. 下面是生成的中间文件的简单
+示意图:
 
-![image](../images/cgo_mid.png)
+![image](/images/cgo_mid.png)
 
 
-包含有 4 个 Go 文件, 其中 nocgo 开头的文件中没有 `import "C"` 指令, 其他的 2 个文件则包含了 cgo 代码. 
-cgo 命令会为每个包含 cgo 代码的 Go 文件创建 2 个中间文件, 比如 main.go 会分别创建 `main.cgo1.go` 和 
-`main.cgo2.c` 两个中间文件, cgo当中是 Go 代码部分和 C 代码部分.
+包含有 4 个 Go 文件, 其中 nocgo 开头的文件中没有 `import "C"` 指令, 其他的 2 个文件则包含了 cgo 代码. cgo 命令
+会为每个包含 cgo 代码的 Go 文件创建 2 个中间文件, 比如 main.go 会分别创建 **main.cgo1.go** 和 **main.cgo2.c** 
+两个中间文件, cgo当中是 Go 代码部分和 C 代码部分.
 
-然后会为整个包创建一个 `_cgo_gotypes.go` Go 文件, 其中包含 Go 语言部分辅助代码. 此外还创建一个 
-`_cgo_export.h` 和 `_cgo_export.c` 文件, 对应 Go 语言导出到 C 语言的类型和函数.
+然后会为整个包创建一个 **_cgo_gotypes.go** Go 文件, 其中包含 Go 语言部分辅助代码. 此外还创建一个 **_cgo_export.h**
+和 **_cgo_export.c** 文件, 对应 Go 语言导出到 C 语言的类型和函数.
 
 ```cgo
-/*
 package main
 
 /*
@@ -483,7 +482,7 @@ main.cgo1.go
 main.cgo2.c
 ```
 
-其中 `main.cgo1.go [1]` 的代码如下:
+其中 **main.cgo1.go [1]** 的代码如下:
 
 ```
 package main
@@ -500,10 +499,10 @@ func main() {
 }
 ```
 
-其中 C.sum(1,1) 函数调用替换成了 (_Cfunc_sum)(1,1). 每一个 `C.xxx` 形式的函数都会被替换成 `_Cfunc_xxx`
+其中 `C.sum(1,1)` 函数调用替换成了 `(_Cfunc_sum)(1,1)`. 每一个 `C.xxx` 形式的函数都会被替换成 `_Cfunc_xxx`
 格式的纯 Go 函数, 其中前缀 `_Cfunc_` 表示这是一个C函数, 对应一个私有的 Go 桥接函数.
 
-`_Cfunc_sum` 函数在 cgo 生成的 `_cgo_gotypes.go [2]` 文件当中定义:
+**_Cfunc_sum** 函数在 cgo 生成的 **_cgo_gotypes.go [2]** 文件当中定义:
 
 ```
 //go:cgo_import_static _cgo_7b5139e7c7da_Cfunc_sum
@@ -523,8 +522,8 @@ func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
 }
 ```
 
-`_Cfunc_sum` 函数的参数和返回值 `_Ctype_int` 类型对应 `C.int` 类型, 命名的规则和 `_C_func_xxx`
-类似, 不同的前缀用于区分函数和类型.
+`_Cfunc_sum` 函数的参数和返回值 `_Ctype_int` 类型对应 `C.int` 类型, 命名的规则和 `_C_func_xxx` 类似, 不同的前
+缀用于区分函数和类型.
 
 `_cgo_runtime_cgocall` 对应 `runtime.cgocall` 函数, 声明如下:
 
@@ -535,8 +534,8 @@ func runtime.cgocall(fn, arg unsafe.Pointer) int32
 > 第一个参数是 C 语言函数的地址
 > 第二个参数是存储 C 语言函数对应的参数结构体(参数和返回值)的地址
 
-在此例当中, 被传入C语言函数 `_cgo_7b5139e7c7da_Cfunc_sum` 也是 cgo 生成的中间函数. 函数定义在
-`main.cgo2.c [3]` 当中.
+在此例当中, 被传入C语言函数 **_cgo_7b5139e7c7da_Cfunc_sum** 也是 cgo 生成的中间函数. 函数定义在**main.cgo2.c [3]** 
+当中.
 
 ```
 void _cgo_7b5139e7c7da_Cfunc_sum(void *v)
@@ -569,14 +568,14 @@ struct {
 } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
 ```
 
-其中, p0, p1分别对应 sum 的第一个和第二个参数, r 对应 sum 的返回值. `_pad12` 用于填充结构体保证对齐CPU机器字
-的整数倍.
+其中, p0, p1分别对应 sum 的第一个和第二个参数, r 对应 sum 的返回值. `_pad12` 用于填充结构体保证对齐CPU机器字的整
+数倍.
 
 > 然后从参数执行的结构体获取参数后开始调用真实的C语言版sum函数, 并且将返回值保存到结构体的返回值对应的成员.
 
 
-因为 Go 语言和 C 语言有着不同的内存模型和函数调用规范, 其中 `_cgo_topofstack` 函数相关的代码用于 C 函数调用后
-恢复调用栈. `_cgo_tsan_acquire` 和 `_cgo_tsan_release` 则是用于扫描 CGO 相关函数的指针总相关检查.
+因为 Go 语言和 C 语言有着不同的内存模型和函数调用规范, 其中 `_cgo_topofstack` 函数相关的代码用于 C 函数调用后恢复
+调用栈. `_cgo_tsan_acquire` 和 `_cgo_tsan_release` 则是用于扫描 CGO 相关函数的指针总相关检查.
 
 调用链:
 
