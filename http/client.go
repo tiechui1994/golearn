@@ -41,9 +41,9 @@ func InitClient() *http.Client {
 	caCertPool.AppendCertsFromPEM(caCrt)
 
 	config := tls.Config{
-		Certificates:       []tls.Certificate{cliCert}, // 客户端证书
+		Certificates:       []tls.Certificate{cliCert}, // 客户端证书, 双向认证必须携带
 		RootCAs:            caCertPool,                 // 校验服务端证书 [CA证书]
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: false,                      // 不用校验服务器证书
 	}
 	config.BuildNameToCertificate()
 
