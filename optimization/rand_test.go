@@ -1,7 +1,17 @@
 package optimization
 
-import "testing"
+import (
+	"testing"
+)
 
 func BenchmarkRandStringRunes(b *testing.B) {
-	RandString(1000000)
+	for i:=0; i<b.N; i++ {
+		RandStringRunes(1000)
+	}
+}
+
+func BenchmarkRandString(b *testing.B) {
+	for i:=0; i<b.N; i++ {
+		RandString(1000)
+	}
 }
