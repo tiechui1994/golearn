@@ -75,7 +75,7 @@ ar rcs libmath.a math.o
 生成 libmath.so 动态库:
 
 ```
-gcc -shared -o libmath.so math.c
+gcc -shared -fPIC -o libmath.so math.c
 ```
 
 
