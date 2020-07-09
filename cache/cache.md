@@ -8,10 +8,10 @@ golang 当中比较缓存分别是 freecache, bigcache, groupcache. 以下主要
 
 实现的思路:
 
-通过 hash 的方式进行分片. 每一个分片包含一个 map 和一个 ring buffer. 无论如何添加数据, 都会将它放置到对应的 ring 
-buffer 中, 并且将位置保存在 map 中. 如果多次设置相同的元素, 则 ring buffer 中的旧值则会标记为无效.
+通过 hash 的方式进行分片. 每一个分片包含一个 map 和一个 byte queue. 无论如何添加数据, 都会将它放置到对应的 byte 
+queue 中, 并且将位置保存在 map 中. 如果多次设置相同的元素, 则 byte queue 中的旧值则会标记为无效.
 
-每一个 map 的key都是一个 uint64 的 hash 值, 每个值对应一个存储着元数据的 ring buffer. 如果 hash 值碰撞了, 
+每一个 map 的key都是一个 uint64 的 hash 值, 每个值对应一个存储在 byte queue 中的位置. 如果 hash 值碰撞了, 
 bigcache 会忽略旧值 key (将旧的 hash 重置为0), 然后把新的值存储到 map 中. 使用 `map[uint64]uint32` 是避免 GC 
 扫描.
 
@@ -109,7 +109,7 @@ func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
 }
 ```
 
-> 底层 ring bufer 的 Push 操作. **比较复杂**
+> 底层 byte queue 的 Push 操作. **比较复杂**
 
 ````cgo
 func (q *BytesQueue) Push(data []byte) (int, error) {
@@ -117,7 +117,7 @@ func (q *BytesQueue) Push(data []byte) (int, error) {
 	dataLen := len(data)
 	headerEntrySize := getUvarintSize(uint32(dataLen))
     
-    // 查找位置
+    // 查找位置, 类似循环队列(数组的形式)
 	if !q.canInsertAfterTail(dataLen + headerEntrySize) {
 		if q.canInsertBeforeHead(dataLen + headerEntrySize) {
 			q.tail = leftMarginIndex
@@ -201,7 +201,7 @@ func (s *cacheShard) get(key string, hashedKey uint64) ([]byte, error) {
 }
 ```
 
-> ring buf 根据 index 获取内容
+> byte queue 根据 index 获取内容
 
 ```cgo
 // 获取 index 位置的原始内容
@@ -288,7 +288,7 @@ func (s *cacheShard) del(hashedKey uint64) error {
 		if s.statsEnabled {
 			delete(s.hashmapStats, hashedKey) // 统计信息的移除
 		}
-		resetKeyFromEntry(wrappedEntry) // 将 ring buf 的当中元素的 hashkey 重置
+		resetKeyFromEntry(wrappedEntry) // 将 byte queue 的当中元素的 hashkey 重置
 	}
 	s.lock.Unlock()
 

@@ -6,7 +6,7 @@ import (
 
 func BenchmarkRandStringRunes(b *testing.B) {
 	for i:=0; i<b.N; i++ {
-		RandStringRunes(1000)
+		RandRunes(1000)
 	}
 }
 

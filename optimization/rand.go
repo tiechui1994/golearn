@@ -1,6 +1,8 @@
 package optimization
 
-import "math/rand"
+import (
+	"math/rand"
+)
 
 const (
 	letterBytes   = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -9,27 +11,45 @@ const (
 	letterIdxMax  = 63 / letterIdxBits
 )
 
-func RandStringRunes(n int) string {
-	b := make([]byte, n)
+type random struct {
+	buffer []byte
+}
+
+var rnd random
+
+func (r *random) randRunes(n int) string {
+	if cap(r.buffer) < n {
+		r.buffer = make([]byte, n)
+	}
 	for i, cache, remain := n-1, rand.Int63(), letterIdxMax; i >= 0; {
 		if remain == 0 {
 			cache, remain = rand.Int63(), letterIdxMax
 		}
 		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
-			b[i] = letterBytes[idx]
+			r.buffer[i] = letterBytes[idx]
 			i--
 		}
 		cache >>= letterIdxBits
 		remain--
 	}
-	return string(b)
+	return string(r.buffer)
+}
+
+func (r *random) randString(n int) string {
+	if cap(r.buffer) < n {
+		r.buffer = make([]byte, n)
+	}
+	for i := 0; i < n; i++ {
+		r.buffer[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+
+	return string(r.buffer)
+}
+
+func RandRunes(n int) string {
+	return rnd.randRunes(n)
 }
 
 func RandString(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-
-	return string(b)
+	return rnd.randString(n)
 }
