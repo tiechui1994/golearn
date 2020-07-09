@@ -330,4 +330,98 @@ func (seg *segment) expand() {
 	seg.slotsData = newSlotData
 }
 ```
+
+
+> segment get 方法
+
+```cgo
+func (seg *segment) get(key, buf []byte, hashVal uint64, peek bool) (value []byte, expireAt uint32, err error) {
+	// 获取 key 的存储位置信息 entryPtr
+	slotId := uint8(hashVal >> 8)
+	hash16 := uint16(hashVal >> 16)
+	slot := seg.getSlot(slotId)
+	idx, match := seg.lookup(slot, hash16, key)
+	if !match {
+		err = ErrNotFound
+		if !peek {
+			atomic.AddInt64(&seg.missCount, 1)
+		}
+		return
+	}
+	
+	// 查找到了, 需要更新一些信息
+	ptr := &slot[idx]
+
+	var hdrBuf [ENTRY_HDR_SIZE]byte
+	seg.rb.ReadAt(hdrBuf[:], ptr.offset)
+	hdr := (*entryHdr)(unsafe.Pointer(&hdrBuf[0]))
+	
+	if !peek {
+	    // TTL 检测
+		now := seg.timer.Now()
+		expireAt = hdr.expireAt
+
+		if hdr.expireAt != 0 && hdr.expireAt <= now {
+			seg.delEntryPtr(slotId, slot, idx)
+			atomic.AddInt64(&seg.totalExpired, 1)
+			err = ErrNotFound
+			atomic.AddInt64(&seg.missCount, 1)
+			return
+		}
+		
+		// 更新 access time
+		atomic.AddInt64(&seg.totalTime, int64(now-hdr.accessTime))
+		hdr.accessTime = now
+		seg.rb.WriteAt(hdrBuf[:], ptr.offset)
+	}
+	
+	// buf 的避免重复分配内存.
+	if cap(buf) >= int(hdr.valLen) {
+		value = buf[:hdr.valLen]
+	} else {
+		value = make([]byte, hdr.valLen)
+	}
+    
+    // 读取内容
+	seg.rb.ReadAt(value, ptr.offset+ENTRY_HDR_SIZE+int64(hdr.keyLen))
+	
+	// 更新 counters
+	if !peek {
+		atomic.AddInt64(&seg.hitCount, 1)
+	}
+	return
+}
+```
                                           
+
+> segment del 方法
+
+```cgo
+func (seg *segment) del(key []byte, hashVal uint64) (affected bool) {
+	slotId := uint8(hashVal >> 8)
+	hash16 := uint16(hashVal >> 16)
+	slot := seg.getSlot(slotId)
+	idx, match := seg.lookup(slot, hash16, key)
+	if !match {
+		return false
+	}
+	
+	// 删除 entryPtr
+	seg.delEntryPtr(slotId, slot, idx)
+	return true
+}
+```
+
+```cgo
+func (seg *segment) delEntryPtr(slotId uint8, slot []entryPtr, idx int) {
+	offset := slot[idx].offset
+	var entryHdrBuf [ENTRY_HDR_SIZE]byte
+	seg.rb.ReadAt(entryHdrBuf[:], offset) // 读取 entryPtr
+	entryHdr := (*entryHdr)(unsafe.Pointer(&entryHdrBuf[0]))
+	entryHdr.deleted = true // 标记删除
+	seg.rb.WriteAt(entryHdrBuf[:], offset) // 回写, 这样下次读取可以看到标记删除
+	copy(slot[idx:], slot[idx+1:])
+	seg.slotLens[slotId]-- // 减少 slotLens
+	atomic.AddInt64(&seg.entryCount, -1)
+}
+```
