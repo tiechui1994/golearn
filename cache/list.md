@@ -1,7 +1,8 @@
 ## List 
 
+golang 里的 List (在`container/list`包当中) 是一个特殊的双向链表. 
 
-golang 里的 List (在`container/list`包当中) 是一个双向链表. 
+每一个元素会直接指向链表的"哨兵节点". 
 
 数据结构:
 
@@ -28,7 +29,7 @@ type List struct {
 }
 ```
 
-- 链表初始化 
+### 链表初始化 
 
 ```cgo
 func (l *List) Init() *List {
@@ -51,7 +52,7 @@ func (l *List) lazyInit() {
 ```
 
 
-- 插入数据
+### 插入数据
 
 ```cgo
 // 在 at 后面插入 e
@@ -62,7 +63,7 @@ before:
     X      at      Y
        <-      <- 
  
----------------------------------
+------------------------------
  
 after:
        ->      ->      ->
@@ -89,7 +90,7 @@ func (l *List) insert(e, at *Element) *Element {
 ```
 
 
-- 删除数据
+### 删除数据
 
 ```cgo
 // 删除元素 e
@@ -100,7 +101,7 @@ before:
     X      e       Y
        <-      <- 
  
----------------------------------
+---------------------
 
 after:
        ->      
@@ -125,7 +126,7 @@ func (l *List) remove(e *Element) *Element {
 ```
 
 
-- 移动元素
+### 移动元素
 
 ```cgo
 // 将元素 e 移动到 at 后面, 然后返回 e
@@ -136,7 +137,7 @@ before:
     X      e       Y .... U      at      V
        <-      <-            <-      <-
  
----------------------------------
+-------------------------------------------
 
 after:
        ->     ->      ->             ->
@@ -165,7 +166,7 @@ func (l *List) move(e, at *Element) *Element {
 }
 ```
 
-- 合并 list  
+### 合并 list  
 
 ```cgo
 func (l *List) PushBackList(other *List) {
@@ -179,7 +180,7 @@ func (l *List) PushBackList(other *List) {
 ```
 
 
-- 移动元素位置
+### 移动元素位置
 
 ```cgo
 // 将 e 移动到 mark 的后面
