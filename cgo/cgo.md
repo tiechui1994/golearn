@@ -734,5 +734,222 @@ Go 之间的互联. 因为 CGO 只支持 C 语言中值类型的数据类型, �
 >
 > 1.必须采用了静态库/动态库链接的方式去编译链接.(使用代码的方式编译不了)
 >
-> 2.在使用 gcc 编译包装了 C++ 库的时候, 一定要链接 `stdc++` 库 (即一定要有 `LDFLAGS` 参数, 且必须包含 `-l stdc++` 选项).
+> 2.在使用 gcc 编译包装了 C++ 库的时候, 一定要链接 `stdc++` 库 (即一定要有 `LDFLAGS` 参数, 且必须包含 
+> `-l stdc++` 选项).
 
+下面是一个详细的案例:
+
+C++ 代码:
+
+> buffer.h, buffer.cpp 是使用 c++ 实现的一个简单缓存类
+
+buffer.h
+
+```cgo
+#include <string>
+
+class Buffer {
+    private:
+        std::string* s_;
+
+    public:
+        Buffer(int size);
+        ~Buffer(){}
+
+        int Size();
+        char* Data();
+};
+```
+
+buffer.cpp
+
+```cgo
+#include "buffer.h"
+#include <string>
+
+
+Buffer::Buffer(int size) {
+    this->s_ = new std::string(size, char('\0'));
+}
+
+int Buffer::Size() {
+    return this->s_->size();
+}
+
+char* Buffer::Data() {
+    return (char*)this->s_->data();
+}
+```
+
+
+> **buffer_c.h 和 buffer.cpp 是使用 C 代码包装 C++ 的类 Buffer, 这个也称为桥接**
+>
+> **需要深刻理解 `extern "C"` 的含义, 这是 Go 调用 C++ 的关键环节.**
+
+**buffer_c.h**
+
+```cgo
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct Buffer_T Buffer_T;
+
+Buffer_T* NewBuffer(int size);
+void DeleteBuffer(Buffer_T* p);
+
+char* Buffer_Data(Buffer_T* p);
+int Buffer_Size(Buffer_T* p);
+
+#ifdef __cplusplus
+}
+#endif
+```
+
+**buffer_c.cpp**
+
+```cgo
+#include "buffer.h"
+#include "buffer_c.h"
+
+// 注意这里的包装继承机制
+struct Buffer_T: Buffer {
+    Buffer_T(int size): Buffer(size) {}
+    ~Buffer_T() {}
+};
+
+Buffer_T* NewBuffer(int size) {
+    Buffer_T* p = new Buffer_T(size);
+    return p;
+}
+
+void DeleteBuffer(Buffer_T* p) {
+    delete p;
+}
+
+char* Buffer_Data(Buffer_T* p) {
+    return p->Data();
+}
+
+int Buffer_Size(Buffer_T* p) {
+    return p->Size();
+}
+```
+
+> **buffer_c.go 是使用 go 对 C 代码进行了一次包装.**
+>
+> **注意: 在链接的时候一定要链接库 buffer 和 stdc++**
+
+**buffer_c.go**
+
+```cgo
+package main
+
+/*
+#cgo CXXFLAGS: -std=c++11 -I .
+#cgo LDFLAGS: -L . -l buffer -l stdc++
+
+#include "buffer_c.h"
+*/
+import "C"
+
+/**
+这里采用了静态库链接的方式, 链接 libbuffer.a 文件
+在使用 gcc 编译包装了 C++ 库的时候, 一定要链接 "stdc++" 库.
+**/
+
+type cgo_Buffer_T C.Buffer_T
+
+func cgo_NewBuffer(size int) *cgo_Buffer_T {
+	p := C.NewBuffer(C.int(size))
+	return (*cgo_Buffer_T)(p)
+}
+
+func cgo_DeleteBuffer(p *cgo_Buffer_T) {
+	C.DeleteBuffer((*C.Buffer_T)(p))
+}
+
+// 获取 buffer 的指针
+func cgo_Buffer_Data(p *cgo_Buffer_T) *C.char {
+	return C.Buffer_Data((*C.Buffer_T)(p))
+}
+
+// 获取 buffer 大小
+func cgo_Buffer_Size(p *cgo_Buffer_T) C.int {
+	return C.Buffer_Size((*C.Buffer_T)(p))
+}
+```
+
+> buffer_go.go, 按照 go 的规范包装 buffer_c.go 代码
+
+buffer_go.go
+
+```cgo
+package main
+
+import "unsafe"
+
+type Buffer struct {
+	cptr *cgo_Buffer_T
+}
+
+func NewBuffer(size int) *Buffer {
+	return &Buffer{
+		cptr: cgo_NewBuffer(size),
+	}
+}
+
+func (p *Buffer) Delete() {
+	cgo_DeleteBuffer(p.cptr)
+}
+
+// 获取Buffer的内容
+func (p *Buffer) Data() []byte {
+	data := cgo_Buffer_Data(p.cptr)
+	size := cgo_Buffer_Size(p.cptr)
+	return ((*[1 << 31]byte)(unsafe.Pointer(data)))[0:int(size):int(size)]
+}
+```
+
+> main.go, 最终的测试函数
+
+main.go
+
+```cgo
+// #include <stdio.h>
+import "C"
+import "unsafe"
+
+func main() {
+    // 创建 C++ Buffer
+	buf := NewBuffer(1024) 
+	defer buf.Delete()
+    
+    // 将 "Hello" 放置到 Buffer 当中
+	copy(buf.Data(), []byte("Hello\x00")) 
+	C.puts((*C.char)(unsafe.Pointer(&(buf.Data()[0]))))
+}
+```
+
+> makefile 编译
+
+makefile
+
+```makefile
+export LIBRARY_PATH=$(CURDIR)
+SRC = $(wildcard *.go)
+
+# build go, dep buffer static lib
+gomain: $(SRC) libbuffer.a
+	go build -o gomain -ldflags "-w" -x $(SRC)
+
+# build libbuffer static lib
+libbuffer.a:
+	$(CXX) $(CXXFLAGS) -c buffer_c.cpp buffer_cpp.cpp
+	$(AR) -r libbuffer.a buffer_c.o buffer_cpp.o
+
+.PHONY : clean
+clean:
+	-rm -rf gomain *.o *.a *.gch
+
+```
