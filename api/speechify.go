@@ -200,7 +200,7 @@ func (s *Speech) Speech(text, dest string) error {
 	}
 
 	// OutputFormat: ogg_vorbis, json, mp3, pcm
-	body := fmt.Sprintf(`{"VoiceId": "Zhiyu", "OutputFormat": "mp3", "Text": "%v"}`, text)
+	body := fmt.Sprintf(`{"VoiceId": "%v", "OutputFormat": "mp3", "Text": "%v"}`, EN_USA_Woman, text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
 	now := time.Now()

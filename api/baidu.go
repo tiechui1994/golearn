@@ -11,6 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"strings"
+	"flag"
+	"os"
+	"path/filepath"
 )
 
 /**
@@ -30,7 +34,7 @@ var bclient = &http.Client{
 }
 
 // https://developer.baidu.com/vcast 登录百度账号, 获取 Cookie 信息
-const COOKIE = ""
+var COOKIE = ""
 
 func ConvertText(text string, filename string) (err error) {
 	values := make(url.Values)
@@ -102,10 +106,4 @@ func Download(u string, filename string) (err error) {
 	ioutil.WriteFile(filename+".mp3", data, 0666)
 
 	return nil
-}
-
-func main() {
-	text := "ok google, turn on switch"
-	filename := "Light_Google_001_turnon_en"
-	ConvertText(text, filename)
 }

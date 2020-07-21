@@ -7,6 +7,11 @@ import (
 	"log"
 	"encoding/gob"
 	"os"
+	"strings"
+	"bytes"
+	"path/filepath"
+	"flag"
+	"io/ioutil"
 )
 
 func TestUploadFlow(t *testing.T) {
@@ -204,9 +209,107 @@ func TestLongSpeech(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		time.Sleep(3*time.Second)
+		time.Sleep(3 * time.Second)
 		msg, _ := s.SendSpeech("./data/66.wav")
 		log.Println("msg", msg)
 	}()
 	<-done
+}
+
+const (
+	dir  = "/home/user/Downloads/speaker/mp3/"
+	data = `
+Alexa,open the door; 10039_rmmin3_Alexa_001_OpenDoor_en.amr
+Alexa,close the door; 10039_rmmin3_Alexa_002_CloseDoor_en.amr
+Alexa,lock the door; 10039_rmmin3_Alexa_001_LockDoor_en.amr
+Alexa,unlock the door; 10039_rmmin3_Alexa_002_UnlockDoor_en.amr
+`
+)
+
+func TestSpeechs(t *testing.T) {
+	speech := Speech{Region: "us-west-2"}
+	fd, err := os.Open("./data/speech.data")
+	if err != nil || time.Now().Unix() > int64(speech.Expiration) {
+		err := speech.Identity()
+		if err != nil {
+			t.Fatal("err", err)
+		}
+		fd, _ = os.Create("./data/speech.data")
+		gob.NewEncoder(fd).Encode(&speech)
+	} else {
+		gob.NewDecoder(fd).Decode(&speech)
+	}
+
+	tokens := strings.Split(data, "\n")
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		token = strings.TrimSuffix(token, ";")
+		if len(token) == 0 {
+			continue
+		}
+
+		ts := strings.Split(token, ";")
+		if len(ts) == 2 {
+			text := strings.TrimSpace(ts[0])
+			filename := strings.Replace(strings.TrimSpace(ts[1]), ".amr", ".mp3", 1)
+			err = speech.Speech(text, dir+filename)
+			t.Log("err", err)
+			time.Sleep(200 * time.Millisecond)
+		}
+
+	}
+}
+
+func TestBaiduAudio(t *testing.T) {
+	f := flag.String("input", "", "input voice text")
+	o := flag.String("output", "", "output voice dir")
+	flag.Parse()
+	if f == nil || *f == "" {
+		log.Println("input file not exist")
+		return
+	}
+	if o == nil || *o == "" {
+		log.Println("output file not exist")
+		return
+	}
+
+	fd, err := os.Stat(*f)
+	if err != nil || fd.IsDir() {
+		log.Println("input file invalid")
+		return
+	}
+
+	fd, err = os.Stat(*o)
+	if err != nil && os.IsNotExist(err) {
+		os.MkdirAll(*o, 0666)
+	}
+
+	data, _ := ioutil.ReadFile(*f)
+
+loop:
+	var buf bytes.Buffer
+	tokens := strings.Split(string(data), "\n")
+	for _, token := range tokens {
+		t := strings.TrimSpace(token)
+		t = strings.TrimSuffix(t, ";")
+		if len(t) == 0 {
+			continue
+		}
+
+		ts := strings.Split(t, ";")
+		if len(ts) == 2 {
+			text := strings.TrimSpace(ts[0])
+			filename := strings.Replace(strings.TrimSpace(ts[1]), ".amr", ".mp3", 1)
+			err := ConvertText(text, filepath.Join(*o, filename))
+			if err != nil {
+				buf.WriteString(t + "\n")
+			}
+			time.Sleep(5000 * time.Millisecond)
+		}
+	}
+
+	if buf.Len() > 0 {
+		data = buf.Bytes()
+		goto loop
+	}
 }
