@@ -199,8 +199,11 @@ func (s *Speech) Speech(text, dest string) error {
 		return fmt.Errorf("invalid regions")
 	}
 
+	// Engine: standard, neural
+	// LanguageCode: arb | cmn-CN | cy-GB | da-DK | de-DE | en-AU | en-GB | en-GB-WLS | en-IN | en-US | es-ES | es-MX | es-US | fr-CA | fr-FR | is-IS | it-IT | ja-JP | hi-IN | ko-KR | nb-NO | nl-NL | pl-PL | pt-BR | pt-PT | ro-RO | ru-RU | sv-SE | tr-TR
 	// OutputFormat: ogg_vorbis, json, mp3, pcm
-	body := fmt.Sprintf(`{"VoiceId": "%v", "OutputFormat": "mp3", "Text": "%v"}`, EN_USA_Woman, text)
+	body := fmt.Sprintf(`{"Engine":"standard","VoiceId":"%v","OutputFormat":"mp3","Text":"%v","SampleRate":"24000","LanguageCode":"en-GB"}`,
+		EN_USA_Woman, text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
 	now := time.Now()
