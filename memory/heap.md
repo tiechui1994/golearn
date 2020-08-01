@@ -8,7 +8,9 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 	mp := acquirem()
 	mp.mallocing = 1
 
-	c := gomcache()
+	shouldhelpgc := false
+    dataSize := size
+    c := gomcache()
 	var x unsafe.Pointer
 	noscan := typ == nil || typ.ptrdata == 0
 	if size <= maxSmallSize {
@@ -124,7 +126,7 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 3. 调用 `runtime.memclrNoHeapPointers` 清空空闲内存中的所有数据.
 
 确定待分配的大小以及跨度类需要使用预先计算好的 `size_to_class8`, `size_to_class128`, 以及 `class_to_size` 字
-典, 这些字典能够帮助我们快速获取对应的值并构建 `runtime.spanClass`
+典, 这些字典能够帮助我们快速获取对应的值并构建 `runtime.spanClass`:
 
 ```cgo
 func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
@@ -157,3 +159,50 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 	return x
 }
 ```
+
+在上述片段中, 我们重点分析两个函数和方法的实现原理. 它们分别是 `runtime.nextFreeFast` 和 `runtime.mcache.nextFree`
+这两个函数会帮助我们获取空闲的内存空间. `runtime.nextFreeFast` 会利用内存管理单元的 `allocCache` 字段, 快速找到
+该字段中位1的位数, 在上面介绍过 1 表示该位对应的内存空间是空闲的:
+
+```cgo
+func nextFreeFast(s *mspan) gclinkptr {
+	theBit := sys.Ctz64(s.allocCache)
+	if theBit < 64 {
+		result := s.freeindex + uintptr(theBit)
+		if result < s.nelems {
+			freeidx := result + 1
+			if freeidx%64 == 0 && freeidx != s.nelems {
+				return0
+			}
+			s.allocCache >>= uint(theBit + 1)
+			s.freeindex = freeidx
+			s.allocCount++
+			return gclinkptr(result*s.elemsize + s.base())
+		}
+	}
+	return 0
+}
+```
+
+找到了空闲的对象后, 就可以更新内存管理单元的 `allocCache`, `freeindex` 等字段并返回该片内存了; 如果没有找到空闲的内
+存, 运行时会通过 `runtime.mcache,nextFree`找到新的内存管理单元:
+
+```cgo
+func (c *mcache) nextFree(spc spanClass) (v gclinkptr, s *mspan, shouldhelpgc bool) {
+	s = c.alloc[spc]
+	freeIndex := s.nextFreeIndex()
+	if freeIndex == s.nelems {
+		c.refill(spc)
+		s = c.alloc[spc]
+		freeIndex = s.nextFreeIndex()
+	}
+
+	v = gclinkptr(freeIndex*s.elemsize + s.base())
+	s.allocCount++
+	return
+}
+```
+
+如果我们的线程缓存中没有找到可用的内存管理单元, 会通过 `runtime.mcache.refill` 使用中心缓存中的内存管理单元替换已经
+不存在可用对象的结构体, 该方法会调用新结构体的 `runtime.mspan.nextFreeIndex` 获取空闲的内存并返回.
+
