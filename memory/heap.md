@@ -10,9 +10,10 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 
 	shouldhelpgc := false
     dataSize := size
-    c := gomcache()
+    c := gomcache() // get mcache
 	var x unsafe.Pointer
-	noscan := typ == nil || typ.ptrdata == 0
+	noscan := typ == nil || typ.ptrdata == 0 // true 表示非指针, false 表示指针
+	// maxSmallSize 32768, maxTinySize 16
 	if size <= maxSmallSize {
 		if noscan && size < maxTinySize {
 			// 微对象分配
@@ -42,18 +43,26 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 
 #### 微对象
 
-将小于16字节的对象划分为微对象, 它会使用线程缓存上的微分配器提高对象分配的性能, 我们主要使用它来分配较小的字符串以及逃逸
-的临时变量. 微分配器可以将多个较小的内存分配请求合入同一个内存块中, 只有当内存块中的所有对象都需要被回收时, 整片内存才可
-能被回收.
+**将小于16字节的对象划分为微对象**, 它会使用线程缓存上的微分配器提高对象分配的性能, 我们**主要使用它来分配较小的字符串以
+及逃逸的临时变量**. 微分配器可以将多个较小的内存分配请求合入同一个内存块中, 只有当内存块中的所有对象都需要被回收时, 整片
+内存才可能被回收.
 
 **微分配器管理的对象不可以是指针类型**, 管理多个对象的内存块大小 `maxTinySize` 是可以调整的, 在默认情况下, 内存块的
 大小为16字节. `maxTinySize` 的值越大, 结合多个对象的可能性就越高, 内存浪费也就越严重; `maxTinySize` 越小, 内存浪
-费就会越小, 不过无论如何调整, 8的倍数是一个很好的选择.
+费就会越小, 不过无论如何调整, 8 的倍数是一个很好的选择. 
+
+> 8个字节完全不会浪费，但是合并的机会较少. 32字节提供了更多的合并机会，但可能导致最坏情况下浪费4倍.
+
+不能显式释放从微分配器获得的对象. 因此, 当明确释放对象时, 我们确保其 size >= maxTinySize.
+
+下面是一个例子:
 
 ![image](/images/mem_tiny_alloc.png)
 
 微分配器已经在16字节的内存块中分配了12字节的对象, 如果下一个待分配的对象小于4字节, 它就会使用上述的内存块的剩余部分, 减
-少内存碎片, 不过该内存块只有3个对象都被标记为垃圾时才会被回收.
+少内存碎片, 不过该内存块只有2个对象都被标记为垃圾时才会被回收.
+
+---
 
 线程缓存 `runtime.mcache` 中的 `tiny` 字段指向了 `maxTinySize` 大小的块, 如果当前块中还包含大小合适的空闲内存, 
 运行时会通过基地址和偏移量获取并返回这块内存:
@@ -63,8 +72,18 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 	...
 	if size <= maxSmallSize {
 		if noscan && size < maxTinySize {
-			off := c.tinyoffset
+		    // 微对象, 在 mcache 当前块中找到合适大小的内存
+			off := c.tinyoffset // mcache 的偏移量
+			// align tiny pointer 以进行必需的对齐.
+			if size&7 == 0 {
+                off = round(off, 8)
+            } else if size&3 == 0 {
+                off = round(off, 4)
+            } else if size&1 == 0 {
+                off = round(off, 2)
+            }
 			if off+size <= maxTinySize && c.tiny != 0 {
+			    //  The object fits into existing tiny block.
 				x = unsafe.Pointer(c.tiny + off)
 				c.tinyoffset = off + size
 				c.local_tinyallocs++
@@ -88,16 +107,17 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 	if size <= maxSmallSize {
 		if noscan && size < maxTinySize {
 			...
-			// [1]
+			// [1] 线程缓存中分配一个新的 maxTinySize 块
 			span := c.alloc[tinySpanClass]
 			v := nextFreeFast(span)
 			if v == 0 {
-			    // [2]
+			    // [2] 中心缓存或者堆中获取可分配的内存块
 				v, _, _ = c.nextFree(tinySpanClass)
 			}
 			x = unsafe.Pointer(v)
 			(*[2]uint64)(x)[0] = 0
 			(*[2]uint64)(x)[1] = 0
+			// 根据剩余的可用空间量, 看看是否需要用新的小块替换现有的小块.
 			if size < c.tinyoffset || c.tiny == 0 {
 				c.tiny = uintptr(x)
 				c.tinyoffset = size
@@ -135,23 +155,27 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 		...
 		} else {
 			var sizeclass uint8
-			if size <= smallSizeMax-8 {
-				sizeclass = size_to_class8[(size+smallSizeDiv-1)/smallSizeDiv]
-			} else {
-				sizeclass = size_to_class128[(size-smallSizeMax+largeSizeDiv-1)/largeSizeDiv]
-			}
-			size = uintptr(class_to_size[sizeclass])
-			spc := makeSpanClass(sizeclass, noscan)
-			span := c.alloc[spc]
-			v := nextFreeFast(span)
-			if v == 0 {
-				v, span, _ = c.nextFree(spc)
-			}
-			x = unsafe.Pointer(v)
-			if needzero && span.needzero != 0 {
-				memclrNoHeapPointers(unsafe.Pointer(v), size)
-			}
-		}
+			// smallSizeMax: 1024, smallSizeDiv:8, largeSizeDiv:128
+            if size <= smallSizeMax-8 {
+                sizeclass = size_to_class8[(size+smallSizeDiv-1)/smallSizeDiv]
+            } else {
+                sizeclass = size_to_class128[(size-smallSizeMax+largeSizeDiv-1)/largeSizeDiv]
+            }
+            size = uintptr(class_to_size[sizeclass])
+            // noscan 是否没有指针
+            spc := makeSpanClass(sizeclass, noscan)
+            // mcache 获取一个 spanClass 大小的 mspan 
+            span := c.alloc[spc]
+            v := nextFreeFast(span)
+            if v == 0 {
+                // mcenter 或 heap 分配
+                v, span, shouldhelpgc = c.nextFree(spc)
+            }
+            x = unsafe.Pointer(v)
+            if needzero && span.needzero != 0 {
+                memclrNoHeapPointers(unsafe.Pointer(v), size)
+            }
+        }
 	} else {
 		...
 	}
@@ -166,13 +190,14 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 
 ```cgo
 func nextFreeFast(s *mspan) gclinkptr {
+    // allocCache 中是否有空闲对象?
 	theBit := sys.Ctz64(s.allocCache)
 	if theBit < 64 {
 		result := s.freeindex + uintptr(theBit)
 		if result < s.nelems {
 			freeidx := result + 1
 			if freeidx%64 == 0 && freeidx != s.nelems {
-				return0
+				return 0
 			}
 			s.allocCache >>= uint(theBit + 1)
 			s.freeindex = freeidx
@@ -185,7 +210,7 @@ func nextFreeFast(s *mspan) gclinkptr {
 ```
 
 找到了空闲的对象后, 就可以更新内存管理单元的 `allocCache`, `freeindex` 等字段并返回该片内存了; 如果没有找到空闲的内
-存, 运行时会通过 `runtime.mcache,nextFree`找到新的内存管理单元:
+存, 运行时会通过 `runtime.mcache.nextFree` 找到新的内存管理单元:
 
 ```cgo
 func (c *mcache) nextFree(spc spanClass) (v gclinkptr, s *mspan, shouldhelpgc bool) {
@@ -206,3 +231,62 @@ func (c *mcache) nextFree(spc spanClass) (v gclinkptr, s *mspan, shouldhelpgc bo
 如果我们的线程缓存中没有找到可用的内存管理单元, 会通过 `runtime.mcache.refill` 使用中心缓存中的内存管理单元替换已经
 不存在可用对象的结构体, 该方法会调用新结构体的 `runtime.mspan.nextFreeIndex` 获取空闲的内存并返回.
 
+### 大对象
+
+运行时对于大于 32KB 的大对象会单独处理, 不会从线程缓存或者中心缓存中获取内存管理单元, 而是直接在系统的栈中调用函数
+`runtime.largeAlloc` 函数分配大片的内存:
+
+
+```cgo
+func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
+	...
+	if size <= maxSmallSize {
+		...
+	} else {
+		var s *mspan
+		systemstack(func() {
+			s = largeAlloc(size, needzero, noscan)
+		})
+		s.freeindex = 1
+		s.allocCount = 1
+		x = unsafe.Pointer(s.base())
+		size = s.elemsize
+	}
+
+	publicationBarrier()
+	mp.mallocing = 0
+	releasem(mp)
+
+	return x
+}
+```
+
+`runtime.largeAlloc` 函数会计算分配该对象所需要的页数, 它会按照 8KB 的倍数为对象在堆上申请内存:
+
+```cgo
+func largeAlloc(size uintptr, needzero bool, noscan bool) *mspan {
+    // _PageSize 8192
+	if size+_PageSize < size {
+		throw("out of memory")
+	}
+	
+	// _PageShift 13, 一个页的大小是 8KB = 2^13B, 这里右移是计算
+	npages := size >> _PageShift
+	// 是否是整倍数
+	if size&_PageMask != 0 {
+		npages++
+	}
+
+	deductSweepCredit(npages*_PageSize, npages)
+
+	s := mheap_.alloc(npages, makeSpanClass(0, noscan), true, needzero)
+	if s == nil {
+		throw("out of memory")
+	}
+	s.limit = s.base() + size
+	heapBitsForAddr(s.base()).initSpan(s)
+	return s
+}
+```
+
+申请内存时会创建一个跨度类为0的 `runtime.spanClass` 并调用 `runtime.mheap_.alloc` 分配一个管理对应内存的管理单元.
