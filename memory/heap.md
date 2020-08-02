@@ -40,10 +40,10 @@ type heapArena struct {
 	bitmap [heapArenaBitmapBytes]byte
 	
 	// spans 映射 "arena的虚拟地址页面ID" 到 *mspan
-    // 对于allocted spans, pages 映射到 span 本身,
-    // 对于free spans, 只有 lowest 和 highest pages 会映射到 span 本身.
+    // 对于 allocted spans, pages 映射到 span 本身,
+    // 对于 free spans, 只有 lowest 和 highest pages 会映射到 span 本身.
     // 对于 internal pages 映射到任意 span.
-    // 对于never allocated pages, span 条目为nil.
+    // 对于 never allocated pages, span 条目为nil.
     // 
     // 修改受 mheap.lock 保护. 可以在不锁定的情况下执行读取, 但是 ONLY 从已知包含 in-use 或 stack spans 的索引
     // 中进行. 这意味着在确定地址是否存在以及在spans数组中查找地址之间一定没有安全点.
@@ -148,7 +148,7 @@ type mspan struct {
 
 - `allocCache`, 是 `allocBits` 的补码, 可以用于快速查找内存中未被使用的内存;
 
-`runtime.msapn` 会以两种不同是视角看待管理的内存. 当结构体管理的内存不足时, 运行时会以页为单位向堆申请内存:
+`runtime.mspan` 会以两种不同是视角看待管理的内存. 当结构体管理的内存不足时, 运行时会以页为单位向堆申请内存:
 
 ![image](/images/mem_mspan_heap.png)
 
@@ -163,8 +163,8 @@ type mspan struct {
 
 运行时会使用 `runtime.mSpanStateBox` 结构体存储内存管理单元的状态 `runtime.mSpanState`.
 
-该状态可能处于 `mSpanDead`, `mSpanInUse`, `mSpanManual` 和 `mSpanFree` 四种情况. 当 `runtime.msapn` 在空闲
-堆中, 它会处于 `mSpanFree` 状态; 当 `runtime.msapn` 已经被分配时, 它会处于 `mSpanInUse`, `mSpanManul` 状态,
+该状态可能处于 `mSpanDead`, `mSpanInUse`, `mSpanManual` 和 `mSpanFree` 四种情况. 当 `runtime.mspan` 在空闲
+堆中, 它会处于 `mSpanFree` 状态; 当 `runtime.mspan` 已经被分配时, 它会处于 `mSpanInUse`, `mSpanManul` 状态,
 这些状态会在遵循以下规则发生转换:
 
 - 在垃圾回收的**任意阶段**, 可能从 `mSpanFree` 转换到 `mSpanInUse` 和 `mSpanManual`;
@@ -261,7 +261,8 @@ func (sc spanClass) noscan() bool {
 type mcache struct {
 	next_sample uintptr // trigger heap sample after allocating this many bytes
 	local_scan  uintptr // bytes of scannable heap allocated
-
+    
+    // 微对象分配器
 	tiny             uintptr
 	tinyoffset       uintptr
 	local_tinyallocs uintptr // number of tiny allocs not counted in other stats
@@ -328,6 +329,399 @@ func (c *mcache) refill(spc spanClass) {
 }
 ```
 
+> 微分配器
+
+线程缓存中还包含几个用于分配微对象的字段. `tiny`, `tinyoffset`, `local_tinyallocs` 三个字段组成了微对象分配器,
+专门为 16 字节以下的对象申请和管理内存.
+
+微分配器只会用于分配非指针类型的内存, 上述三个字段中 `tiny` 会指向堆中的一片内存, `tinyOffset` 是下一个空闲内存所在的
+偏移量, 最后的 `local_tinyallocs` 会记录内存分配器中分配的对象个数.
+
+
+### 中心缓存
+
+`runtime.mcentral` 是内存分配器的中心缓存, 与线程缓存不同, 访问中心缓存中的内存管理单元需要使用互斥锁:
+
+````cgo
+type mcentral struct {
+	lock      mutex
+	
+	// 跨度类 
+	spanclass spanClass
+	nonempty  mSpanList // list of spans with a free object, ie a nonempty free list
+	empty     mSpanList // list of spans with no free objects (or cached in an mcache)
+
+	// nmalloc是从此 mcentral 分配的对象的累积计数, 假定 mcache 中的所有 spans 都已完全分配. 
+	// 写入是的, 读取是在STW下进行的
+	nmalloc uint64
+}
+````
+
+每一个中心缓存都会管理某个跨度类的内存管理单元, 它会同时持有两个 `runtime.mSpanList`, 分别存储包含空闲对象的列表和不
+包含空闲对象的链表.
+
+该结构体在初始化时, 两个链表都不包含任何内存, 程序运行时会扩容结构体持有的两个链表.
+
+> 内存管理单元
+
+线程缓存会通过中心缓存的 `runtime.mcentral.cacheSpan()` 方法获取新的内存管理单元. 包括以下几个部分:
+
+1.从有空闲对象 `runtime.mspan` 列表中查找可以使用的内存管理单元;
+
+2.从没有空闲对象的 `runtime.mspan` 链表中查找可以使用的内存管理单元;
+
+3.调用 `runtime.mcentral.grow()` 从堆中申请新的内存管理单元;
+
+4.更新内存管理单元的 `allocCache` 等字段帮助快速分配内存;
+
+首先, 会在中心缓存的非空链表中查找可用的 `runtime.mspan`, 根据 `sweepgen` 字段分别进行不同的处理:
+
+1.当内存单元**等待回收时**, 将其插入 `empty` 链表, 调用 `runtime.mspan.sweep` 清理该单元并返回;
+
+2.当内存单元**正在被后台回收时**, 跳过该内存单元;
+
+3.当内存单元**已经被回收时**, 将内存单元插入 `empty` 链表并返回;
+
+```cgo
+func (c *mcentral) cacheSpan() *mspan {
+	// Deduct credit for this span allocation and sweep if necessary.
+	spanBytes := uintptr(class_to_allocnpages[c.spanclass.sizeclass()]) * _PageSize
+	deductSweepCredit(spanBytes, 0)
+
+	lock(&c.lock)
+	traceDone := false
+	if trace.enabled {
+		traceGCSweepStart()
+	}
+	sg := mheap_.sweepgen
+retry:
+	var s *mspan
+	for s = c.nonempty.first; s != nil; s = s.next {
+		if s.sweepgen == sg-2 && atomic.Cas(&s.sweepgen, sg-2, sg-1) {
+		    // 等待回收
+			c.nonempty.remove(s)
+			c.empty.insertBack(s)
+			unlock(&c.lock)
+			s.sweep(true) // 回收
+			goto havespan
+		}
+		if s.sweepgen == sg-1 {
+		    // 正在回收(后台)
+			continue
+		}
+		// 已经回收
+		c.nonempty.remove(s)
+		c.empty.insertBack(s)
+		unlock(&c.lock)
+		goto havespan
+	}
+	...
+}
+```
+
+如果中心缓存没有在 `nonempty` 找到可用的内存管理单元, 就会继续遍历其持有的 `empty` 列表, 在这里的处理与包含空闲对象的
+链表几乎完全相同. 当找到需要回收的内存单元时, 也会触发 `runtime.mspan.sweep` 进行清理, 如果清理后的内存单元仍然不包含
+空闲对象, 就会重新执行相应的代码:
+ 
+```cgo
+func (c *mcentral) cacheSpan() *mspan {
+    ...
+    for s = c.empty.first; s != nil; s = s.next {
+    		if s.sweepgen == sg-2 && atomic.Cas(&s.sweepgen, sg-2, sg-1) {
+    		    // 等待回收, 有一个empty span, 需要sweeping, sweep之后看是否可以释放其中的一些空间.
+    			c.empty.remove(s)
+    			c.empty.insertBack(s)
+    			unlock(&c.lock)
+    			s.sweep(true) // sweep
+    			freeIndex := s.nextFreeIndex()
+    			if freeIndex != s.nelems {
+    				s.freeindex = freeIndex
+    				goto havespan
+    			}
+    			lock(&c.lock)
+    			// 扫描后 span 仍然为空, 因此它已经在空列表中, 因此只需重试.
+    			goto retry
+    		}
+    		if s.sweepgen == sg-1 {
+    		    // 正在回收
+    			continue
+    		}
+    		// 已经清理过了 empty span, 所有随后的扫描也都是已经扫描或者扫描过程中(GC)
+    		break
+    	}
+    	
+        ...
+}
+```
+
+如果两个链表中都没有找到可用的内存单元, 它会调用 `runtime.mcentral.grow()` 触发扩容操作从堆中申请新的内存:
+
+```cgo
+func (c *mcentral) cacheSpan() *mspan {
+    ...
+	unlock(&c.lock)
+
+	// Replenish central list if empty.
+	s = c.grow()
+	if s == nil {
+		return nil
+	}
+	lock(&c.lock)
+	c.empty.insertBack(s)
+	unlock(&c.lock)
+
+	// At this point s is a non-empty span, queued at the end of the empty list,
+	// c is unlocked.
+havespan:
+	if trace.enabled && !traceDone {
+		traceGCSweepDone()
+	}
+	n := int(s.nelems) - int(s.allocCount)
+	if n == 0 || s.freeindex == s.nelems || uintptr(s.allocCount) == s.nelems {
+		throw("span has no free objects")
+	}
+	// Assume all objects from this span will be allocated in the
+	// mcache. If it gets uncached, we'll adjust this.
+	atomic.Xadd64(&c.nmalloc, int64(n))
+	usedBytes := uintptr(s.allocCount) * s.elemsize
+	atomic.Xadd64(&memstats.heap_live, int64(spanBytes)-int64(usedBytes))
+	if trace.enabled {
+		// heap_live changed.
+		traceHeapAlloc()
+	}
+	if gcBlackenEnabled != 0 {
+		// heap_live changed.
+		gcController.revise()
+	}
+	freeByteBase := s.freeindex &^ (64 - 1)
+	whichByte := freeByteBase / 8
+	// Init alloc bits cache.
+	s.refillAllocCache(whichByte)
+
+	// Adjust the allocCache so that s.freeindex corresponds to the low bit in
+	// s.allocCache.
+	s.allocCache >>= s.freeindex % 64
+
+	return s
+```
+
+无论何种方式获取的内存单元, 该方法最后都会对内存单元的 `allocBits` 和 `allocCache` 等字段进行更新, 让运行时在分配内
+存时能够快速找到空闲的对象.
+
+> 扩容
+
+中心缓存的扩容方法 `runtime.mcentral.grow()` 会根据预先计算的 `class_to_allocnpages` 和 `class_to_size` 获
+取待分配的页数以及跨度类并调用 `runtime.mheap.alloc()` 获取新的 `runtime.mspan` 结构:
+
+```cgo
+func (c *mcentral) grow() *mspan {
+    // 获取要分配的页数
+	npages := uintptr(class_to_allocnpages[c.spanclass.sizeclass()])
+	// 获取要分配的跨度类大小(对象的大小)
+	size := uintptr(class_to_size[c.spanclass.sizeclass()])
+
+	s := mheap_.alloc(npages, c.spanclass, false, true)
+	if s == nil {
+		return nil
+	}
+
+    // 计算分配页的对象个数 n 
+	// n := (npages << _PageShift) / size
+	// _PageShift 13
+	n := (npages << _PageShift) >> s.divShift * uintptr(s.divMul) >> s.divShift2
+	s.limit = s.base() + size*n // 计算最大的位置, 该位置之后的内存会浪费掉
+	heapBitsForAddr(s.base()).initSpan(s) // 初始化
+	return s
+}
+```
+
+### 页堆
+
+`runtime.mheap` 是内存分配的核心结构体, Go语言程序只会存在一个全局的结构, 而堆上初始化的所有对象都由该结构体统一管理,
+该结构体中包含两组非常重要的字段, 其中一个是全局中心缓存列表 `central`, 另一个是管理堆区内存区域的 `arena` 以及相关
+字段.
+
+页堆中包含一个长度为 134 的 `runtime.mcentral` 的数组, 其中 67 个为跨度类需要 `scan` 的中心缓存, 另外 67 个是
+`noscan` 的中心缓存.
+
+```cgo
+type mheap struct {
+	// 必须仅在 system stack 上获取锁, 否则,如果 g 的堆栈在持有锁的情况下增长, 则g可能会自锁.
+	lock      mutex
+	free      mTreap // free spans
+	sweepgen  uint32 // sweep generation, see comment in mspan
+	sweepdone uint32 // all spans are swept
+	sweepers  uint32 // number of active sweepone calls
+
+	// allspans 是曾经创建的所有 mspan 的一部分. 每个mspan恰好出现一次.
+    // 
+    // allspan 的内存是手动管理的, 可以随着堆的增长重新分配和移动.
+    //
+    // 通常, allspans 受 mheap_.lock 保护, 这可以防止并发访问以及释放 backing store.
+    // STW 期间的访问可能不持有锁定, 但必须确保在访问 span 不会发生 allocation(因为这可能释放backing store).
+	allspans []*mspan // all spans out there
+
+	// scanSpans 包含两个 mspan 堆栈: 一个是 swept in-use spans, 另一个是 unswept spans.
+	// 在每个GC周期中, 这两个角色都会交换. 由于扫掠根在每个周期上增加2, 这意味着扫掠跨度以
+	// sweepSpans[sweepgen/2%2]为单位, 而未扫掠跨度以 sweepSpans[1-sweepgen/2%2]为单位.
+	// 从未扫描的堆栈中扫出持久性有机污染物跨度, 并推送仍在扫描的堆栈中使用的跨度. 
+	// 同样, 分配使用中的跨度会将其推入扫掠堆栈.
+	sweepSpans [2]gcSweepBuf
+
+	_ uint32 // align uint64 fields on 32-bit for atomics
+
+	// Proportional sweep
+	//
+	// These parameters represent a linear function from heap_live
+	// to page sweep count. The proportional sweep system works to
+	// stay in the black by keeping the current page sweep count
+	// above this line at the current heap_live.
+	//
+	// The line has slope sweepPagesPerByte and passes through a
+	// basis point at (sweepHeapLiveBasis, pagesSweptBasis). At
+	// any given time, the system is at (memstats.heap_live,
+	// pagesSwept) in this space.
+	//
+	// It's important that the line pass through a point we
+	// control rather than simply starting at a (0,0) origin
+	// because that lets us adjust sweep pacing at any time while
+	// accounting for current progress. If we could only adjust
+	// the slope, it would create a discontinuity in debt if any
+	// progress has already been made.
+	pagesInUse         uint64  // pages of spans in stats mSpanInUse; R/W with mheap.lock
+	pagesSwept         uint64  // pages swept this cycle; updated atomically
+	pagesSweptBasis    uint64  // pagesSwept to use as the origin of the sweep ratio; updated atomically
+	sweepHeapLiveBasis uint64  // value of heap_live to use as the origin of sweep ratio; written with lock, read without
+	sweepPagesPerByte  float64 // proportional sweep ratio; written with lock, read without
+	// TODO(austin): pagesInUse should be a uintptr, but the 386
+	// compiler can't 8-byte align fields.
+
+	// Scavenger pacing parameters
+	//
+	// The two basis parameters and the scavenge ratio parallel the proportional
+	// sweeping implementation, the primary differences being that:
+	//  * Scavenging concerns itself with RSS, estimated as heapRetained()
+	//  * Rather than pacing the scavenger to the GC, it is paced to a
+	//    time-based rate computed in gcPaceScavenger.
+	//
+	// scavengeRetainedGoal represents our goal RSS.
+	//
+	// All fields must be accessed with lock.
+	//
+	// TODO(mknyszek): Consider abstracting the basis fields and the scavenge ratio
+	// into its own type so that this logic may be shared with proportional sweeping.
+	scavengeTimeBasis     int64
+	scavengeRetainedBasis uint64
+	scavengeBytesPerNS    float64
+	scavengeRetainedGoal  uint64
+	scavengeGen           uint64 // incremented on each pacing update
+
+	// Page reclaimer state
+
+	// reclaimIndex is the page index in allArenas of next page to
+	// reclaim. Specifically, it refers to page (i %
+	// pagesPerArena) of arena allArenas[i / pagesPerArena].
+	//
+	// If this is >= 1<<63, the page reclaimer is done scanning
+	// the page marks.
+	//
+	// This is accessed atomically.
+	reclaimIndex uint64
+	// reclaimCredit is spare credit for extra pages swept. Since
+	// the page reclaimer works in large chunks, it may reclaim
+	// more than requested. Any spare pages released go to this
+	// credit pool.
+	//
+	// This is accessed atomically.
+	reclaimCredit uintptr
+
+	// Malloc stats.
+	largealloc  uint64                  // bytes allocated for large objects
+	nlargealloc uint64                  // number of large object allocations
+	largefree   uint64                  // bytes freed for large objects (>maxsmallsize)
+	nlargefree  uint64                  // number of frees for large objects (>maxsmallsize)
+	nsmallfree  [_NumSizeClasses]uint64 // number of frees for small objects (<=maxsmallsize)
+
+	// arenas is the heap arena map. It points to the metadata for
+	// the heap for every arena frame of the entire usable virtual
+	// address space.
+	//
+	// Use arenaIndex to compute indexes into this array.
+	//
+	// For regions of the address space that are not backed by the
+	// Go heap, the arena map contains nil.
+	//
+	// Modifications are protected by mheap_.lock. Reads can be
+	// performed without locking; however, a given entry can
+	// transition from nil to non-nil at any time when the lock
+	// isn't held. (Entries never transitions back to nil.)
+	//
+	// In general, this is a two-level mapping consisting of an L1
+	// map and possibly many L2 maps. This saves space when there
+	// are a huge number of arena frames. However, on many
+	// platforms (even 64-bit), arenaL1Bits is 0, making this
+	// effectively a single-level map. In this case, arenas[0]
+	// will never be nil.
+	arenas [1 << arenaL1Bits]*[1 << arenaL2Bits]*heapArena
+
+	// heapArenaAlloc is pre-reserved space for allocating heapArena
+	// objects. This is only used on 32-bit, where we pre-reserve
+	// this space to avoid interleaving it with the heap itself.
+	heapArenaAlloc linearAlloc
+
+	// arenaHints is a list of addresses at which to attempt to
+	// add more heap arenas. This is initially populated with a
+	// set of general hint addresses, and grown with the bounds of
+	// actual heap arena ranges.
+	arenaHints *arenaHint
+
+	// arena is a pre-reserved space for allocating heap arenas
+	// (the actual arenas). This is only used on 32-bit.
+	arena linearAlloc
+
+	// allArenas is the arenaIndex of every mapped arena. This can
+	// be used to iterate through the address space.
+	//
+	// Access is protected by mheap_.lock. However, since this is
+	// append-only and old backing arrays are never freed, it is
+	// safe to acquire mheap_.lock, copy the slice header, and
+	// then release mheap_.lock.
+	allArenas []arenaIdx
+
+	// sweepArenas is a snapshot of allArenas taken at the
+	// beginning of the sweep cycle. This can be read safely by
+	// simply blocking GC (by disabling preemption).
+	sweepArenas []arenaIdx
+
+	// curArena is the arena that the heap is currently growing
+	// into. This should always be physPageSize-aligned.
+	curArena struct {
+		base, end uintptr
+	}
+
+	_ uint32 // ensure 64-bit alignment of central
+
+	// central free lists for small size classes.
+	// the padding makes sure that the mcentrals are
+	// spaced CacheLinePadSize bytes apart, so that each mcentral.lock
+	// gets its own cache line.
+	// central is indexed by spanClass.
+	central [numSpanClasses]struct {
+		mcentral mcentral
+		pad      [cpu.CacheLinePadSize - unsafe.Sizeof(mcentral{})%cpu.CacheLinePadSize]byte
+	}
+
+	spanalloc             fixalloc // allocator for span*
+	cachealloc            fixalloc // allocator for mcache*
+	treapalloc            fixalloc // allocator for treapNodes*
+	specialfinalizeralloc fixalloc // allocator for specialfinalizer*
+	specialprofilealloc   fixalloc // allocator for specialprofile*
+	speciallock           mutex    // lock for special record allocators.
+	arenaHintAlloc        fixalloc // allocator for arenaHints
+
+	unused *specialfinalizer // never set, just here to force the specialfinalizer type into DWARF
+}
+```
 
 ## 内存分配
 
