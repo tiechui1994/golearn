@@ -19,7 +19,7 @@
 `runtime.mspan`, `spans` 数组中多个连续的位置可能对应同一个 `runtime.mspan`. 
 
 Go 在垃圾回收时会根据指针的地址判断对象是否在堆中, 并通过上面介绍的过程找到管理该对象的 `runtime.mspan`. 这些都是建立
-在堆区的内存是连续的这一假设上. 这种设计虽然简单方便, 但是C和GO混合使用时会导致程序崩溃:
+在**堆区的内存是连续的**这一假设上. 这种设计虽然简单方便, 但是 C 和 GO 混合使用时会导致程序崩溃:
 
 1.分配的内存地址发生冲突, 导致堆的初始化和扩容失败
 
@@ -36,9 +36,33 @@ Go 在垃圾回收时会根据指针的地址判断对象是否在堆中, 并通
 
 ```cgo
 type heapArena struct {
+    // 存储 arena 上的 pointer/scalar bitmap 
 	bitmap [heapArenaBitmapBytes]byte
+	
+	// spans 映射 "arena的虚拟地址页面ID" 到 *mspan
+    // 对于allocted spans, pages 映射到 span 本身,
+    // 对于free spans, 只有 lowest 和 highest pages 会映射到 span 本身.
+    // 对于 internal pages 映射到任意 span.
+    // 对于never allocated pages, span 条目为nil.
+    // 
+    // 修改受 mheap.lock 保护. 可以在不锁定的情况下执行读取, 但是 ONLY 从已知包含 in-use 或 stack spans 的索引
+    // 中进行. 这意味着在确定地址是否存在以及在spans数组中查找地址之间一定没有安全点.
 	spans [pagesPerArena]*mspan
+	
+	// pageInUse是一个bitmap, 指示哪些 spans 处于 mSpanInUse 状态. 该bitmap由页码(page number)索引, 但是仅
+	// 使用每个 span 中第一页相对应的位.
+    //
+    // 写入受 mheap_.lock 保护.
 	pageInUse [pagesPerArena / 8]uint8
+	
+	// pageMarks是一个bitmap, 它指示哪些 spans 上有标记的对象. 与 pageInUse 一样, 仅使用每个 span 中与第一页相
+	// 对应的位.
+    //
+    // 在标记期间自动完成写入. 读取是非原子且无锁的, 因为它们仅在扫描期间发生 (因此从不与写入竞争).
+    //
+    // 用于快速查找可以被释放的 spans.
+    //
+    // TODO: 如果这是 uint64 可以进行更快的扫描, 那很好, 但是我们没有64位原子位操作.
 	pageMarks [pagesPerArena / 8]uint8
 	zeroedBase uintptr
 }
