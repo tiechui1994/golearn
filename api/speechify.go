@@ -194,16 +194,39 @@ func (s *Speech) Identity() error {
 	return nil
 }
 
+type AudioConfig struct {
+	OutputFormat string
+	SampleRate   string
+	VoiceId      func() string
+}
+
+var (
+	configs = map[string]AudioConfig{
+		"pcm": {
+			OutputFormat: "pcm",
+			SampleRate:   "8000",
+		},
+		"mp3": {
+			OutputFormat: "mp3",
+			SampleRate:   "22050",
+		},
+		"ogg_vorbis": {
+			OutputFormat: "ogg_vorbis",
+			SampleRate:   "22050",
+		},
+	}
+)
+
 func (s *Speech) Speech(text, dest string) error {
 	if _, ok := resions[s.Region]; !ok {
 		return fmt.Errorf("invalid regions")
 	}
-
+	// VoiceId: Nicole, Kevin, Enrique, Tatyana, Russell, Lotte, Geraint, Carmen, Mads, Penelope, Mia, Joanna, Matthew, Brian, Seoyeon, Ruben, Ricardo, Maxim, Lea, Giorgio, Carla, Naja, Maja, Astrid, Ivy, Kimberly, Chantal, Amy, Vicki, Marlene, Ewa, Conchita, Camila, Karl, Zeina, Miguel, Mathieu, Justin, Lucia, Jacek, Bianca, Takumi, Ines, Gwyneth, Cristiano, Mizuki, Celine, Zhiyu, Jan, Liv, Joey, Raveena, Filiz, Dora, Salli, Aditi, Vitoria, Emma, Lupe, Hans, Kendra
 	// Engine: standard, neural
 	// LanguageCode: arb | cmn-CN | cy-GB | da-DK | de-DE | en-AU | en-GB | en-GB-WLS | en-IN | en-US | es-ES | es-MX | es-US | fr-CA | fr-FR | is-IS | it-IT | ja-JP | hi-IN | ko-KR | nb-NO | nl-NL | pl-PL | pt-BR | pt-PT | ro-RO | ru-RU | sv-SE | tr-TR
 	// OutputFormat: ogg_vorbis, json, mp3, pcm
-	body := fmt.Sprintf(`{"Engine":"standard","VoiceId":"%v","OutputFormat":"mp3","Text":"%v","SampleRate":"24000","LanguageCode":"en-GB"}`,
-		EN_USA_Woman, text)
+	body := fmt.Sprintf(`{"Engine":"standard","VoiceId":"%v","OutputFormat":"mp3",
+		"Text":"%v","SampleRate":"22050","LanguageCode":"en-GB"}`, "Matthew", text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
 	now := time.Now()
