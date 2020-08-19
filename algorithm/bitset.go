@@ -1,4 +1,4 @@
-package bitset
+package algorithm
 
 import "math/bits"
 

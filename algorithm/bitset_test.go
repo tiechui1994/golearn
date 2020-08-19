@@ -1,8 +1,8 @@
-package bitset
+package algorithm
 
 import (
-	"fmt"
 	"math/bits"
+	"fmt"
 	"testing"
 )
 

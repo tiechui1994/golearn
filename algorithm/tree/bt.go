@@ -1,8 +1,8 @@
-package algorithm
+package tree
 
 import "fmt"
 
-const M  = 4         // M阶B树
+const M = 4         // M阶B树
 const Min = M/2 - 1 // 每个节点至少有的关键字个数
 
 type BT struct {
