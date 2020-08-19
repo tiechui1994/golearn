@@ -221,12 +221,48 @@ func (s *Speech) Speech(text, dest string) error {
 	if _, ok := resions[s.Region]; !ok {
 		return fmt.Errorf("invalid regions")
 	}
+	// Language                        Name/ID     Gender    Standard    Neural
+	//
+	// Arabic(arb)                     Zeina       Female    Yes         No
+	//
+	// Chinese, Mandarin (cmn-CN)      Zhiyu       Female    Yes         No
+	//
+	// Danish (da-DK)                  Naja        Female    Yes         No
+	//                                 Mads        Male      Yes         No
+	//
+	// Dutch (nl-NL)                   Lotte       Female    Yes         No
+	//                                 Ruben       Male      Yes         No
+	//
+	// English (Australian) (en-AU)    Nicole      Female    Yes         No
+	//                                 Russell     Male      Yes         No
+	//
+	// English (British) (en-GB)       Amy         Female    Yes         Yes
+	//                                 Emma        Female    Yes         Yes
+	//                                 Brian       Male      Yes         Yes
+	//
+	// English (Indian) (en-IN)        Aditi       Female    Yes         No
+	//                                 Raveena     Female    Yes         No
+	//
+	// English (US) (en-US)            Ivy         Female    Yes         Yes
+	//                                 Joanna      Female    Yes         Yes
+	//                                 Kendra      Female    Yes         Yes
+	//                                 Kimberly    Female    Yes         Yes
+	//                                 Salli       Female    Yes         Yes
+	//                                 Joey        Male      Yes         Yes
+	// 								   Justin	   Male      Yes         Yes
+	// 								   Kevin	   Male      Yes         Yes
+	// 								   Matthew     Male      Yes         Yes
+	//
+	// English (Welsh) (en-GB-WLS)     Geraint     Male      Yes         Yes
+	//
+
 	// VoiceId: Nicole, Kevin, Enrique, Tatyana, Russell, Lotte, Geraint, Carmen, Mads, Penelope, Mia, Joanna, Matthew, Brian, Seoyeon, Ruben, Ricardo, Maxim, Lea, Giorgio, Carla, Naja, Maja, Astrid, Ivy, Kimberly, Chantal, Amy, Vicki, Marlene, Ewa, Conchita, Camila, Karl, Zeina, Miguel, Mathieu, Justin, Lucia, Jacek, Bianca, Takumi, Ines, Gwyneth, Cristiano, Mizuki, Celine, Zhiyu, Jan, Liv, Joey, Raveena, Filiz, Dora, Salli, Aditi, Vitoria, Emma, Lupe, Hans, Kendra
 	// Engine: standard, neural
+	//
 	// LanguageCode: arb | cmn-CN | cy-GB | da-DK | de-DE | en-AU | en-GB | en-GB-WLS | en-IN | en-US | es-ES | es-MX | es-US | fr-CA | fr-FR | is-IS | it-IT | ja-JP | hi-IN | ko-KR | nb-NO | nl-NL | pl-PL | pt-BR | pt-PT | ro-RO | ru-RU | sv-SE | tr-TR
 	// OutputFormat: ogg_vorbis, json, mp3, pcm
-	body := fmt.Sprintf(`{"Engine":"standard","VoiceId":"%v","OutputFormat":"mp3",
-		"Text":"%v","SampleRate":"22050","LanguageCode":"en-GB"}`, "Matthew", text)
+	body := fmt.Sprintf(`{"Engine":"standard","VoiceId":"%v","OutputFormat":"json",
+		"Text":"%v","SampleRate":"16000","LanguageCode":"en-US"}`, "Kendra", text)
 	u := "https://polly." + s.Region + ".amazonaws.com/v1/speech"
 
 	now := time.Now()
@@ -264,6 +300,11 @@ func (s *Speech) Speech(text, dest string) error {
 	defer response.Body.Close()
 
 	log.Println("speech content-length", response.ContentLength)
+	if response.ContentLength != -1 {
+		data, _ := ioutil.ReadAll(response.Body)
+		log.Println("body", string(data))
+		return fmt.Errorf("invalid request")
+	}
 
 	fd, err := os.Create(dest)
 	if err != nil {

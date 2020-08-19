@@ -11,7 +11,7 @@ done
 for file in $(ls|grep '.pcm'); do
    in="$file";
    out=${in/%pcm/wav}
-   ffmpeg -i ${in} -f s16be -ar 8000 -ac 2 -acodec pcm_s16be  ${out}
+   ffmpeg -i ${in} -f s16le -ar 16000 -ac 1 -acodec pcm_s16le  ${out}
 done
 
 mkdir -p amr
