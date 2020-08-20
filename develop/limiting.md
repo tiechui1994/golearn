@@ -86,3 +86,20 @@ func (sp *servicePanel) clearLimit() {
     }
 }
 ```
+
+uber.go 实现的思路:
+
+1. 创建令牌桶的时候, 计算两个连续令牌产生的时间间隔 `perRequest`, 同时产生一个松弛度 `maxSlack`, 其值为 *`-10*perRequest`*
+松弛度含义是, 当请求的最大瞬时速率不能超过令牌桶的10倍. 还有就是存储当前的一个状态 state, 保存了最近一次获取令牌的时间
+和上一次获取令牌需要等待的时间. 
+
+2. 获取令牌桶, 先加载令牌桶的状态, 即上一次获取令牌的时间. 如果是第一次获取令牌, 直接允许 (CMP), 否则需要计算公式:
+`newState.sleepFor += t.perRequest - now.Sub(oldState.last)`
+
+- 如果 newState.sleepFor <= 0, 当 newState.sleepFor < maxSlack, 说明上一次令牌离当前时间很久, 则 
+newState.sleepFor 设定为 maxSlack, 即接下来可以瞬时承担 10 倍于令牌桶的速率. 在当前状况下, 令牌可以立马返回, 不需
+要等待.
+
+- 如果 newState.sleepFor > 0, 则需要等待 newState.sleepFor 的时间, 然后才可以返回令牌.
+
+> 注: 因为是并发请求, 需要先更新令牌桶的 state, 然后进行 sleep 等待令牌.
