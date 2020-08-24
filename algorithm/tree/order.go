@@ -1,6 +1,6 @@
 package tree
 
-func Pre(root *Node) []int {
+func PreOrder(root *Node) []int {
 	if root == nil {
 		return nil
 	}
@@ -28,7 +28,7 @@ func Pre(root *Node) []int {
 	return m
 }
 
-func Midle(root *Node) []int {
+func MidleOrder(root *Node) []int {
 	if root == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func Midle(root *Node) []int {
 	return m
 }
 
-func Last(root *Node) []int {
+func LastOrder(root *Node) []int {
 	if root == nil {
 		return nil
 	}
@@ -87,4 +87,38 @@ func Last(root *Node) []int {
 	}
 
 	return m
+}
+
+func LevelOrder(root *Node) [][]int {
+	if root == nil {
+		return nil
+	}
+	if root.Left == nil && root.Right == nil {
+		return [][]int{{root.Val}}
+	}
+
+	var (
+		cur    *Node
+		values [][]int
+	)
+	q := Queue{}
+	q.push(root)
+	for !q.empty() {
+		value := make([]int, 0)
+		p := Queue{}
+		for !q.empty() {
+			cur = q.pop()
+			value = append(value, cur.Val)
+			if cur.Left != nil {
+				p.push(cur.Left)
+			}
+			if cur.Right != nil {
+				p.push(cur.Right)
+			}
+		}
+		values = append(values, value)
+		q = p
+	}
+
+	return values
 }

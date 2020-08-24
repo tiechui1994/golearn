@@ -9,18 +9,24 @@ var nodes = []string{
 func TestPre(t *testing.T) {
 	node := SliceToTree(SliceToNode(nodes))
 
-	m := Pre(node)
+	m := PreOrder(node)
 	t.Log(m)
 }
 
 func TestMidle(t *testing.T) {
 	node := SliceToTree(SliceToNode(nodes))
-	m := Midle(node)
+	m := MidleOrder(node)
 	t.Log(m)
 }
 
 func TestLast(t *testing.T) {
 	node := SliceToTree(SliceToNode(nodes))
-	m := Last(node)
+	m := LastOrder(node)
+	t.Log(m)
+}
+
+func TestLevel(t *testing.T) {
+	node := SliceToTree(SliceToNode(nodes))
+	m := LevelOrder(node)
 	t.Log(m)
 }
