@@ -7,19 +7,6 @@ import (
 	"time"
 )
 
-func TestNewSegTree(t *testing.T) {
-	slice := []int{1, 4, 5, 3}
-	node := NewSegTree(slice)
-	fmt.Println(node.left, node.right, node.max)
-}
-
-func TestSegNodeUpdate(t *testing.T) {
-	slice := []int{1, 4, 5, 3}
-	node := NewSegTree(slice)
-	node.Update(1, 10)
-	fmt.Println(node.left, node.right, node.max)
-}
-
 func TestNewSkipList(t *testing.T) {
 	skiplist := NewSkipList()
 	seed := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -84,17 +71,4 @@ func TestHeapSort(t *testing.T) {
 	nums := []int{1, 2, 3, 32, 11, 4, 181, 221, 1127, 11, 2, 43, 11}
 	HeapSort(nums)
 	fmt.Println(nums)
-}
-
-func TestNewBTree(t *testing.T) {
-	btree := NewBTree(4)
-	nodes := make([]int, 20)
-	for i := 0; i < 20; i++ {
-		nodes[i] = rand.Intn(100) + 5
-		btree.Insert(nodes[i])
-	}
-
-	btree.Traverse()
-
-	fmt.Printf("%+v\n", nodes)
 }
