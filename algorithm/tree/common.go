@@ -120,3 +120,18 @@ func fillTree(h *Node, st []*Node) (*Node, []*Node) {
 	h.Right = st[1]
 	return h, st[2:]
 }
+
+func Max(slice []int) int {
+	if len(slice) == 1 {
+		return slice[0]
+	}
+
+	max := slice[0]
+	for i := 1; i < len(slice); i++ {
+		if max < slice[i] {
+			max = slice[i]
+		}
+	}
+
+	return max
+}
