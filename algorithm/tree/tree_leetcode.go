@@ -3,8 +3,9 @@ package tree
 // 给定一个非空二叉树, 返回其最大路径和
 // 路径: 一条从树中任意节点出发, 到达任意节点的序列. 该路径至少包含一个节点, 且不一定经过根节点
 
-// 思路: 递归
-// 需要思考两个问题, 子树单边含根, 子树
+// 思路: 递归 + 动态规划
+// 需要思考两个问题, 左右分支含根+[当前根], 左右分支含根+当前根, 左(右)分支不含根
+// 左右分支含根: max(根, 左含根最大值+根, 右含根最大值+根)
 func MaxSumPath(root *Node) int {
 	if root == nil {
 		return 0
@@ -16,17 +17,17 @@ func MaxSumPath(root *Node) int {
 
 		l := MaxSumPath(root.Left)
 		r := MaxSumPath(root.Right)
-		arr := []int{root.Val, ll + root.Val, rr + root.Val, ll, rr, l + r + root.Val, l, r}
+		arr := []int{root.Val, ll + root.Val, rr + root.Val, ll + rr + root.Val, ll, rr, l, r}
 		return Max(arr)
 	} else if root.Left != nil {
 		ll := maxSumPathRoot(root.Left)
 		l := MaxSumPath(root.Left)
-		arr := []int{root.Val, root.Val + ll, ll, l + root.Val, l}
+		arr := []int{root.Val, root.Val + ll, ll, l}
 		return Max(arr)
 	} else if root.Right != nil {
 		rr := maxSumPathRoot(root.Right)
 		r := MaxSumPath(root.Right)
-		arr := []int{root.Val, root.Val + rr, rr, r + root.Val, r}
+		arr := []int{root.Val, root.Val + rr, rr, r}
 		return Max(arr)
 	}
 
