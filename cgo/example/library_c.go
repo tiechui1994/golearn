@@ -1,8 +1,10 @@
 package main
 
+// 使用外部库 (动态库或者静态库)
+
 /*
-#cgo CFLAGS: -I ./lib
-#cgo LDFLAGS: -L . -l math
+#cgo CFLAGS: -I ${SRCDIR}/lib
+#cgo LDFLAGS: -L ${SRCDIR} -l math
 #include "math.h"
 */
 import "C"

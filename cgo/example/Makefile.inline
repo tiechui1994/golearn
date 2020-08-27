@@ -1,0 +1,6 @@
+inline:
+	go build -o inline -ldflags '-w -s' inline_c.go
+
+.PHONY:clean
+clean:
+	-rm -rf inline

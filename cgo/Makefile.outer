@@ -1,6 +1,0 @@
-outer: outer_c.go
-	go build -o outer -ldflags '-w -s' outer_c.go
-
-.PHONY:clean
-clean:
-	-rm -rf outer

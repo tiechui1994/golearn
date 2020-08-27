@@ -1,0 +1,11 @@
+library: libmath.a
+	go build -o library -ldflags '-w -s' library_c.go
+
+libmath.a:
+	$(CC) -c lib/math.c
+	$(AR) -r libmath.a math.o
+	@rm -rf *.o
+
+.PHONY:clean
+clean:
+	-rm -rf library *.a *.o

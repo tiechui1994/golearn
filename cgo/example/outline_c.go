@@ -3,7 +3,7 @@ package main
 // 外部 C 代码
 
 /*
-#include "outer.c"
+#include "outline.c"
 */
 import "C"
 import "fmt"

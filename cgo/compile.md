@@ -139,7 +139,7 @@ gcc -shared -o libCfile.so Cfile.o // 动态库, 产生 .so 文件
 
 - **-D XXX**, 可以使用编译时的宏 XXX
 
-```c
+```cgo
 #include <stdio.h>
 
 int main() {
@@ -172,11 +172,11 @@ gcc -Wall main.c -o main -l CPPfile
 ```
 
 > 上面的代码会链接 `libCPPfile.so`, 产生可执行文件 `main`.
-
+>
 > **C call C++ 编译库的时候必须链接库 stdc++, Go也是一样的. Go Call C++ 代码 `[需要中间的C++转换库]`**
 
 
-- **-std**, 指定支持的 C++/C 的标准
+- **-std**, 指定支持的 `C++/C` 的标准
 
 ```
 gcc -std=c++11 main.cpp
@@ -198,6 +198,8 @@ gcc main.c -static -o main -l pthread
 
 - **-Wl,options**, 把参数(options) 传递给链接库ld, 如果options中间有逗号, 就将options分成多个选项, 然后传递给
 链接程序.
+
+> cgo 动态编译执行经常会用到 `-Wl,-rpath -Wl,/path/to/lib` 动态链接选项
 
 
 
