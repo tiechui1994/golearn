@@ -151,3 +151,47 @@ func NearestAncestor(root, p, q *Node) *Node {
 	}
 	return nil
 }
+
+// 二叉树中和为某一值的路径
+// 打印出二叉树中节点值的和为输入整数的所有路径. 从树的 "根节点" 开始往下一直到 "叶节点" 所经过的节点形成一条路径.
+// 思路: 自顶向下, 根左右, 直到根节点
+func PathSum(root *Node, sum int) [][]int {
+	if root == nil {
+		return nil
+	}
+
+	if root.Left == nil && root.Right == nil && root.Val == sum {
+		return [][]int{{root.Val}}
+	}
+
+	parent := make([]int, 0)
+	return pathsum(root, sum, parent)
+}
+
+func pathsum(root *Node, sum int, parent []int) [][]int {
+	if root.Left == nil && root.Right == nil {
+		if root.Val == sum {
+			parent = append(parent, root.Val)
+			return [][]int{parent}
+		}
+		return nil
+	}
+
+	// 分别计算左右子树, 和为 sum-root.Val 的路径
+	var left, right [][]int
+	if root.Left != nil {
+		// 注意: 由于 slice, 必须使用深度复制
+		t := make([]int, len(parent))
+		copy(t, parent)
+		t = append(t, root.Val)
+		left = pathsum(root.Left, sum-root.Val, t)
+	}
+	if root.Right != nil {
+		t := make([]int, len(parent))
+		copy(t, parent)
+		t = append(t, root.Val)
+		right = pathsum(root.Right, sum-root.Val, t)
+	}
+
+	return append(left, right...)
+}
