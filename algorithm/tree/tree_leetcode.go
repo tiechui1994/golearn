@@ -123,3 +123,31 @@ func index(arr []int, el int) int {
 
 	return -1
 }
+
+// 最近公共祖先
+// 思路: 自底向上递归, 左右根, 即后续遍历算法
+// 1. 如果当前节点为 null, 则返回 null
+// 2. 如果当前节点为 p 或 q, 或者包含了 p 或者 q 则返回当前节点
+// 3. 如果当前包含了p和q, 则第一次到达的节点为最近的祖先
+func NearestAncestor(root, p, q *Node) *Node {
+	if root == nil {
+		return nil
+	}
+	if root == p || root == q {
+		return root
+	}
+
+	left := NearestAncestor(root.Left, p, q)
+	right := NearestAncestor(root.Right, p, q)
+	if left != nil && right != nil {
+		return root
+	}
+
+	if left != nil {
+		return left
+	}
+	if right != nil {
+		return right
+	}
+	return nil
+}

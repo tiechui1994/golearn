@@ -1,6 +1,9 @@
 package tree
 
-import "strconv"
+import (
+	"strconv"
+	"fmt"
+)
 
 type Node struct {
 	Left  *Node
@@ -77,24 +80,28 @@ func SliceToTree(st []*Node) (root *Node) {
 	}
 
 	root, st = fillTree(st[0], st[1:])
-	node := root
-	for len(st) > 0 {
+	q := Queue{}
+	q.push(root)
+
+	for len(st) > 0 && !q.empty() {
+		node := q.pop()
 		if node.Left != nil && node.Right != nil {
 			_, st = fillTree(node.Left, st)
 			_, st = fillTree(node.Right, st)
-			node = node.Left
+			q.push(node.Left)
+			q.push(node.Right)
 			continue
 		}
 
 		if node.Left != nil {
 			_, st = fillTree(node.Left, st)
-			node = node.Left
+			q.push(node.Left)
 			continue
 		}
 
 		if node.Right != nil {
 			_, st = fillTree(node.Right, st)
-			node = node.Right
+			q.push(node.Right)
 			continue
 		}
 	}
@@ -134,4 +141,64 @@ func Max(slice []int) int {
 	}
 
 	return max
+}
+
+func PrintTree(node *Node) {
+	q := Queue{}
+	q.push(node)
+	for !q.empty() {
+		p := Queue{}
+		stoped := true
+		for !q.empty() {
+			cur := q.pop()
+			if cur != nil {
+				fmt.Printf("  %v  ", cur.Val)
+				if cur.Left != nil || cur.Right != nil {
+					stoped = false
+				}
+				p.push(cur.Left)
+				p.push(cur.Right)
+			} else {
+				fmt.Printf(" null ")
+			}
+		}
+		fmt.Println()
+		if stoped {
+			break
+		}
+		q = p
+	}
+}
+
+func Print() {
+	i, j, k, depth := 0, 0, 0, 8
+	for j = 0; j < depth; j++ {
+		w := 1 << uint(depth-j+1)
+		if j == 0 {
+			fmt.Printf("%*c\n", w, '_')
+		} else {
+			for i = 0; i < 1<<uint(j-1); i++ {
+				fmt.Printf("%*c", w+1, ' ')
+				for k = 0; k < w-3; k++ {
+					fmt.Printf("_")
+				}
+				fmt.Printf("/ \\")
+				for k = 0; k < w-3; k++ {
+					fmt.Printf("_")
+				}
+				fmt.Printf("%*c", w+2, ' ')
+			}
+			fmt.Printf("\n")
+
+			for i = 0; i < 1<<uint(j-1); i++ {
+				fmt.Printf("%*c/%*c_%*c", w, '_', w*2-2, '\\', w, ' ')
+			}
+			fmt.Printf("\n")
+		}
+
+		for i = 0; i < 1<<uint(j); i++ {
+			fmt.Printf("%*c_)%*c", w-1, '(', w-1, ' ')
+		}
+		fmt.Printf("\n")
+	}
 }
