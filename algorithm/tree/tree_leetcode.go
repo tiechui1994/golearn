@@ -257,7 +257,7 @@ func PathInZigZagTree(label int) []int {
 // 到target的距离是k的节点.
 // 思路1: 深度优先遍历, 获取node->parent的map关系.
 // 利用queue先进先出的特性, target为头元素, 加入其 "元素的孩子和父亲". nil为特殊元素, 遇到nil的时候就需要
-// 更新深度. 还有一个全局的已经加入的节点seen, 防止多次添加
+// 更新深度. 还有一个全局的已经加入的节点seen, 防止多次添加.
 func DistanceK(root, target *Node, k int) []int {
 	// 1. 深度优先遍历, 记录node -> parent
 	var parent = make(map[*Node]*Node) // node -> parent
@@ -306,10 +306,10 @@ func DistanceK(root, target *Node, k int) []int {
 				queue.push(node.Right)
 			}
 
-			par := parent[node] // 父节点
-			if _, ok := seen[par]; !ok {
-				seen[par] = true
-				queue.push(par)
+			p := parent[node] // 父节点
+			if _, ok := seen[p]; !ok {
+				seen[p] = true
+				queue.push(p)
 			}
 		}
 	}

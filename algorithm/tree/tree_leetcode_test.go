@@ -1,6 +1,9 @@
 package tree
 
-import "testing"
+import (
+	"testing"
+	"fmt"
+)
 
 func TestMaxSumPath(t *testing.T) {
 	nodes := []string{"5", "4", "8", "11", "null", "13", "4", "7", "2", "null", "null", "null", "1"}
@@ -26,7 +29,6 @@ func TestPrintTree(t *testing.T) {
 	_ = SliceToTree(nodes)
 	Print()
 }
-
 
 func TestPathSum(t *testing.T) {
 	nodes := []string{"5", "4", "8", "11", "null", "13", "4", "7", "2", "null", "null", "5", "1"}

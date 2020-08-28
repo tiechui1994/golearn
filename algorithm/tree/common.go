@@ -171,7 +171,7 @@ func PrintTree(node *Node) {
 }
 
 func Print() {
-	i, j, k, depth := 0, 0, 0, 8
+	i, j, k, depth := 0, 0, 0, 4
 	for j = 0; j < depth; j++ {
 		w := 1 << uint(depth-j+1)
 		if j == 0 {
