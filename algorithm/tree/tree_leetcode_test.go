@@ -2,7 +2,6 @@ package tree
 
 import (
 	"testing"
-	"fmt"
 )
 
 func TestMaxSumPath(t *testing.T) {
@@ -36,4 +35,13 @@ func TestPathSum(t *testing.T) {
 	res := PathSum(node, 22)
 	t.Log("expect: [[5 4 11 2] [5 8 4 5]]")
 	t.Log("real:", res)
+}
+
+func TestVerifyPostorder(t *testing.T) {
+	res := VerifyPostorder([]int{1, 2, 3, 4, 5})
+	t.Log("expect: true, real:", res)
+	res = VerifyPostorder([]int{5, 4, 3, 2, 1})
+	t.Log("expect: true, real:", res)
+	res = VerifyPostorder([]int{4, 8, 6, 12, 16, 14, 10})
+	t.Log("expect: true, real:", res)
 }

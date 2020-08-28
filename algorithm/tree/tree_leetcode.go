@@ -1,6 +1,8 @@
 package tree
 
-import "math"
+import (
+	"math"
+)
 
 // 给定一个非空二叉树, 返回其最大路径和
 // 路径: 一条从树中任意节点出发, 到达任意节点的序列. 该路径至少包含一个节点, 且不一定经过根节点
@@ -317,3 +319,56 @@ func DistanceK(root, target *Node, k int) []int {
 	return nil
 }
 
+// 输入一个整数数组, 判断该数组是不是某二叉搜索树的后序遍历结果.
+// 思路: 对于长度是0, 1, 2 的 postorder, 无论什么样的顺序, 都返回 true
+//      对于长度为大于等于3的 postorder, 最后一个元素是 root, 然后在前面查找一个位置, 该位置满足条件:
+//		该位置之前的元素, postorder[i] < root
+//		该位置之后的元素, postorder[i] > root
+// 如果存在这样的位置, 则说明当前的根元素满足要求, 依据找到的位置, 将 postorder 一分为2, 左子树和右子树,
+// 当左右子树都满足要求, 则最终满足要求.
+func VerifyPostorder(postorder []int) bool {
+	index := func(arr []int, ele int) int {
+		isLess := true
+		index := -1
+		for i, val := range arr {
+			if isLess && i+1 < len(arr) {
+				if arr[i+1] > ele {
+					index = i
+					isLess = false
+					continue
+				}
+			}
+
+			// 所有元素都小于 ele
+			if isLess && i+1 == len(arr) {
+				index = i
+				isLess = false
+				continue
+			}
+
+			// 条件检测
+			if isLess && val > ele {
+				return -1
+			}
+
+			if !isLess && val < ele {
+				return -1
+			}
+		}
+
+		return index
+	}
+
+	if len(postorder) <= 2 {
+		return true
+	}
+
+	n := len(postorder)
+	root := postorder[n-1]
+	idx := index(postorder[:n-1], root)
+	if idx == -1 {
+		return false
+	}
+
+	return VerifyPostorder(postorder[0:idx+1]) && VerifyPostorder(postorder[idx+1:n-1])
+}
