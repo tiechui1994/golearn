@@ -372,3 +372,46 @@ func VerifyPostorder(postorder []int) bool {
 
 	return VerifyPostorder(postorder[0:idx+1]) && VerifyPostorder(postorder[idx+1:n-1])
 }
+
+// 检查 t2 是否为 t1 的子树
+// 思路: t1, t2 其中一个为 nil, 直接可以判断. 难点在于 t1, t2 都不为 nil
+// 使用递归进行判断.
+// 假设当前比较到了节点 root(t1), cur(t2), sub(t2)
+// 1. 如果 root.Val == cur.Val, 则继续比较 [root.Left,cur.Left] && [root.Right, cur.Right],
+// 2. 如果 root.Val == sub.Val, 则需要重新开始比较 [root.Left,sub.Left] && [root.Right, sub.Right],
+// 3. 如果 root.Val != sub.Val, 则需要比较  [root.Left,sub] || [root.Right, sub],
+// 结束的条件: root == nil && cur == nil, 某一个分支到达了根, 结果是 true
+//			 root == nil || cur == nil, 某一个分支的 root 或者 cur 提前结束了, 则结果是 false
+
+func CheckSubTree(t1 *Node, t2 *Node) bool {
+	var checksub func(root, cur *Node, subtree *Node) bool
+	checksub = func(root, cur *Node, subtree *Node) bool {
+		if root == nil && cur == nil {
+			return true
+		}
+
+		if root == nil || cur == nil {
+			return false
+		}
+
+		if root.Val == cur.Val {
+			return checksub(root.Left, cur.Left, subtree) && checksub(root.Right, cur.Right, subtree)
+		} else if root.Val == subtree.Val {
+			return checksub(root.Left, subtree.Left, subtree) && checksub(root.Right, subtree.Left, subtree)
+		} else {
+			return checksub(root.Left, subtree, subtree) || checksub(root.Right, subtree, subtree)
+		}
+	}
+
+	if t1 == nil && t2 == nil {
+		return true
+	}
+	if t1 == nil {
+		return false
+	}
+	if t2 == nil {
+		return true
+	}
+
+	return checksub(t1, t2, t2)
+}
