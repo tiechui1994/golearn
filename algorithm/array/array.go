@@ -1,4 +1,4 @@
-package leetcode
+package array
 
 import (
 	"fmt"

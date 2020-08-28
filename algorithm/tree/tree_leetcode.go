@@ -1,5 +1,7 @@
 package tree
 
+import "math"
+
 // 给定一个非空二叉树, 返回其最大路径和
 // 路径: 一条从树中任意节点出发, 到达任意节点的序列. 该路径至少包含一个节点, 且不一定经过根节点
 
@@ -195,3 +197,123 @@ func pathsum(root *Node, sum int, parent []int) [][]int {
 
 	return append(left, right...)
 }
+
+// 搜索树的第k小数, 中序遍历(左根右) -> 有序
+func KthSmallest(root *Node, k int) int {
+	if root == nil {
+		return 0
+	}
+
+	var res int
+	var count int
+	var visit func(node *Node)
+	visit = func(node *Node) {
+		if node.Left != nil {
+			visit(node.Left)
+		}
+
+		count++
+		if count == k {
+			res = node.Val
+			return
+		}
+
+		if node.Right != nil {
+			visit(node.Right)
+		}
+	}
+
+	visit(root)
+	return res
+}
+
+func PathInZigZagTree(label int) []int {
+	if label == 1 {
+		return []int{1}
+	}
+
+	h := int(math.Log2(float64(label))) + 1
+	var nodes = []int{label}
+
+	var findparent func(h int, child int)
+	findparent = func(h int, child int) {
+		if h == 2 {
+			nodes = append([]int{1}, nodes...)
+			return
+		}
+
+		ps := int(math.Pow(2, float64(h-2)))
+		pe := int(math.Pow(2, float64(h-1)) - 1)
+
+		parent := ps + pe - child/2
+		nodes = append([]int{parent}, nodes...)
+		findparent(h-1, parent)
+	}
+
+	findparent(h, label)
+	return nodes
+}
+
+// 到target的距离是k的节点.
+// 思路1: 深度优先遍历, 获取node->parent的map关系.
+// 利用queue先进先出的特性, target为头元素, 加入其 "元素的孩子和父亲". nil为特殊元素, 遇到nil的时候就需要
+// 更新深度. 还有一个全局的已经加入的节点seen, 防止多次添加
+func DistanceK(root, target *Node, k int) []int {
+	// 1. 深度优先遍历, 记录node -> parent
+	var parent = make(map[*Node]*Node) // node -> parent
+	var dfs func(node, parent *Node)
+	dfs = func(node, par *Node) {
+		if node != nil {
+			parent[node] = par
+			dfs(node.Left, node)
+			dfs(node.Right, node)
+		}
+	}
+
+	dfs(root, nil)
+
+	// 队列
+	var queue = Queue{}
+	queue.push(nil)
+	queue.push(target) // nil和target被加入到队列当中. 最终存放节点
+	var seen = map[*Node]bool{
+		target: true,
+		nil:    true,
+	}
+
+	dist := 0
+	for !queue.empty() {
+		node := queue.pop()
+
+		if node == nil {
+			if dist == k {
+				var res []int
+				for i := range queue {
+					res = append(res, queue[i].Val)
+				}
+				return res
+			}
+
+			queue.push(nil)
+			dist++
+		} else {
+			if _, ok := seen[node.Left]; !ok {
+				seen[node.Left] = true
+				queue.push(node.Left)
+			}
+			if _, ok := seen[node.Right]; !ok {
+				seen[node.Right] = true
+				queue.push(node.Right)
+			}
+
+			par := parent[node] // 父节点
+			if _, ok := seen[par]; !ok {
+				seen[par] = true
+				queue.push(par)
+			}
+		}
+	}
+
+	return nil
+}
+
