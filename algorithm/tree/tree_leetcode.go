@@ -415,3 +415,119 @@ func CheckSubTree(t1 *Node, t2 *Node) bool {
 
 	return checksub(t1, t2, t2)
 }
+
+/**
+关于图,或者是多叉树的深度优先遍历和广度优先遍历:
+
+深度优先遍历的本质是:  root-childs. 因此首先确定每一个 node 的所有孩子节点, 对于二叉树, 三叉树, 以及一些特殊的结构体,
+结构体本身以及包括了孩子节点. 但是, 针对一些不能直接获取孩子节点的结构体, 需要先建立起 root 和 child 的结构体关系. 最
+常用的结构体是 [root]Set, map[root]Set.
+
+接着就是按照固定的套路:
+
+func dfs(node) {
+	for child in getChild(node) {
+		... // top-down
+		dfs(child)
+		... // down-top
+	}
+}
+
+特别的(二叉树):
+
+func dfs(node) {
+	... // top-down
+	dfs(node.Left)
+	dfs(node.Right)
+	... // down-top
+}
+
+
+广度优先遍历的本质是: 层序遍历, 即, 先遍历每一个节点, 然后将节点的孩子加入到队列当中, 不断循环, 直到队列为空.
+
+**/
+
+
+// 深度优先搜索 + 子树计数
+//
+// 分析
+// 用 ans 数组表示答案, 其中 ans[x] 表示节点 x 距离树中其它节点的距离之和. 直接对于每个 x 并通过搜索的方式计算
+// ans[x] 的总时间复杂度是 O(N^2), 其中 N 是树中的节点个数, 这会超出时间限制. 因此我们需要找到 ans[x] 之间的关系,
+// 减少重复搜索.
+//
+// 假设两个节点为 x 和 y, 它们在树中有一条边直接相连.
+// 如果将这条边删除, 会得到一棵以 x 为根节点的子树 X 以及一棵以 y 为根节点的子树 Y.
+//
+// ans[x] 的值由三部分组成:
+// 第一部分是子树 X 中所有节点到 x 的总距离, 记为 x@X;
+// 第二部分是子树 Y 中所有节点到 y 的总距离, 记为 y@Y;
+// 第三部分是子树 Y 中所有节点从 y 到达 x 的总距离, 它等于 Y 中的节点个数, 记为 #(Y).
+// 将这三部分进行累加, 得到 ans[x] = x@X + y@Y + #(Y). 同理我们有 ans[y] = y@Y + x@X + #(X),
+// 因此 ans[x] - ans[y] = #(Y) - #(X).
+//
+// 算法:
+//
+// 指定 0 号节点为树的根节点, 对于每个节点 node, 设 S(node) 为以 node 为根的子树 (包括 node 本身).
+//
+// 用 count[node] 表示 S(node) 中节点的个数, 并用 stsum[node](子树和)表示 S(node) 中所有节点到 node 的总距离.
+//
+// 可以使用 "深度优先搜索" 计算出所有的 count 和 stsum.
+//
+// 对于节点 node, 我们计算出它的每个子节点的 count 和 stsum 值, 那么就有:
+// count[node] = sum(count[child]) + 1
+// stsum[node] = sum(stsum[child] + count[child]), 其中 sum() 表示对子节点进行累加.
+//
+// 当所有节点计算完之后, 对于根节点, 它的答案 ans[root] 即为 stsum[root].
+//
+// 再进行一次"深度优先搜索", 并且根据上文推出的两个相邻节点 ans 值的关系, 得到其它节点的 ans 值, 即: 对于节点
+// parent(父节点)以及节点 child(子节点), 有:
+// ans[child] = ans[parent] - count[child] + (N - count[child]), 与上文的
+// ans[y] = ans[x] - #(Y) + #(X) 相对应.
+//
+// 当第二次深度优先搜索结束后, 我们就得到了所有节点对应的 ans 值.
+
+
+func SumOfDistancesInTree(N int, edges [][]int) []int {
+	ans := make([]int, N)
+	// 首先, 对于每一个节点, 肯定包含其自身
+	count := make([]int, N)
+	for i := range count {
+		count[i] = 1
+	}
+	// 构建, 父子关系, 这是为深度优先遍历做准备工作
+	graph := make([]Set, N)
+	for i := 0; i < N; i++ {
+		graph[i] = Set{}
+	}
+	for _, edge := range edges {
+		graph[edge[0]].add(edge[1])
+		graph[edge[1]].add(edge[0])
+	}
+
+	// 深度优先遍历, 计算 count
+	dfs(0, -1, graph, ans, count)
+	// 深度优先遍历, 计算 ans
+	dfs2(0, -1, graph, ans, count)
+
+	return ans
+}
+
+func dfs(node, parent int, graph []Set, ans []int, count []int) {
+	for _, child := range graph[node].values() {
+		if child != parent {
+			dfs(child, node, graph, ans, count)
+			count[node] += count[child]
+			ans[node] += ans[child] + count[child]
+		}
+	}
+}
+
+func dfs2(node, parent int, graph []Set, ans []int, count []int) {
+	for _, child := range graph[node].values() {
+		if child != parent {
+			ans[child] = ans[node] - count[child] + len(count) - count[child]
+			dfs2(child, node, graph, ans, count)
+		}
+	}
+}
+

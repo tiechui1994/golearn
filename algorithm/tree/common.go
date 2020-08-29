@@ -51,6 +51,47 @@ func (q *Queue) pop() *Node {
 	return node
 }
 
+type Set struct {
+	data map[int]bool
+}
+
+func (s *Set) add(i int) {
+	if s.data == nil {
+		s.data = make(map[int]bool)
+	}
+	s.data[i] = true
+}
+
+func (s *Set) remove(i int) {
+	if s.data == nil {
+		s.data = make(map[int]bool)
+		return
+	}
+	delete(s.data, i)
+}
+
+func (s *Set) contains(i int) bool {
+	if s.data == nil {
+		s.data = make(map[int]bool)
+		return false
+	}
+	return s.data[i]
+}
+
+func (s *Set) values() []int {
+	if s.data == nil {
+		s.data = make(map[int]bool)
+		return []int{}
+	}
+	values := make([]int, 0, len(s.data))
+	for k := range s.data {
+		values = append(values, k)
+	}
+	return values
+}
+
+///////////////////////////////////////
+
 func SliceToNode(strs []string) ([]*Node) {
 	if strs == nil || len(strs) == 0 {
 		return nil
