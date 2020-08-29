@@ -169,7 +169,7 @@ func fillTree(h *Node, st []*Node) (*Node, []*Node) {
 	return h, st[2:]
 }
 
-func Max(slice []int) int {
+func Max(slice ...int) int {
 	if len(slice) == 1 {
 		return slice[0]
 	}
@@ -182,6 +182,21 @@ func Max(slice []int) int {
 	}
 
 	return max
+}
+
+func Min(slice ...int) int {
+	if len(slice) == 1 {
+		return slice[0]
+	}
+
+	min := slice[0]
+	for i := 1; i < len(slice); i++ {
+		if min > slice[i] {
+			min = slice[i]
+		}
+	}
+
+	return min
 }
 
 func PrintTree(node *Node) {

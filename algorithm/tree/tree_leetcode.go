@@ -21,18 +21,15 @@ func MaxSumPath(root *Node) int {
 
 		l := MaxSumPath(root.Left)
 		r := MaxSumPath(root.Right)
-		arr := []int{root.Val, ll + root.Val, rr + root.Val, ll + rr + root.Val, ll, rr, l, r}
-		return Max(arr)
+		return Max(root.Val, ll+root.Val, rr+root.Val, ll+rr+root.Val, ll, rr, l, r)
 	} else if root.Left != nil {
 		ll := maxSumPathRoot(root.Left)
 		l := MaxSumPath(root.Left)
-		arr := []int{root.Val, root.Val + ll, ll, l}
-		return Max(arr)
+		return Max(root.Val, root.Val+ll, ll, l)
 	} else if root.Right != nil {
 		rr := maxSumPathRoot(root.Right)
 		r := MaxSumPath(root.Right)
-		arr := []int{root.Val, root.Val + rr, rr, r}
-		return Max(arr)
+		return Max(root.Val, root.Val+rr, rr, r)
 	}
 
 	return root.Val
@@ -45,8 +42,7 @@ func maxSumPathRoot(root *Node) int {
 
 	l := maxSumPathRoot(root.Left)
 	r := maxSumPathRoot(root.Right)
-	arr := []int{l + root.Val, r + root.Val, root.Val}
-	return Max(arr)
+	return Max(l+root.Val, r+root.Val, root.Val)
 }
 
 // 对称二叉树
@@ -447,7 +443,6 @@ func dfs(node) {
 
 **/
 
-
 // 深度优先搜索 + 子树计数
 //
 // 分析
@@ -485,7 +480,6 @@ func dfs(node) {
 // ans[y] = ans[x] - #(Y) + #(X) 相对应.
 //
 // 当第二次深度优先搜索结束后, 我们就得到了所有节点对应的 ans 值.
-
 
 func SumOfDistancesInTree(N int, edges [][]int) []int {
 	ans := make([]int, N)
@@ -530,4 +524,3 @@ func dfs2(node, parent int, graph []Set, ans []int, count []int) {
 		}
 	}
 }
-

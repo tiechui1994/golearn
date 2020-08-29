@@ -2,14 +2,14 @@ package tree
 
 import "fmt"
 
-const M = 4         // M阶B树
-const Min = M/2 - 1 // 每个节点至少有的关键字个数
+const m = 4         // M阶B树
+const min = m/2 - 1 // 每个节点至少有的关键字个数
 
 type BT struct {
 	parent *BT        //指向父节点的指针
 	keyNum int        //关键字个数
-	key    [M + 1]int //关键字向量,key[0]未用
-	child  [M + 1]*BT //子树指针向量
+	key    [m + 1]int //关键字向量,key[0]未用
+	child  [m + 1]*BT //子树指针向量
 }
 
 //在B树中查找关键字为value的节点，查找成功，返回在节点的位置和该节点
@@ -41,11 +41,11 @@ func (t *BT) Split() *BT {
 		parent = &BT{}
 	}
 	mid := t.keyNum/2 + 1
-	newNode.keyNum = M - mid
+	newNode.keyNum = m - mid
 	t.keyNum = mid - 1
 	j := 1
 	k := mid + 1
-	for ; k <= M; k++ { //新生成的右节点
+	for ; k <= m; k++ { //新生成的右节点
 		newNode.key[j] = t.key[k]
 		newNode.child[j-1] = t.child[k-1]
 		j = j + 1
@@ -64,7 +64,7 @@ func (t *BT) Split() *BT {
 	parent.child[k+1] = &newNode
 	parent.keyNum++
 
-	if parent.keyNum >= M {
+	if parent.keyNum >= m {
 		return parent.Split()
 	}
 	return parent
@@ -86,7 +86,7 @@ func (t *BT) Insert(value int) *BT {
 		}
 		node.key[i+1] = value
 		node.keyNum++
-		if node.keyNum < M { //没有超过节点最大数，结束插入
+		if node.keyNum < m { //没有超过节点最大数，结束插入
 			return t
 		} else { //否则，分裂该节点
 			parent := node.Split()
@@ -129,7 +129,7 @@ func (t *BT) DeleteNode(value int, i int) *BT {
 			t.child[k] = t.child[k+1]
 		}
 		t.keyNum--
-		if t.keyNum < (M-1)/2 && t.parent != nil {
+		if t.keyNum < (m-1)/2 && t.parent != nil {
 			ok, t := t.Restore()
 			if !ok {
 				t = t.MergeNode()
@@ -150,7 +150,7 @@ func (t *BT) Restore() (bool, *BT) {
 	}
 	if j > 0 { //p有左邻兄弟节点
 		b := parent.child[j-1]
-		if b.keyNum > (M-1)/2 { //左兄弟有多余关键字
+		if b.keyNum > (m-1)/2 { //左兄弟有多余关键字
 			for k := t.keyNum; k >= 0; k-- { //将t中关键字和指针都右移动,给父节点移动下来的关键字空出位置
 				t.key[k+1] = t.key[k]
 				//t.child[k+1] = t.child[k]
@@ -164,7 +164,7 @@ func (t *BT) Restore() (bool, *BT) {
 	}
 	if j < parent.keyNum { //p有右邻兄弟节点
 		b := parent.child[j+1]
-		if b.keyNum > (M-1)/2 { //右邻兄弟有多余关键字
+		if b.keyNum > (m-1)/2 { //右邻兄弟有多余关键字
 			t.key[t.keyNum+1] = parent.key[j+1] //父节点关键字下移
 			parent.key[j+1] = b.key[1]          //兄弟节点关键字上移
 			for k := 1; k < b.keyNum; k++ {
