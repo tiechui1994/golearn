@@ -55,6 +55,9 @@ type Set struct {
 	data map[int]bool
 }
 
+func (s *Set) len() int {
+	return len(s.data)
+}
 func (s *Set) add(i int) {
 	if s.data == nil {
 		s.data = make(map[int]bool)
@@ -64,7 +67,6 @@ func (s *Set) add(i int) {
 
 func (s *Set) remove(i int) {
 	if s.data == nil {
-		s.data = make(map[int]bool)
 		return
 	}
 	delete(s.data, i)
@@ -78,9 +80,8 @@ func (s *Set) contains(i int) bool {
 	return s.data[i]
 }
 
-func (s *Set) values() []int {
+func (s *Set) set() []int {
 	if s.data == nil {
-		s.data = make(map[int]bool)
 		return []int{}
 	}
 	values := make([]int, 0, len(s.data))

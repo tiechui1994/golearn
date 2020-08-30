@@ -482,6 +482,26 @@ func dfs(node) {
 // 当第二次深度优先搜索结束后, 我们就得到了所有节点对应的 ans 值.
 
 func SumOfDistancesInTree(N int, edges [][]int) []int {
+	var dfsCount, dfsAns func(node, parent int, graph []Set, ans []int, count []int)
+	dfsCount = func(node, parent int, graph []Set, ans []int, count []int) {
+		for _, child := range graph[node].set() {
+			if child != parent {
+				dfsCount(child, node, graph, ans, count)
+				count[node] += count[child]
+				ans[node] += ans[child] + count[child]
+			}
+		}
+	}
+
+	dfsAns = func(node, parent int, graph []Set, ans []int, count []int) {
+		for _, child := range graph[node].set() {
+			if child != parent {
+				ans[child] = ans[node] - count[child] + len(count) - count[child]
+				dfsAns(child, node, graph, ans, count)
+			}
+		}
+	}
+
 	ans := make([]int, N)
 	// 首先, 对于每一个节点, 肯定包含其自身
 	count := make([]int, N)
@@ -499,28 +519,126 @@ func SumOfDistancesInTree(N int, edges [][]int) []int {
 	}
 
 	// 深度优先遍历, 计算 count
-	dfs(0, -1, graph, ans, count)
+	dfsCount(0, -1, graph, ans, count)
 	// 深度优先遍历, 计算 ans
-	dfs2(0, -1, graph, ans, count)
+	dfsAns(0, -1, graph, ans, count)
 
 	return ans
 }
 
-func dfs(node, parent int, graph []Set, ans []int, count []int) {
-	for _, child := range graph[node].values() {
-		if child != parent {
-			dfs(child, node, graph, ans, count)
-			count[node] += count[child]
-			ans[node] += ans[child] + count[child]
+// 二叉树着色问题
+// 取胜的关键是取得一半以上的节点数量.
+// 一个节点, 如果取它的左(右)节点, 则(左)右节点的所有节点都是你的. 取父节点, 则父节点以上的所有节点都是你的.
+// 一号玩家选取了 x 节点, 其左节点的总数是 left, 右节点的总数是 right:
+// 1.left > m 或者 right > m, 你只要选取大于一半的那个节点, 则必赢
+// 2. left == m 或者 right == m, 无论选取哪个节点, 其他另一半和父节点都是一号玩家的, 则必输
+// 3. left + right + 1 <= m, 选取父节点, 即必赢
+// 4. left + right + 1 > m, 无论选取哪个节点, 其他另一半节点和父节点都是一号玩家的, 则必输
+func BtreeGameWinningMove(root *Node, n int, x int) bool {
+	// 查找节点
+	var search func(*Node, int) *Node
+	search = func(node *Node, val int) *Node {
+		if node == nil {
+			return nil
 		}
+		if node.Val == val {
+			return node
+		}
+
+		left := search(node.Left, val)
+		right := search(node.Right, val)
+		if left != nil {
+			return left
+		}
+
+		return right
 	}
+
+	// 统计节点子树的个数, 包括节点
+	var count func(*Node) int
+	count = func(root *Node) int {
+		if root == nil {
+			return 0
+		}
+		if root.Left == nil && root.Right == nil {
+			return 1
+		}
+
+		left := count(root.Left)
+		right := count(root.Right)
+		return left + right + 1
+	}
+
+	if n == 1 || root == nil {
+		return false
+	}
+
+	m := n / 2
+	node := search(root, x)
+	left := count(node.Left)
+	right := count(node.Right)
+	if left > m || right > m || left+right < m {
+		return true
+	}
+
+	return false
 }
 
-func dfs2(node, parent int, graph []Set, ans []int, count []int) {
-	for _, child := range graph[node].values() {
-		if child != parent {
-			ans[child] = ans[node] - count[child] + len(count) - count[child]
-			dfs2(child, node, graph, ans, count)
+
+// 树的最短高度问题, 给定一个树, 找到 root 节点, 到达各个子节点的高度最小
+// 思路: 首先分析结果, 最多有两个节点. 原因很简单, 三个节点形成一个平面, 但这只是一个点或者线的问题
+// 整体的思路就是剪除叶子节点的思想.
+// 叶子节点的特点是度为1.
+// 当剪除叶子节点的时候, 可以根据叶子节点找到邻居节点, 如果剪除之后, 邻居节点的度是1, 则又加入到剪除的队列,
+// 从而形成了一个广度遍历.
+// 依照上述的思想, 最终所有的节点都会被剪除掉. 那么最后一次剪除前保存的元素就是最终的结果.
+//
+// 叶子节点到根的聚拢算法.
+// a-b 或 a
+func FindMinHeightTrees(n int, edges [][]int) []int {
+	if n == 0 {
+		return nil
+	}
+	if n == 1 {
+		return []int{0}
+	}
+	if n == 2 {
+		return []int{0, 1}
+	}
+
+	degree := make([]int, n)
+	graph := make([]Set, n)
+	for _, v := range edges {
+		degree[v[0]]++
+		degree[v[1]]++
+		graph[v[0]].add(v[1])
+		graph[v[1]].add(v[0])
+	}
+
+	q := make([]int, 0)
+	for i := 0; i < n; i++ {
+		if degree[i] == 1 {
+			q = append(q, i)
 		}
 	}
+
+	var res []int
+	for len(q) != 0 {
+		res = nil
+		size := len(q)
+		for i := 0; i < size; i++ {
+			cur := q[0]
+			q = q[1:]
+			res = append(res, cur)
+			members := graph[cur].set()
+			for _, member := range members {
+				degree[member]--
+				if degree[member] == 1 {
+					q = append(q, member)
+				}
+			}
+		}
+	}
+
+	return res
 }

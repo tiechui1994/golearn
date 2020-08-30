@@ -45,3 +45,20 @@ func TestVerifyPostorder(t *testing.T) {
 	res = VerifyPostorder([]int{4, 8, 6, 12, 16, 14, 10})
 	t.Log("expect: true, real:", res)
 }
+
+func TestBuildTree(t *testing.T) {
+	res := FindMinHeightTrees(6, [][]int{
+		{0, 3}, {1, 3}, {2, 3}, {4, 3}, {5, 4},
+	})
+	t.Log("expect:[3,4], real:", res)
+
+	res = FindMinHeightTrees(4, [][]int{
+		{1, 0}, {1, 2}, {1, 3},
+	})
+	t.Log("expect: [1], real:", res)
+
+	res = FindMinHeightTrees(6, [][]int{
+		{0, 1}, {0, 2}, {0, 3}, {3, 4}, {4, 5},
+	})
+	t.Log("expect:[3], real:", res)
+}
