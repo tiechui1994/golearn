@@ -79,6 +79,7 @@ func IsSymmetric(root *Node) bool {
 	return true
 }
 
+// 构建二叉树
 func BuildTree(inorder []int, postorder []int) *Node {
 	if len(inorder) == 0 || len(postorder) == 0 {
 		return nil
@@ -86,6 +87,16 @@ func BuildTree(inorder []int, postorder []int) *Node {
 	if len(inorder) != len(postorder) {
 		return nil
 	}
+	index := func(arr []int, el int) int {
+		for i := 0; i < len(arr); i++ {
+			if arr[i] == el {
+				return i
+			}
+		}
+
+		return -1
+	}
+
 	var build func(inorder []int, postorder []int) *Node
 	build = func(inorder []int, postorder []int) *Node {
 		// 当只有一个节点或者没有节点
@@ -112,16 +123,6 @@ func BuildTree(inorder []int, postorder []int) *Node {
 	}
 
 	return build(inorder, postorder)
-}
-
-func index(arr []int, el int) int {
-	for i := 0; i < len(arr); i++ {
-		if arr[i] == el {
-			return i
-		}
-	}
-
-	return -1
 }
 
 // 最近公共祖先
@@ -369,47 +370,35 @@ func VerifyPostorder(postorder []int) bool {
 	return VerifyPostorder(postorder[0:idx+1]) && VerifyPostorder(postorder[idx+1:n-1])
 }
 
-// 检查 t2 是否为 t1 的子树
-// 思路: t1, t2 其中一个为 nil, 直接可以判断. 难点在于 t1, t2 都不为 nil
-// 使用递归进行判断.
-// 假设当前比较到了节点 root(t1), cur(t2), sub(t2)
-// 1. 如果 root.Val == cur.Val, 则继续比较 [root.Left,cur.Left] && [root.Right, cur.Right],
-// 2. 如果 root.Val == sub.Val, 则需要重新开始比较 [root.Left,sub.Left] && [root.Right, sub.Right],
-// 3. 如果 root.Val != sub.Val, 则需要比较  [root.Left,sub] || [root.Right, sub],
-// 结束的条件: root == nil && cur == nil, 某一个分支到达了根, 结果是 true
-//			 root == nil || cur == nil, 某一个分支的 root 或者 cur 提前结束了, 则结果是 false
+// 树的子结构 | 检查子树
+// 思路: 首先需要定义一个相同树结构比较的先序遍历函数, recur(root, cur *Node), 用来返回 root 和 cur 是否具有相同
+// 的结构:
+// 1. 如果 cur 为 nil, 说明子树已经遍历完成, 则返回 true
+// 2. 如果 root 为 nil 或者 当前的 root 和 cur 值不一样, 则说明两者在当前节点不一样, 则返回 false
+// 3. 递归遍历 root 和 cur 的 Left 和 Right
+//
+// t1 和 t2 具有相同的子结构, 只有三种状况:
+// 1. 当前节点的 t1 和 t2 就具有相同结构
+// 2. t1.Left 当中包含 t2 子结构(注意: 是包含, 可能包含 t1.Left节点)
+// 3. t1.Right 当中包含 t2 子结构(注意: 是包含, 可能包含 t1.Right节点)
+func IsSubStructure(t1 *Node, t2 *Node) bool {
+	return (t1 != nil && t2 != nil) && (recur(t1, t2) || IsSubStructure(t1.Left, t2) || IsSubStructure(t1.Right, t2))
+}
 
-func CheckSubTree(t1 *Node, t2 *Node) bool {
-	var checksub func(root, cur *Node, subtree *Node) bool
-	checksub = func(root, cur *Node, subtree *Node) bool {
-		if root == nil && cur == nil {
-			return true
-		}
-
-		if root == nil || cur == nil {
-			return false
-		}
-
-		if root.Val == cur.Val {
-			return checksub(root.Left, cur.Left, subtree) && checksub(root.Right, cur.Right, subtree)
-		} else if root.Val == subtree.Val {
-			return checksub(root.Left, subtree.Left, subtree) && checksub(root.Right, subtree.Left, subtree)
-		} else {
-			return checksub(root.Left, subtree, subtree) || checksub(root.Right, subtree, subtree)
-		}
-	}
-
-	if t1 == nil && t2 == nil {
+func recur(root *Node, cur *Node) bool {
+	if cur == nil {
 		return true
 	}
-	if t1 == nil {
+
+	if root == nil {
 		return false
 	}
-	if t2 == nil {
-		return true
+
+	if root.Val != cur.Val {
+		return false
 	}
 
-	return checksub(t1, t2, t2)
+	return recur(root.Left, cur.Left) && recur(root.Right, cur.Right)
 }
 
 /**
@@ -443,6 +432,8 @@ func dfs(node) {
 
 **/
 
+// 树每个节点到其他节点的和
+//
 // 深度优先搜索 + 子树计数
 //
 // 分析
@@ -527,6 +518,7 @@ func SumOfDistancesInTree(N int, edges [][]int) []int {
 }
 
 // 二叉树着色问题
+//
 // 取胜的关键是取得一半以上的节点数量.
 // 一个节点, 如果取它的左(右)节点, 则(左)右节点的所有节点都是你的. 取父节点, 则父节点以上的所有节点都是你的.
 // 一号玩家选取了 x 节点, 其左节点的总数是 left, 右节点的总数是 right:
@@ -584,8 +576,8 @@ func BtreeGameWinningMove(root *Node, n int, x int) bool {
 	return false
 }
 
-
 // 树的最短高度问题, 给定一个树, 找到 root 节点, 到达各个子节点的高度最小
+//
 // 思路: 首先分析结果, 最多有两个节点. 原因很简单, 三个节点形成一个平面, 但这只是一个点或者线的问题
 // 整体的思路就是剪除叶子节点的思想.
 // 叶子节点的特点是度为1.
