@@ -386,15 +386,20 @@ func IsSubStructure(t1 *Node, t2 *Node) bool {
 }
 
 func recur(root *Node, cur *Node) bool {
+	// 检查子树
+	//if cur == nil && root == nil {
+	//	return true
+	//}
+	//if root == nil || cur == nil || root.Val != cur.Val {
+	//	return false
+	//}
+
+	// 子结构
 	if cur == nil {
 		return true
 	}
 
-	if root == nil {
-		return false
-	}
-
-	if root.Val != cur.Val {
+	if root == nil || root.Val != cur.Val {
 		return false
 	}
 
