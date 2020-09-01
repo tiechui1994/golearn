@@ -639,3 +639,67 @@ func FindMinHeightTrees(n int, edges [][]int) []int {
 
 	return res
 }
+
+// 具有所有最深结点的最小子树
+//
+// 两次深度优先遍历
+// 1. 第一次深度优先遍历, 计算出每个节点的深度
+// 2. 第二次深度优先遍历, 获取具有最大深度的子树
+//	  - 如果当前节点具有最大深度, 返回当前节点
+//	  - 如果当前节点的左右孩子具有最大深度, 返回当前节点
+//	  - 如果当前节点的左(右)孩子具有最大深度, 返回左(右)孩子
+func SubtreeWithAllDeepest(root *Node) *Node {
+	if root == nil || root.Left == nil && root.Right == nil {
+		return root
+	}
+
+	// 计算节点的深度
+	var dfsdepth func(cur *Node, dep int, depmap map[*Node]int)
+	dfsdepth = func(cur *Node, dep int, depmap map[*Node]int) {
+		if cur == nil {
+			return
+		}
+		depmap[cur] = dep
+		if cur.Left != nil {
+			dfsdepth(cur.Left, dep+1, depmap)
+		}
+		if cur.Right != nil {
+			dfsdepth(cur.Right, dep+1, depmap)
+		}
+	}
+
+	var mintree func(cur *Node, max int, depmap map[*Node]int) *Node
+	mintree = func(cur *Node, max int, depmap map[*Node]int) *Node {
+		if cur == nil {
+			return nil
+		}
+		if depmap[cur] == max {
+			return cur
+		}
+
+		left := mintree(cur.Left, max, depmap)
+		right := mintree(cur.Right, max, depmap)
+		if left != nil && right != nil {
+			return cur
+		}
+		if left != nil {
+			return left
+		}
+		if right != nil {
+			return right
+		}
+
+		return nil
+	}
+
+	// 计算
+	depmap := make(map[*Node]int)
+	dfsdepth(root, 0, depmap)
+	max := -1
+	for _, v := range depmap {
+		if max < v {
+			max = v
+		}
+	}
+	return mintree(root, max, depmap)
+}
