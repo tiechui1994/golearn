@@ -703,3 +703,49 @@ func SubtreeWithAllDeepest(root *Node) *Node {
 	}
 	return mintree(root, max, depmap)
 }
+
+// 好叶子节点对的数量
+//
+// 给你二叉树的根节点 root 和一个整数 distance.
+//
+// 如果二叉树中两个叶节点之间的最短路径长度小于或者等于 distance, 那它们就可以构成一组好叶子节点对.
+//
+// 思路: 深度优先遍历, 计算当前节点到叶子节点的距离数组(长度是distance+1).
+// 1. 如果当前节点为叶子节点, 则 distance[0]=1, 即到叶子节点的距离是0的有一个
+// 2. 计算完左右节点之后, 当前节点 distance[i] = left[i-1] + right[i-1], i>=1, 即当前节点到叶子节点距离为i的个数
+//
+// 计算: left, right 表示左右孩子节点到叶子节点距离数组
+// ans += left[i] * left[j]; i+j+2 <= distance, i 左孩子距离叶子节点值为 i 的个数, j 是右孩子距离叶子节点的个数
+// i+1+j+1 则表示连接当前节点的孩子的距离.
+func CountPairs(root *Node, distance int) int {
+	var dfs func(root *Node, distance int, ans *int) []int
+	dfs = func(root *Node, distance int, ans *int) []int {
+		if root == nil {
+			return make([]int, distance+1)
+		}
+
+		ret := make([]int, distance+1)
+		if root.Left == nil && root.Right == nil {
+			ret[0] = 1
+			return ret
+		}
+
+		left := dfs(root.Left, distance, ans)
+		right := dfs(root.Right, distance, ans)
+		for i := 0; i < distance; i++ {
+			for j := 0; i+j+2 <= distance; j++ {
+				*ans += left[i] * right[j]
+			}
+		}
+
+		for i := 1; i <= distance; i++ {
+			ret[i] = left[i-1] + right[i-1]
+		}
+
+		return ret
+	}
+
+	var ans = 0
+	dfs(root, distance, &ans)
+	return ans
+}
