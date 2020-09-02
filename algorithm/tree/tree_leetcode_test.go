@@ -2,6 +2,7 @@ package tree
 
 import (
 	"testing"
+	"log"
 )
 
 func TestMaxSumPath(t *testing.T) {
@@ -32,7 +33,7 @@ func TestPrintTree(t *testing.T) {
 func TestPathSum(t *testing.T) {
 	nodes := []string{"5", "4", "8", "11", "null", "13", "4", "7", "2", "null", "null", "5", "1"}
 	node := SliceToTree(SliceToNode(nodes))
-	res := PathSum(node, 22)
+	res := PathSumI(node, 22)
 	t.Log("expect: [[5 4 11 2] [5 8 4 5]]")
 	t.Log("real:", res)
 }
@@ -61,4 +62,18 @@ func TestBuildTree(t *testing.T) {
 		{0, 1}, {0, 2}, {0, 3}, {3, 4}, {4, 5},
 	})
 	t.Log("expect:[3], real:", res)
+}
+
+func TestPathSum2(t *testing.T) {
+	nodes := []string{"5", "4", "8", "11", "null", "13", "4", "7", "2", "null", "null", "5", "1"}
+	node := SliceToTree(SliceToNode(nodes))
+	log.Println(PathSumII(node, 17))
+
+	//nodes := []string{"1", "null", "2", "null", "3", "null", "4", "null", "5"}
+	//node := SliceToTree(SliceToNode(nodes))
+	//PathSumII(node, 3)
+
+	//nodes := []string{"0", "1","1"}
+	//node := SliceToTree(SliceToNode(nodes))
+	//pathSum(node, 1)
 }

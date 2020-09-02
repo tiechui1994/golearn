@@ -2,48 +2,8 @@ package tree
 
 import (
 	"math"
+	"log"
 )
-
-// 给定一个非空二叉树, 返回其最大路径和
-// 路径: 一条从树中任意节点出发, 到达任意节点的序列. 该路径至少包含一个节点, 且不一定经过根节点
-
-// 思路: 递归 + 动态规划
-// 需要思考两个问题, 左右分支含根+[当前根], 左右分支含根+当前根, 左(右)分支不含根
-// 左右分支含根: max(根, 左含根最大值+根, 右含根最大值+根)
-func MaxSumPath(root *Node) int {
-	if root == nil {
-		return 0
-	}
-
-	if root.Left != nil && root.Right != nil {
-		ll := maxSumPathRoot(root.Left)
-		rr := maxSumPathRoot(root.Right)
-
-		l := MaxSumPath(root.Left)
-		r := MaxSumPath(root.Right)
-		return Max(root.Val, ll+root.Val, rr+root.Val, ll+rr+root.Val, ll, rr, l, r)
-	} else if root.Left != nil {
-		ll := maxSumPathRoot(root.Left)
-		l := MaxSumPath(root.Left)
-		return Max(root.Val, root.Val+ll, ll, l)
-	} else if root.Right != nil {
-		rr := maxSumPathRoot(root.Right)
-		r := MaxSumPath(root.Right)
-		return Max(root.Val, root.Val+rr, rr, r)
-	}
-
-	return root.Val
-}
-
-func maxSumPathRoot(root *Node) int {
-	if root == nil {
-		return 0
-	}
-
-	l := maxSumPathRoot(root.Left)
-	r := maxSumPathRoot(root.Right)
-	return Max(l+root.Val, r+root.Val, root.Val)
-}
 
 // 对称二叉树
 // 性质: 1. 两个根节点具有相同的值; 2. 每个树的右子树与另一个树的左子树对称
@@ -151,50 +111,6 @@ func NearestAncestor(root, p, q *Node) *Node {
 		return right
 	}
 	return nil
-}
-
-// 二叉树中和为某一值的路径
-// 打印出二叉树中节点值的和为输入整数的所有路径. 从树的 "根节点" 开始往下一直到 "叶节点" 所经过的节点形成一条路径.
-// 思路: 自顶向下, 根左右, 直到根节点
-func PathSum(root *Node, sum int) [][]int {
-	if root == nil {
-		return nil
-	}
-
-	if root.Left == nil && root.Right == nil && root.Val == sum {
-		return [][]int{{root.Val}}
-	}
-
-	parent := make([]int, 0)
-	return pathsum(root, sum, parent)
-}
-
-func pathsum(root *Node, sum int, parent []int) [][]int {
-	if root.Left == nil && root.Right == nil {
-		if root.Val == sum {
-			parent = append(parent, root.Val)
-			return [][]int{parent}
-		}
-		return nil
-	}
-
-	// 分别计算左右子树, 和为 sum-root.Val 的路径
-	var left, right [][]int
-	if root.Left != nil {
-		// 注意: 由于 slice, 必须使用深度复制
-		t := make([]int, len(parent))
-		copy(t, parent)
-		t = append(t, root.Val)
-		left = pathsum(root.Left, sum-root.Val, t)
-	}
-	if root.Right != nil {
-		t := make([]int, len(parent))
-		copy(t, parent)
-		t = append(t, root.Val)
-		right = pathsum(root.Right, sum-root.Val, t)
-	}
-
-	return append(left, right...)
 }
 
 // 搜索树的第k小数, 中序遍历(左根右) -> 有序
@@ -748,4 +664,127 @@ func CountPairs(root *Node, distance int) int {
 	var ans = 0
 	dfs(root, distance, &ans)
 	return ans
+}
+
+// 二叉树中和为某一值的路径, (从根到某个节点, 限定了开始的位置)
+//
+// 打印出二叉树中节点值的和为输入整数的所有路径. 从树的 "根节点" 开始往下一直到 "叶节点" 所经过的节点形成一条路径.
+// 思路: 自顶向下, 根左右, 直到根节点
+func PathSumI(root *Node, sum int) [][]int {
+	var pathsum func(root *Node, sum int, parent []int) [][]int
+	pathsum = func(root *Node, sum int, parent []int) [][]int {
+		if root.Left == nil && root.Right == nil {
+			if root.Val == sum {
+				parent = append(parent, root.Val)
+				return [][]int{parent}
+			}
+			return nil
+		}
+
+		// 分别计算左右子树, 和为 sum-root.Val 的路径
+		var left, right [][]int
+		if root.Left != nil {
+			// 注意: 由于 slice, 必须使用深度复制
+			t := make([]int, len(parent))
+			copy(t, parent)
+			t = append(t, root.Val)
+			left = pathsum(root.Left, sum-root.Val, t)
+		}
+		if root.Right != nil {
+			t := make([]int, len(parent))
+			copy(t, parent)
+			t = append(t, root.Val)
+			right = pathsum(root.Right, sum-root.Val, t)
+		}
+
+		return append(left, right...)
+	}
+
+	if root == nil {
+		return nil
+	}
+	if root.Left == nil && root.Right == nil && root.Val == sum {
+		return [][]int{{root.Val}}
+	}
+
+	parent := make([]int, 0)
+	return pathsum(root, sum, parent)
+}
+
+// 任意节点之间的和为某一值. 其方向必须向下(只能从父节点指向子节点方向)
+//
+// 需要注意的条件: 满足条件的路径的方向, 否则可能陷入误区.
+//
+// 思路: 前缀和计数 + 深度优先遍历
+//
+// 前缀和: 到达当前元素的路径上, 之前所有元素的和.
+//
+// 如果两个节点的前缀和是相同的, 那么这两个节点之间的元素和为零.
+func PathSumII(root *Node, sum int) int {
+	var recurPathSum func(root *Node, prefixSumCount map[int]int, target, cursum int) int
+	recurPathSum = func(root *Node, prefixSumCount map[int]int, target, cursum int) int {
+		if root == nil {
+			return 0
+		}
+
+		res := 0
+		cursum += root.Val
+		res += prefixSumCount[cursum-target]
+		prefixSumCount[cursum] = prefixSumCount[cursum] + 1
+
+		res += recurPathSum(root.Left, prefixSumCount, target, cursum)
+		res += recurPathSum(root.Right, prefixSumCount, target, cursum)
+
+		// 由于当前节点已经遍历完成, 对于上一层而言, 其已经失去作用.
+		// 前缀和只对当前节点的子孙节点有作用, 对于父辈节点已经无影响.
+		prefixSumCount[cursum] = prefixSumCount[cursum] - 1
+
+		return res
+	}
+	if root == nil {
+		return 0
+	}
+	prefixSumCount := map[int]int{0: 1}
+	return recurPathSum(root, prefixSumCount, sum, 0)
+}
+
+// 给定一个非空二叉树, 返回其最大路径和(比较任意)
+// 路径: 一条从树中任意节点出发, 到达任意节点的序列. 该路径至少包含一个节点, 且不一定经过根节点
+
+// 思路: 递归 + 动态规划
+// 需要思考两个问题, 左右分支含根+[当前根], 左右分支含根+当前根, 左(右)分支不含根
+// 左右分支含根: max(根, 左含根最大值+根, 右含根最大值+根)
+func MaxSumPath(root *Node) int {
+	if root == nil {
+		return 0
+	}
+
+	if root.Left != nil && root.Right != nil {
+		ll := maxSumPathRoot(root.Left)
+		rr := maxSumPathRoot(root.Right)
+
+		l := MaxSumPath(root.Left)
+		r := MaxSumPath(root.Right)
+		return Max(root.Val, ll+root.Val, rr+root.Val, ll+rr+root.Val, ll, rr, l, r)
+	} else if root.Left != nil {
+		ll := maxSumPathRoot(root.Left)
+		l := MaxSumPath(root.Left)
+		return Max(root.Val, root.Val+ll, ll, l)
+	} else if root.Right != nil {
+		rr := maxSumPathRoot(root.Right)
+		r := MaxSumPath(root.Right)
+		return Max(root.Val, root.Val+rr, rr, r)
+	}
+
+	return root.Val
+}
+
+func maxSumPathRoot(root *Node) int {
+	if root == nil {
+		return 0
+	}
+
+	l := maxSumPathRoot(root.Left)
+	r := maxSumPathRoot(root.Right)
+	return Max(l+root.Val, r+root.Val, root.Val)
 }
