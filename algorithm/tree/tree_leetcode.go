@@ -887,3 +887,48 @@ func dfs(root *Node, parents map[*Node]*Node) {
 	dfs(root.Left, parents)
 	dfs(root.Right, parents)
 }
+
+// 一棵树, 摘苹果的最小时间
+func MinTime(n int, edges [][]int, hasApple []bool) int {
+	var dfs func(node int, edges [][]int, hasApple []bool)
+	dfs = func(node int, edges [][]int, hasApple []bool) {
+		nodes := make([]int, 0)
+		newedges := make([][]int, 0)
+		for i, v := range edges {
+			if v[0] == node {
+				nodes = append(nodes, v[1])
+				continue
+			}
+			if v[1] == node {
+				nodes = append(nodes, v[0])
+				continue
+			}
+			newedges = append(newedges, edges[i])
+		}
+
+		if len(nodes) == 0 {
+			return
+		}
+
+		for _, v := range nodes {
+			dfs(v, newedges, hasApple)
+			if hasApple[v] {
+				hasApple[node] = true
+			}
+		}
+	}
+
+	dfs(0, edges, hasApple)
+	var count int
+	for i := 0; i < n; i++ {
+		if hasApple[i] {
+			count += 1
+		}
+	}
+
+	if count == 0 {
+		return count
+	}
+
+	return (count - 1) * 2
+}

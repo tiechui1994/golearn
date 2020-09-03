@@ -83,3 +83,8 @@ func TestDelNodes(t *testing.T) {
 	node := SliceToTree(SliceToNode(nodes))
 	DelNodes(node, []int{2, 3})
 }
+
+func TestMinTime(t *testing.T) {
+	res := MinTime(7, [][]int{{0, 1}, {0, 2}, {1, 4}, {1, 5}, {2, 3}, {2, 6}}, []bool{false, false, true, false, true, true, false})
+	log.Println(res)
+}
