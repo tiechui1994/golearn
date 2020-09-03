@@ -788,3 +788,102 @@ func maxSumPathRoot(root *Node) int {
 	r := maxSumPathRoot(root.Right)
 	return Max(l+root.Val, r+root.Val, root.Val)
 }
+
+// 删点成林
+//
+// 一棵树, 删除一些节点, 形成林
+//
+// 思路: 深度优先遍历获取父子关系, 删除节点之后, 寻找父节点为 nil 的树则是最终的结果
+func DelNodes(root *Node, to_delete []int) []*Node {
+	// child -> parent 关系
+	var dfs func(root *Node, parents map[*Node]*Node)
+	dfs = func(root *Node, parents map[*Node]*Node) {
+		if root == nil {
+			return
+		}
+		if root.Left != nil {
+			parents[root.Left] = root
+		}
+		if root.Right != nil {
+			parents[root.Right] = root
+		}
+
+		dfs(root.Left, parents)
+		dfs(root.Right, parents)
+	}
+
+	if root == nil {
+		return nil
+	}
+	if to_delete == nil {
+		return []*Node{root}
+	}
+
+	var parents = make(map[*Node]*Node)
+	parents[root] = nil
+	dfs(root, parents)
+
+	// 删除
+	for child, parent := range parents {
+		var exist bool
+		if len(to_delete) > 0 {
+			for i, v := range to_delete {
+				if child.Val == v {
+					exist = true
+					to_delete = append(to_delete[0:i], to_delete[i+1:]...)
+					break
+				}
+			}
+		}
+
+		if !exist {
+			continue
+		}
+
+		log.Println(child.Val, root.Val)
+
+		if parent != nil {
+			if parent.Left == child {
+				parent.Left = nil
+			}
+
+			if parent.Right == child {
+				parent.Right = nil
+			}
+		}
+
+		delete(parents, child)
+		if child.Left != nil {
+			parents[child.Left] = nil
+		}
+		if child.Right != nil {
+			parents[child.Right] = nil
+		}
+
+	}
+
+	var res []*Node
+	for child, parent := range parents {
+		if parent == nil {
+			res = append(res, child)
+			log.Println(child)
+		}
+	}
+
+	return res
+}
+
+func dfs(root *Node, parents map[*Node]*Node) {
+	if root == nil {
+		return
+	}
+	if root.Left != nil {
+		parents[root.Left] = root
+	}
+	if root.Right != nil {
+		parents[root.Right] = root
+	}
+
+	dfs(root.Left, parents)
+	dfs(root.Right, parents)
+}

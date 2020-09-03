@@ -11,6 +11,10 @@ type Node struct {
 	Val   int
 }
 
+func (node *Node) String() string  {
+	return fmt.Sprintf("{val=%v,left=%v,right=%v}", node.Val, node.Left, node.Right)
+}
+
 type Stack []*Node
 
 func (s *Stack) empty() bool {

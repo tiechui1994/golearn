@@ -77,3 +77,9 @@ func TestPathSum2(t *testing.T) {
 	//node := SliceToTree(SliceToNode(nodes))
 	//pathSum(node, 1)
 }
+
+func TestDelNodes(t *testing.T) {
+	nodes := []string{"1", "2", "null", "4", "3"}
+	node := SliceToTree(SliceToNode(nodes))
+	DelNodes(node, []int{2, 3})
+}
