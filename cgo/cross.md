@@ -45,21 +45,20 @@ GOOS=linux GOARCH=arm64 GOARM=7 go build -o xxx *.go
 其他架构的汇编可以进行类比.
 
 
-
 ### 支持 CGO 
 
-支持 CGO, 即 CGO_ENABLED=1, 在这种状况下, 进行交叉汇编有点复杂. 除了设置必要的参数 `GOARCH`, `GOOS`, `GOARM` (
-只有是 arm 架构的平台), `CGO_ENABLED` 之外, 还需要设置 `CC`, `CXX`, `AR` 参数.
+支持 CGO, 即 CGO_ENABLED=1, 在这种状况下, 进行交叉汇编有点复杂. 除了设置必要的参数`GOARCH`,`GOOS`,`GOARM`(只有
+是arm架构的平台),`CGO_ENABLED`之外, 还需要设置`CC`,`CXX`,`AR`参数.
 
 这里主要介绍一下, 交叉汇编 arm 架构下的目标文件.
 
-首先, arm 架构目前主要分为四种, 分别是 `armhf` (arm hard float, 硬件浮点) 和 `arm64` (64位的arm默认就是hf的). 
-`eabi` (embedded applicaion binary interface, 嵌入式二进制接口), `armel` (arm eabi little endian, 软件浮
-点).
+首先, arm 架构目前主要分为四种, 分别是`armhf`(arm hard float, 硬件浮点),`arm64`(64位的arm默认就是hf的).`eabi`
+(embedded applicaion binary interface, 嵌入式二进制接口)和`armel`(arm eabi little endian, 软件浮点).
 
 下面是 arm 交叉汇编工具 (Ubuntu下):
 
 | tool | armhf                   | arm64                 | eabi                  | 
+| ---- | ---                     | ---                   | ---                   |
 | gcc  | gcc-arm-linux-gnueabihf | gcc-aarch64-linux-gnu | gcc-arm-linux-gnueabi | 
 | g++  | g++-arm-linux-gnueabihf | g++-aarch64-linux-gnu | g++-arm-linux-gnueabi |
 
@@ -69,19 +68,31 @@ GOOS=linux GOARCH=arm64 GOARM=7 go build -o xxx *.go
 交叉汇编 linux 系统 arm64 架构的目标文件:
 
 ```bash
-GOOS=linux GOARCH=arm64 GOARM=7 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc && \
-CXX=aarch64-linux-gnu-g++ AR=aarch64-linux-gnu-ar go build -o xxx *.go
+GOOS=linux && \
+GOARCH=arm64 && \
+GOARM=7 && \
+CGO_ENABLED=1 && \
+CC=aarch64-linux-gnu-gcc && \
+CXX=aarch64-linux-gnu-g++ && \
+AR=aarch64-linux-gnu-ar && \
+go build -o xxx *.go
 ```
 
 
 交叉汇编 linux 系统 armhf 架构的目标文件:
 
 ```bash
-GOOS=linux GOARCH=arm64 GOARM=7 CGO_ENABLED=1 CC=arm-linux-gnueabihf-gcc && \
-CXX=arm-linux-gnueabihf-g++ AR=arm-linux-gnueabihf-ar go build -o xxx *.go
+GOOS=linux && \ 
+GOARCH=arm64 && \
+GOARM=7 && \
+CGO_ENABLED=1 && \
+CC=arm-linux-gnueabihf-gcc && \
+CXX=arm-linux-gnueabihf-g++ && \
+AR=arm-linux-gnueabihf-ar && \
+go build -o xxx *.go
 ```
 
-> arm 交叉汇编下载地址: http://releases.linaro.org/components/toolchain/binaries, 选择 `aarch64-linux-gnu`
-> `arm-linux-gnueabi`, `arm-linux-gnueabihf` 目录下的文件作为交叉编译工具.
+> arm 交叉汇编下载地址: http://releases.linaro.org/components/toolchain/binaries,选择`aarch64-linux-gnu`
+> `arm-linux-gnueabi`,`arm-linux-gnueabihf`目录下的文件作为交叉编译工具.
 
 至于针对其他的汇编平台, 可以类比, 但是注意选择交叉编译工具.
