@@ -873,62 +873,57 @@ func DelNodes(root *Node, to_delete []int) []*Node {
 	return res
 }
 
-func dfs(root *Node, parents map[*Node]*Node) {
-	if root == nil {
-		return
-	}
-	if root.Left != nil {
-		parents[root.Left] = root
-	}
-	if root.Right != nil {
-		parents[root.Right] = root
-	}
-
-	dfs(root.Left, parents)
-	dfs(root.Right, parents)
-}
-
 // 一棵树, 摘苹果的最小时间
+//
+// 思路:  自顶向下, 深度优先遍历, 记录每个节点的父节点, 先需要一个每个节点的叶节点
+//       自底而上, 深度优先遍历, 统计获取每个苹果父亲的节点(需要使用一个visit数组记录已经访问的父节点)
 func MinTime(n int, edges [][]int, hasApple []bool) int {
-	var dfs func(node int, edges [][]int, hasApple []bool)
-	dfs = func(node int, edges [][]int, hasApple []bool) {
-		nodes := make([]int, 0)
-		newedges := make([][]int, 0)
-		for i, v := range edges {
-			if v[0] == node {
-				nodes = append(nodes, v[1])
-				continue
-			}
-			if v[1] == node {
-				nodes = append(nodes, v[0])
-				continue
-			}
-			newedges = append(newedges, edges[i])
-		}
+	var ans int
+	// 记录每个节点的父节点
+	parents := make([]int, n)
+	for i := range parents {
+		parents[i] = -1
+	}
 
-		if len(nodes) == 0 {
-			return
-		}
-
-		for _, v := range nodes {
-			dfs(v, newedges, hasApple)
-			if hasApple[v] {
-				hasApple[node] = true
+	// 自根向叶子的深度优先遍历
+	var buildParents func(nodemap [][]int, val int)
+	buildParents = func(nodemap [][]int, val int) {
+		for _, child := range nodemap[val] {
+			if child != 0 && parents[child] == -1 {
+				parents[child] = val
+				buildParents(nodemap, child)
 			}
 		}
 	}
 
-	dfs(0, edges, hasApple)
-	var count int
+	// 记录当前节点是否已经访问过, 自叶子向根的深度优先遍历
+	visited := make([]bool, n)
+	var dfsEdge func(to int)
+	dfsEdge = func(to int) {
+		if !visited[to] {
+			visited[to] = true
+			ans++
+			dfsEdge(parents[to])
+		}
+	}
+
+	// nodeMap => 树结构
+	nodeMap := make([][]int, n)
+	for _, edge := range edges {
+		from, to := edge[0], edge[1]
+		nodeMap[from] = append(nodeMap[from], to)
+		nodeMap[to] = append(nodeMap[to], from)
+	}
+
+	// 从树根节点开始访问, 深度优先遍历. 访问完所有的节点
+	buildParents(nodeMap, 0)
+
+	visited[0] = true // 根节点总会被访问到的
 	for i := 0; i < n; i++ {
 		if hasApple[i] {
-			count += 1
+			dfsEdge(i)
 		}
 	}
 
-	if count == 0 {
-		return count
-	}
-
-	return (count - 1) * 2
+	return ans * 2
 }
