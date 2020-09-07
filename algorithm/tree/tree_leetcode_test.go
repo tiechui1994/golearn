@@ -88,3 +88,9 @@ func TestMinTime(t *testing.T) {
 	res := MinTime(7, [][]int{{0, 1}, {0, 2}, {1, 4}, {1, 5}, {2, 3}, {2, 6}}, []bool{false, false, true, false, true, true, false})
 	log.Println(res)
 }
+
+func TestFindMode(t *testing.T) {
+	nodes := []string{"1", "null", "2", "2"}
+	node := SliceToTree(SliceToNode(nodes))
+	FindMode(node)
+}

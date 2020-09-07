@@ -927,3 +927,58 @@ func MinTime(n int, edges [][]int, hasApple []bool) int {
 
 	return ans * 2
 }
+
+// 二叉搜索树中的众数
+//
+// 空间复杂度为常数
+// 两次中序列遍历: 计算当前数计数 curCount, 最大计数maxCount, 最大计数个数retCount
+// a), 判断是否存在 pre, 比较 pre 的值和当前的值, 如果一致, curCount++, 否则 curCount=1
+// b), 判断当前的 curCount > maxCount, 如果是, 则 maxCount = curCount, retCount=1
+// c), 判断当前的 curCount == maxCount, 如果是, 则 retCount++ 并将值填入到结果集合当中.
+//
+// 注意: 第一次遍历和第二次遍历之间, 需要将 curCount, retCount 重置为0, pre = nil
+func FindMode(root *Node) []int {
+	var (
+		pre                          *Node
+		curCount, maxCount, retCount int
+		ret                          []int
+	)
+	var inOrder func(cur *Node)
+	inOrder = func(cur *Node) {
+		if cur == nil {
+			return
+		}
+
+		inOrder(cur.Left)
+
+		if pre != nil && pre.Val == cur.Val {
+			curCount++
+		} else {
+			curCount = 1
+		}
+
+		if curCount > maxCount {
+			maxCount = curCount
+			retCount = 1
+		} else if curCount == maxCount {
+			if ret != nil {
+				ret = append(ret, cur.Val)
+			}
+			retCount++
+		}
+
+		pre = cur
+		inOrder(cur.Right)
+	}
+
+	inOrder(root)
+
+	// 非常关键, 否则第二次遍历就会无效.
+	pre = nil
+	retCount = 0
+	curCount = 0
+	ret = make([]int, 0, retCount)
+	inOrder(root)
+
+	return ret
+}
