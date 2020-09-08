@@ -982,3 +982,62 @@ func FindMode(root *Node) []int {
 
 	return ret
 }
+
+// 二叉树中的最长交错路径
+//
+// 给你一棵以 root 为根的二叉树，二叉树中的交错路径定义如下：
+//
+// 选择二叉树中"任意"节点和一个方向(左或者右).
+//
+// 如果前进方向为右, 那么移动到当前节点的的右子节点, 否则移动到它的左子节点.
+// 改变前进方向: 左变右或者右变左.
+// 重复第二步和第三步, 直到你在树中无法继续移动.
+//
+// 交错路径的长度定义为: 访问过的节点数目 - 1 (单个节点的路径长度为 0)
+//
+// 深度优先遍历: 记录当前节点是处于的方向, 左边还是右边, 同时到当前节点的路径长度.
+//             如果孩子方向与当前处于的方向一致, 则重新开启计算, 否则孩子的路径长度=当前路径长度+1
+//
+func LongestZigZag(root *Node) int {
+	if root == nil || root.Right == nil && root.Left == nil {
+		return 0
+	}
+
+	// direct true: left  false: right
+	var dfs func(node *Node, parent int, direct bool, ans *int)
+	dfs = func(node *Node, parent int, direct bool, ans *int) {
+		if node == nil {
+			return
+		}
+
+		if *ans < parent {
+			*ans = parent
+		}
+
+		if node.Left == nil && node.Right == nil {
+			return
+		}
+
+		if direct {
+			if node.Left != nil {
+				dfs(node.Left, 1, direct, ans)
+			}
+			if node.Right != nil {
+				dfs(node.Right, parent+1, !direct, ans)
+			}
+		} else {
+			if node.Left != nil {
+				dfs(node.Left, parent+1, !direct, ans)
+			}
+			if node.Right != nil {
+				dfs(node.Right, 1, direct, ans)
+			}
+		}
+	}
+
+	var ans int
+	dfs(root.Left, 1, true, &ans)
+	dfs(root.Right, 1, false, &ans)
+
+	return ans
+}

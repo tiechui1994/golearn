@@ -94,3 +94,13 @@ func TestFindMode(t *testing.T) {
 	node := SliceToTree(SliceToNode(nodes))
 	FindMode(node)
 }
+
+func TestLongestZigZag(t *testing.T) {
+	nodes1 := []string{"1", "null", "1", "1", "1", "null", "null", "1", "1", "null", "1", "null", "null", "null", "1", "null", "1"}
+	nodes2 := []string{"1", "1", "1", "null", "1", "null", "null", "1", "1", "null", "1"}
+	node1 := SliceToTree(SliceToNode(nodes1))
+	t.Log("expect:3, real:", LongestZigZag(node1))
+
+	node2 := SliceToTree(SliceToNode(nodes2))
+	t.Log("expect:4, real:", LongestZigZag(node2))
+}
