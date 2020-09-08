@@ -104,3 +104,7 @@ func TestLongestZigZag(t *testing.T) {
 	node2 := SliceToTree(SliceToNode(nodes2))
 	t.Log("expect:4, real:", LongestZigZag(node2))
 }
+
+func TestBtreeGameWinningMove(t *testing.T) {
+	RecoverFromPreorder("1-2--3---4-5--6---7")
+}

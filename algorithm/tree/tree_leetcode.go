@@ -3,6 +3,8 @@ package tree
 import (
 	"math"
 	"log"
+	"strconv"
+	"strings"
 )
 
 // 对称二叉树
@@ -1040,4 +1042,64 @@ func LongestZigZag(root *Node) int {
 	dfs(root.Right, 1, false, &ans)
 
 	return ans
+}
+
+// 先序遍历构建树, 分割点是路径长度
+// 特点, 第一个节点是根, 后面的元素被当前节点路径个数个"-"分割成左右子树, 然后进行地柜遍历
+func RecoverFromPreorder(s string) *Node {
+	return buildTree(s, 1)
+}
+
+func buildTree(s string, level int) *Node {
+	if len(s) == 0 {
+		return nil
+	}
+
+	// 精准查找 sub 的位置
+	indexOf := func(source string, sub string) (idx int) {
+		l := len(sub)
+		n := len(source)
+		for i := 0; i < n; i++ {
+			if i+l <= n && source[i:i+l] == sub {
+				// 满足条件的下一个元素非 "-"
+				if i == 0 && i+l < n && source[i+l] != '-' {
+					return i
+				}
+				// 满足条件的前一个元素和下一个元素非 "-"
+				if i > 0 && source[i-1] != '-' && i+l < n && source[i+l] != '-' {
+					return i
+				}
+			}
+		}
+		return -1
+	}
+
+	// 当前 level 所形成的 "-"
+	cut := strings.Repeat("-", level)
+	idx := indexOf(s, cut)
+
+	// 没有找到 cut, 说明当前元素是最后一个元素
+	if idx == -1 {
+		return &Node{Val: str2int(s)}
+	}
+
+	// 找到 cut, 说明当前节点还存在孩子
+	root := &Node{Val: str2int(s[:idx])}
+	newsource := s[idx+level:]
+
+	// 查找分割点, 如果找到, 说明当前节点存在左右子树, 没有找到说明当前节点只有左子树
+	idx = indexOf(newsource, cut)
+	if idx == -1 {
+		root.Left = buildTree(newsource, level+1)
+	} else {
+		root.Left = buildTree(newsource[:idx], level+1)
+		root.Right = buildTree(newsource[idx+level:], level+1)
+	}
+
+	return root
+}
+
+func str2int(s string) int {
+	i, _ := strconv.ParseInt(s, 10, 64)
+	return int(i)
 }
