@@ -1103,3 +1103,52 @@ func str2int(s string) int {
 	i, _ := strconv.ParseInt(s, 10, 64)
 	return int(i)
 }
+
+// 所有满二叉树
+//
+// 满二叉树是一类二叉树, 其中每个结点恰好有 0 或 2 个子结点.
+//
+// 返回包含 N 个结点的所有可能满二叉树的列表. 答案的每个元素都是一个可能树的根结点.
+//
+// 思路: 一棵树, 根, 左孩子, 右孩子 构成
+// 针对 0, 1, 2, 3 这些满二叉树都是特殊的树
+// 当 N > 3 时, 除去根节点, 分别取查找 i 个节点左子树 和 j 个节点的右子树, i+j+1=N
+// 当查找到后, 也就是说存在这样的左子树和右子树. 使用笛卡尔集, 就可以获得最终的结果
+func AllPossibleFBT(N int) []*Node {
+	if N == 0 {
+		return nil
+	}
+	if N == 1 {
+		root := &Node{}
+		return []*Node{root}
+	}
+	if N == 2 {
+		return nil
+	}
+	if N == 3 {
+		root := &Node{}
+		root.Left = &Node{}
+		root.Right = &Node{}
+		return []*Node{root}
+	}
+
+	var res []*Node
+	for i := 1; i < N-1; i++ {
+		j := N - i - 1
+		left := AllPossibleFBT(i)
+		right := AllPossibleFBT(j)
+		if len(left) == 0 || len(right) == 0 {
+			continue
+		}
+		for k := 0; k < len(left); k++ {
+			for v := 0; v < len(right); v++ {
+				root := &Node{}
+				root.Left = left[k]
+				root.Right = right[v]
+				res = append(res, root)
+			}
+		}
+	}
+
+	return res
+}
