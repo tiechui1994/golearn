@@ -116,7 +116,7 @@ func (p *pipe) Read(b []byte) (n int, err error) {
 > 使用注意:
 >
 > 1. reader 和 writer 必须在不同的 goroutine 当中使用. 否则, 会产生死锁状况.
-> 2. 当数据写完之后, **writer必须先关闭**, 这样reader才能退出. 
+> 2. 为了保证数据安全性, 当数据写完之后, writer/reader 需要关闭.
 
 
 应用:

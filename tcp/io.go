@@ -2,9 +2,10 @@ package main
 
 import (
 	"log"
-	"io"
 	"encoding/json"
 	"net/http"
+	"io/ioutil"
+	"io"
 )
 
 func init() {
@@ -13,12 +14,13 @@ func init() {
 
 func post() {
 	msg := struct {
-		Name, Addr string
-		Price      float64
+		Cmd      string `json:"cmd"`
+		Callback string `json:"callback"`
+		Phone    string `json:"phone"`
 	}{
-		Name:  "hello",
-		Addr:  "beijing",
-		Price: 123.12,
+		Cmd:      "1059",
+		Callback: "phone",
+		Phone:    "13152090953",
 	}
 
 	r, w := io.Pipe()
@@ -31,18 +33,19 @@ func post() {
 		log.Println("encode success")
 	}()
 
-	response, err := http.DefaultClient.Post("https://www.baidu.com", "application/json", r)
+	request, _ := http.NewRequest("POST", "http://www.local.io/api", r)
+
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	log.Println("hello")
-
 	body := response.Body
 	defer body.Close()
-	log.Println("job success")
-}
 
+	data, _ := ioutil.ReadAll(body)
+	log.Println("job success:", string(data))
+}
 
 func main() {
 	post()
