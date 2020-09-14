@@ -133,11 +133,8 @@ func (p *pipe) Read(b []byte) (n int, err error) {
 
 ```cgo
 func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err syscall.Errno)
-
 func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err syscall.Errno)
-
 func RawSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err syscall.Errno)
-
 func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err syscall.Errno)
 ```
 
@@ -190,24 +187,18 @@ SYS_SPLICE                 = 275
 ```
 
 
-首先介绍两个系统调用函数: `sendfile`和`splice`
+io 包的两个接口:
 
 ```cgo
-#include <sys/sendfile.h>
-ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
+type ReaderFrom interface {
+	ReadFrom(r Reader) (n int64, err error)
+}
+
+type WriterTo interface {
+	WriteTo(w Writer) (n int64, err error)
+}
 ```
 
-`in_fd`是代表输入文件的文件描述符, `out_fd`是代表输出文件的文件描述符. 
+ReadFrom 的实现包括: `bytes.Buffer`, `bufio.ReadWriter`, `bufio.Writer`, `net.TCPConn`.
 
-> out_id 必须为 socket (linux 2.6.33 开始可以是任何文件).
-> in_fd 指向的文件必须为可以进行 mmap() 操作的, 通常为普通文件.
-
-```cgo
-#define _GNU_SOURCE 
-#include <fcntl.h>
-ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, 
-               size_t len, unsigned int flags);
-```
-
-
-
+WriteTo 的实现包括 `bytes.Buffer`, `bytes.Reader`, `bufio.ReadWriter`, `bufio.Reader`, `strings.Reader`, `net.Buffers`
