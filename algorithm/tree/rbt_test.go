@@ -17,4 +17,10 @@ func TestRBT(t *testing.T) {
 
 	rbt.Println()
 
+	rbt.remove(6)
+	rbt.Println()
+
+	rbt.remove(2)
+
+	rbt.Println()
 }
