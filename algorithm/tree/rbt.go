@@ -74,9 +74,6 @@ type RBTree struct {
 
 func (r *RBTree) insert(val int) bool {
 	node := &rbNode{val: val, color: Red}
-	defer func() {
-		log.Println(node.parent, node.left, node.right, node, node.color)
-	}()
 
 	if r.root == nil {
 		r.root = node
@@ -94,7 +91,6 @@ func (r *RBTree) insert(val int) bool {
 			parent.right = node
 		}
 
-		log.Println("fix", node, node.parent, node.parent.color)
 		r.fixInsert(node)
 	}
 
@@ -480,6 +476,7 @@ func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
 
 	// 遇到红色节点或者根节点, 则停止
 	for !isred && cur != r.root {
+		log.Println(cur, parent)
 		brother := r.getBrother(cur, parent) // 兄弟
 		isLeft := parent.left == brother     // 兄弟是否是左孩子
 
@@ -494,31 +491,31 @@ func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
 			cur = parent
 			parent = cur.parent
 			isred = cur.color == Red
-		} else if isLeft && r.isRed(brother.right) { // 状况3, 兄弟反方向的孩子是红色
+		} else if isLeft && !r.isBlack(brother.left) && r.isBlack(brother.right) { // 状况3, 兄弟反方向的孩子是红色
 			brother.color = Red
 			if brother.left != nil {
 				brother.left.color = Black
 			}
 			r.rightRoate(brother)
-		} else if !isLeft && r.isRed(brother.left) {
+		} else if !isLeft && !r.isBlack(brother.right) && r.isBlack(brother.left) {
 			brother.color = Red
 			if brother.right != nil {
 				brother.right.color = Black
 			}
 			r.leftRoate(brother)
-		} else if isLeft && r.isRed(brother.left) { // 状况4, 兄弟同方向的还是是红色
+		} else if isLeft && r.isRed(brother.right) { // 状况4, 兄弟同方向的还是是红色
 			brother.color, parent.color = parent.color, Black
 			if brother.right != nil {
 				brother.right.color = Black
 			}
-			r.leftRoate(parent)
+			r.rightRoate(parent)
 			cur = r.root
-		} else if !isLeft && r.isRed(brother.right) {
+		} else if !isLeft && r.isRed(brother.left) {
 			brother.color, parent.color = parent.color, Black
 			if brother.left != nil {
 				brother.left.color = Black
 			}
-			r.rightRoate(parent)
+			r.leftRoate(parent)
 			cur = r.root
 		}
 	}
