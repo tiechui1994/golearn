@@ -3,7 +3,6 @@ package tree
 import (
 	"fmt"
 	"bytes"
-	"log"
 )
 
 /*
@@ -59,11 +58,11 @@ func (n *rbNode) String() string {
 a) 父节点和叔叔变黑, 祖父变红
 b) 祖父变成新节点
 
-2.2 叔叔不存在, 祖孙三代处于同一条斜线上.
+2.2 叔叔不存在或者叔叔是黑色, 祖孙三代处于同一条斜线上.
 a) 父节点变黑色, 祖父节点变红
 b) 根据"父节点"向相反的方向旋转(斜线)
 
-2.2 叔叔不存在, 祖孙三代没有在统一斜线上.
+2.2 叔叔不存在或者叔叔是黑色, 祖孙三代没有在统一斜线上.
 a) 根据"当前节点"向相反的方向旋转(父子斜线), 情况转变为状况2.2
 注意: 此种状况下,没有改变颜色
 */
@@ -124,9 +123,8 @@ func (r *RBTree) fixInsert(node *rbNode) {
 	for parent != nil && parent.color == Red {
 		uncle := node.getUncle()
 
-		// 若 uncle 存在, uncle 颜色变成黑色(必然结果). 如果是黑色(正好), 如果是红色(当前需要变色)
-		// 直接变色, 然后祖先节点变为当前的节点
-		if uncle != nil {
+		// 若 uncle 存在, 且uncle为红色
+		if uncle != nil && uncle.color == Red {
 			uncle.color = Black       // 叔叔
 			parent.color = Black      // 父亲
 			parent.parent.color = Red // 祖先
@@ -136,7 +134,7 @@ func (r *RBTree) fixInsert(node *rbNode) {
 		}
 
 		// todo: 线条, 先看祖先, 再看父子
-		// 若 uncle 不存在, 需要旋转
+		// 若 uncle 不存在或者uncle是黑色, 需要旋转
 		ancestor := parent.parent
 		if parent == ancestor.left {
 			inLine := node == parent.left // 祖先, 父亲, 孩子 是三者一线
@@ -250,9 +248,9 @@ func (r *RBTree) rightRoate(parent *rbNode) {
 	}
 }
 
-func (r *RBTree) Println() {
+func (r *RBTree) Println() string {
 	if r.root == nil {
-		return
+		return ""
 	}
 
 	var buf bytes.Buffer
@@ -263,11 +261,6 @@ func (r *RBTree) Println() {
 		for len(queue) != 0 {
 			cur := queue[0]
 			queue = queue[1:]
-
-			if cur == nil {
-				buf.WriteString("\n")
-				continue
-			}
 
 			var pos string
 			if cur.parent != nil {
@@ -302,9 +295,10 @@ func (r *RBTree) Println() {
 		}
 
 		queue = temp
+		buf.WriteString("\n")
 	}
 
-	log.Println(buf.String())
+	return buf.String()
 }
 
 /*
@@ -469,6 +463,7 @@ func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
 	)
 	if !isParent {
 		cur = node
+		parent = node.parent
 		isred = cur.color == Red
 	} else {
 		parent = node
@@ -476,28 +471,31 @@ func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
 
 	// 遇到红色节点或者根节点, 则停止
 	for !isred && cur != r.root {
-		log.Println(cur, parent)
 		brother := r.getBrother(cur, parent) // 兄弟
-		isLeft := parent.left == brother     // 兄弟是否是左孩子
-
+		isLeft := parent.left == cur         // 兄弟是否是左孩子
 		if brother.color == Red && isLeft { // 状况1, 兄弟是红色
+
+			parent.color, brother.color = Red, Black
 			r.leftRoate(parent)
-			parent.color, brother.color = brother.color, parent.color
 		} else if brother.color == Red && !isLeft {
+
+			parent.color, brother.color = Red, Black
 			r.rightRoate(parent)
-			parent.color, brother.color = brother.color, parent.color
 		} else if r.isBlack(brother.left) && r.isBlack(brother.right) { // 状况2, 兄弟孩子全是黑色
+
 			brother.color = Red
 			cur = parent
-			parent = cur.parent
 			isred = cur.color == Red
-		} else if isLeft && !r.isBlack(brother.left) && r.isBlack(brother.right) { // 状况3, 兄弟反方向的孩子是红色
+			parent = cur.parent
+		} else if isLeft && r.isRed(brother.left) && r.isBlack(brother.right) { // 状况3, 兄弟反方向的孩子是红色
+
 			brother.color = Red
 			if brother.left != nil {
 				brother.left.color = Black
 			}
 			r.rightRoate(brother)
-		} else if !isLeft && !r.isBlack(brother.right) && r.isBlack(brother.left) {
+		} else if !isLeft && r.isRed(brother.right) && r.isBlack(brother.left) {
+
 			brother.color = Red
 			if brother.right != nil {
 				brother.right.color = Black
@@ -508,14 +506,15 @@ func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
 			if brother.right != nil {
 				brother.right.color = Black
 			}
-			r.rightRoate(parent)
+			r.leftRoate(parent)
 			cur = r.root
 		} else if !isLeft && r.isRed(brother.left) {
+
 			brother.color, parent.color = parent.color, Black
 			if brother.left != nil {
 				brother.left.color = Black
 			}
-			r.leftRoate(parent)
+			r.rightRoate(parent)
 			cur = r.root
 		}
 	}
