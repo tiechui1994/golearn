@@ -389,17 +389,17 @@ func (r *RBTree) remove(val int) int {
 					node.left.parent = min
 				}
 
-				if min != node.right {
-					min.right = node.right
-					node.right.parent = min
-				}
-
 				if parent.left == node {
 					parent.left = min
 				} else {
 					parent.right = min
 				}
 				min.parent = parent
+
+				if min != node.right {
+					min.right = node.right
+					node.right.parent = min
+				}
 
 				minColor := min.color
 				min.color = node.color
@@ -425,29 +425,22 @@ func (r *RBTree) remove(val int) int {
 				if parent.left == node {
 					parent.left = node.left
 				} else {
-					parent.right = node.right
+					parent.right = node.left
 				}
 
 				// 开始调整(删除节点是黑色, 红色无需调整), 要么是替换者, 要么是其父亲
 				if minColor == Black && r.root != nil {
-					isParent := false
-					x := node.left
-					if x == nil {
-						isParent = true
-						x = node.parent
-					}
-
-					r.fixRemove(x, isParent)
+					r.fixRemove(node.left, false)
 				}
 			} else {
 				if parent.left == node {
-					parent.left = node.left
+					parent.left = nil
 				} else {
-					parent.right = node.right
+					parent.right = nil
 				}
 
-				if node.color == Black {
-					r.fixRemove(node.parent, true)
+				if node.color == Black && r.root != nil {
+					r.fixRemove(parent, true)
 				}
 			}
 
@@ -623,7 +616,7 @@ func dfs(node *rbNode, ans *bool) int {
 	R := dfs(node.right, ans)
 
 	if L != R {
-		log.Println("len", node)
+		log.Println("len", node, L, R)
 		*ans = false
 	}
 
