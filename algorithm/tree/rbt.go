@@ -17,8 +17,8 @@ import (
 type Color string
 
 const (
-	Red   = Color("Red")
-	Black = Color("Black")
+	RED   = Color("RED")
+	BLACK = Color("BLACK")
 )
 
 type rbNode struct {
@@ -73,33 +73,27 @@ type RBTree struct {
 }
 
 func (r *RBTree) insert(val int) bool {
-	defer func() {
-		if !Valid(r.root) {
-			log.Println(Valid(r.root))
-			panic("invalid")
-		}
-	}()
-	node := &rbNode{val: val, color: Red}
+	node := &rbNode{val: val}
 
 	if r.root == nil {
 		r.root = node
-		node.color = Black
-	} else {
-		parent := r.findParent(node)
-		if node.val == parent.val {
-			return true
-		}
-
-		node.parent = parent
-		if node.val < parent.val {
-			parent.left = node
-		} else {
-			parent.right = node
-		}
-
-		r.fixInsert(node)
+		node.color = BLACK
+		return false
 	}
 
+	parent := r.findParent(node)
+	if node.val == parent.val {
+		return true
+	}
+
+	node.parent = parent
+	if node.val < parent.val {
+		parent.left = node
+	} else {
+		parent.right = node
+	}
+
+	r.fixAfterInsertion(node)
 	return false
 }
 
@@ -122,137 +116,6 @@ func (r *RBTree) findParent(node *rbNode) *rbNode {
 	}
 
 	return parent
-}
-
-func (r *RBTree) fixInsert(node *rbNode) {
-	parent := node.parent
-
-	for parent != nil && parent.color == Red {
-		uncle := node.getUncle()
-
-		// 若 uncle 存在, 且uncle为红色
-		if uncle != nil && uncle.color == Red {
-			uncle.color = Black       // 叔叔
-			parent.color = Black      // 父亲
-			parent.parent.color = Red // 祖先
-			node = parent.parent      // 更改当前节点
-			parent = node.parent
-			continue
-		}
-
-		// todo: 线条, 先看祖先, 再看父子
-		// 若 uncle 不存在或者uncle是黑色, 需要旋转
-		ancestor := parent.parent
-		if parent == ancestor.left {
-			inLine := node == parent.left // 祖先, 父亲, 孩子 是三者一线
-
-			// 当前节点是右孩子, 即祖孙三代不同线, "当前节点"为旋转点, 相同的方向旋转(左旋)
-			if !inLine {
-				r.leftRoate(parent)
-			}
-
-			// 当前节点是左孩子, 即祖孙三代一条线, "父节点"为旋转点, 相反的方向旋转(右旋)
-			r.rightRoate(ancestor)
-
-			// 变色完成, 结束(祖先变为红色, 父亲变为黑色)
-			if !inLine {
-				node.color = Black
-				parent = nil
-			} else {
-				parent.color = Black
-			}
-
-			ancestor.color = Red
-		} else {
-			inLine := node == parent.right // 父亲是否是左孩子
-
-			// 当前节点是左孩子, 即祖孙三代不同线, 当前节点为旋转点, 相同的方向旋转(右旋)
-			if !inLine {
-				r.rightRoate(parent)
-			}
-
-			// 当前节点是右孩子, 即祖孙三代一条线, 父节点为旋转点, 相反的方向旋转(左旋)
-			r.leftRoate(ancestor)
-
-			// 变色完成, 结束
-			if !inLine {
-				node.color = Black
-				parent = nil
-			} else {
-				parent.color = Black
-			}
-			ancestor.color = Red
-		}
-	}
-
-	// 每次都设置 root 节点
-	r.root.color = Black
-	r.root.parent = nil
-}
-
-// 左旋, 旋转杆 parent - right
-func (r *RBTree) leftRoate(parent *rbNode) {
-	if parent.right == nil {
-		panic("right is null")
-	}
-
-	ancestor := parent.parent // 祖先节点
-	roate := parent.right     // 旋转点
-
-	// 调整父节点的右孩子
-	parent.right = roate.left
-	if roate.left != nil {
-		roate.left.parent = parent
-	}
-
-	// 调整旋转点的左孩子
-	roate.left = parent
-	parent.parent = roate
-
-	// 调整祖先节点
-	if ancestor == nil {
-		r.root = roate
-		roate.parent = nil
-	} else {
-		if ancestor.left == parent {
-			ancestor.left = roate
-			roate.parent = ancestor
-		} else {
-			ancestor.right = roate
-			roate.parent = ancestor
-		}
-	}
-}
-
-// 左旋, 旋转杆 parent - left.
-func (r *RBTree) rightRoate(parent *rbNode) {
-	if parent.left == nil {
-		panic("left is nil")
-	}
-
-	ancestor := parent.parent
-	roate := parent.left
-
-	parent.left = roate.right
-	if roate.right != nil {
-		roate.right.parent = parent
-	}
-
-	roate.right = parent
-	parent.parent = roate
-
-	if ancestor == nil {
-		r.root = roate
-		roate.parent = nil
-	} else {
-		if ancestor.left == parent {
-			ancestor.left = roate
-			roate.parent = ancestor
-		} else {
-			ancestor.right = roate
-			roate.parent = ancestor
-		}
-	}
 }
 
 func (r *RBTree) Println() string {
@@ -284,7 +147,7 @@ func (r *RBTree) Println() string {
 			}
 
 			var color = "R"
-			if cur.color == Black {
+			if cur.color == BLACK {
 				color = "B"
 			}
 			if cur.parent != nil {
@@ -313,7 +176,8 @@ func (r *RBTree) Println() string {
 
 删除:
 
-如果是叶子节点就直接删除, 如果是非叶子节点, 要使用中序遍历的后续节点顶替要删除的位置. 删除后需要做修复操作.
+首先查找要删除节点的后面的节点(中序遍历)
+
 
 删除修复操作在遇到被删除的节点是红色节点或者到达root节点, 修复完毕.
 
@@ -353,235 +217,296 @@ func (r *RBTree) Println() string {
 替换完成之后, 如果被替换的节点是黑色, 需要从替换的节点或者其其父亲向上递归修复. 修复就是上述提到的 4 种大情况.
 */
 
-func (r *RBTree) remove(val int) int {
-	defer func() {
-		if !Valid(r.root) {
-			log.Println(r.Println())
-			panic("invalid")
-		}
-	}()
-	parent := r.root
+func colorOf(node *rbNode) Color {
+	if node == nil {
+		return BLACK
+	}
+	return node.color
+}
+
+func leftOf(node *rbNode) *rbNode {
+	if node == nil {
+		return nil
+	}
+	return node.left
+}
+
+func rightOf(node *rbNode) *rbNode {
+	if node == nil {
+		return nil
+	}
+	return node.right
+}
+
+func parentOf(node *rbNode) *rbNode {
+	if node == nil {
+		return nil
+	}
+	return node.parent
+}
+
+func setColor(node *rbNode, color Color) {
+	if node != nil {
+		node.color = color
+	}
+}
+
+func (r *RBTree) find(val int) *rbNode {
 	node := r.root
 
 	for node != nil {
 		if node.val > val {
-			parent = node
 			node = node.left
 		} else if node.val < val {
-			parent = node
 			node = node.right
 		} else {
-			if node.right != nil {
-				// 右孩子存在, 寻找右子树最小的节点
-				min := r.removeMin(node.right)
+			return node
+		}
+	}
 
-				isParent := false // 调整的节点是否是parent
-				x := min.left     // 开始调整的位置
-				log.Println(x == nil)
-				if x == nil {
-					isParent = true
-					x = min.parent
-				}
+	return nil
+}
 
-				// 使用 min 替换当前节点 node, 分别是left, right, parent, color 替换
-				min.left = node.left
-				if node.left != nil {
-					node.left.parent = min
-				}
+// 左旋, p是父节点, 旋转点是 p - p.right
+func (r *RBTree) rotateLeft(p *rbNode) {
+	if p != nil {
+		right := p.right
 
-				if parent.left == node {
-					parent.left = min
-				} else {
-					parent.right = min
-				}
-				min.parent = parent
+		p.right = right.left
+		if right.left != nil {
+			right.left.parent = p
+		}
 
-				if min != node.right {
-					min.right = node.right
-					node.right.parent = min
-				}
+		right.parent = p.parent
+		if p.parent == nil {
+			r.root = right
+		} else if p.parent.left == p {
+			p.parent.left = right
+		} else {
+			p.parent.right = right
+		}
 
-				minColor := min.color
-				min.color = node.color
+		right.left = p
+		p.parent = right
+	}
+}
 
-				// 条件是被替换的 min 颜色是黑色(因为删除红色, 原来的关系依然是平衡的) 开始调整
-				if minColor == Black {
-					if min != node.right {
-						r.fixRemove(x, isParent) // 删除的节点非右孩子
-					} else if min.right != nil {
-						r.fixRemove(min.right, false) // 删除的接点是右孩子
-					} else {
-						r.fixRemove(min, true) // 删除的节点是右孩子
-					}
-				}
-			} else if node.left != nil {
-				// 右孩子不存在, 使用左孩子接替当前的节点
+// 右旋, p是父节点, 旋转点是 p - p.left
+func (r *RBTree) rotateRight(p *rbNode) {
+	if p != nil {
+		left := p.left
 
-				minColor := node.left.color
-				node.left.color = node.color
+		p.left = left.right
+		if left.right != nil {
+			left.right.parent = p
+		}
 
-				// 删除当前node节点, 使用左孩子代替
-				node.left.parent = parent
-				if parent.left == node {
-					parent.left = node.left
-				} else {
-					parent.right = node.left
-				}
+		left.parent = p.parent
+		if p.parent == nil {
+			r.root = left
+		} else if p.parent.right == p {
+			p.parent.right = left
+		} else {
+			p.parent.left = left
+		}
 
-				// 开始调整(删除节点是黑色, 红色无需调整), 要么是替换者, 要么是其父亲
-				if minColor == Black && r.root != nil {
-					r.fixRemove(node.left, false)
-				}
-			} else {
-				if parent.left == node {
-					parent.left = nil
-				} else {
-					parent.right = nil
-				}
+		left.right = p
+		p.parent = left
+	}
+}
 
-				if node.color == Black && r.root != nil {
-					r.fixRemove(parent, true)
-				}
+func (r *RBTree) remove(val int) int {
+	node := r.find(val)
+	if node == nil {
+		return 0
+	}
+
+	// 在左右不为空的状况下, 寻找 node 的后继者
+	if node.left != nil && node.right != nil {
+		node = r.successor(node)
+	}
+
+	var replace *rbNode
+	if node.left != nil {
+		replace = node.left
+	} else {
+		replace = node.right
+	}
+
+	if replace != nil {
+		replace.parent = node.parent
+		if node.parent == nil {
+			r.root = replace
+		} else if node == node.parent.left {
+			node.parent.left = replace
+		} else {
+			node.parent.right = replace
+		}
+
+		node.left = nil
+		node.right = nil
+		node.parent = nil
+
+		if node.color == BLACK {
+			r.fixAfterDeletion(replace)
+		}
+	} else if node.parent == nil {
+		r.root = nil
+	} else {
+		if node.color == BLACK {
+			r.fixAfterDeletion(node)
+		}
+
+		if node.parent != nil {
+			if node == node.parent.left {
+				node.parent.left = nil
+			} else if node == node.parent.right {
+				node.parent.right = nil
 			}
 
-			// 彻底移除被删除的节点 node
 			node.parent = nil
-			node.left = nil
-			node.right = nil
-
-			if r.root != nil {
-				r.root.color = Black
-				r.root.parent = nil
-			}
-
-			return node.val
 		}
 	}
 
-	return 0
+	return node.val
 }
 
-func (r *RBTree) getBrother(node *rbNode, parent *rbNode) *rbNode {
-	if node != nil {
-		parent = node.parent
-	}
-	if parent.left == node {
-		return parent.right
-	} else {
-		return parent.left
-	}
-}
+func (r *RBTree) fixAfterInsertion(x *rbNode) {
+	x.color = RED
 
-func (r *RBTree) fixRemove(node *rbNode, isParent bool) {
-	var (
-		cur, parent *rbNode
-		isred       bool
-	)
-	if !isParent {
-		cur = node
-		parent = node.parent
-		isred = cur.color == Red
-	} else {
-		parent = node
-	}
+	for x != nil && x != r.root && x.parent.color == RED {
+		if parentOf(x) == leftOf(parentOf(parentOf(x))) {
+			y := rightOf(parentOf(parentOf(x)))
+			if colorOf(y) == RED {
+				setColor(parentOf(x), BLACK)
+				setColor(y, BLACK)
+				setColor(parentOf(parentOf(x)), RED)
+				x = parentOf(parentOf(x))
+			} else {
+				if x == rightOf(parentOf(x)) {
+					x = parentOf(x)
+					r.rotateLeft(x)
+				}
 
-	// 遇到红色节点或者根节点, 则停止
-	for !isred && cur != r.root {
-		brother := r.getBrother(cur, parent) // 兄弟
-		isLeft := parent.left == cur         // 当前节点
-		if isLeft && brother.color == Red { // 状况1, 兄弟是红色
-			parent.color, brother.color = Red, Black
-			r.leftRoate(parent)
-		} else if !isLeft && brother.color == Red {
-			parent.color, brother.color = Red, Black
-			r.rightRoate(parent)
-		} else if r.isBlack(brother.left) && r.isBlack(brother.right) { // 状况2, 兄弟孩子全是黑色
-			if parent.color == Black {
-				brother.color = Red
-				cur = parent
-				isred = cur.color == Red
-				parent = cur.parent
-				continue
+				setColor(parentOf(x), BLACK)
+				setColor(parentOf(parentOf(x)), RED)
+				r.rotateRight(parentOf(parentOf(x)))
 			}
-			if parent.color == Red {
-				parent.color, brother.color = brother.color, parent.color
-				break
-			}
+		} else {
+			y := leftOf(parentOf(parentOf(x)))
+			if colorOf(y) == RED {
+				setColor(parentOf(x), BLACK)
+				setColor(y, BLACK)
+				setColor(parentOf(parentOf(x)), RED)
+				x = parentOf(parentOf(x))
+			} else {
+				if x == leftOf(parentOf(x)) {
+					x = parentOf(x)
+					r.rotateRight(x)
+				}
 
-		} else if isLeft && r.isRed(brother.left) && r.isBlack(brother.right) { // 状况3, 兄弟反方向的孩子是红色
-			brother.color = Red
-			if brother.left != nil {
-				brother.left.color = Black
+				setColor(parentOf(x), BLACK)
+				setColor(parentOf(parentOf(x)), RED)
+				r.rotateLeft(parentOf(parentOf(x)))
 			}
-			r.rightRoate(brother)
-		} else if !isLeft && r.isRed(brother.right) && r.isBlack(brother.left) {
-			brother.color = Red
-			if brother.right != nil {
-				brother.right.color = Black
-			}
-			r.leftRoate(brother)
-		} else if isLeft && r.isRed(brother.right) { // 状况4, 兄弟同方向的还是是红色
-			brother.color, parent.color = parent.color, Black
-			if brother.right != nil {
-				brother.right.color = Black
-			}
-			r.leftRoate(parent)
-			cur = r.root
-		} else if !isLeft && r.isRed(brother.left) {
-			brother.color, parent.color = parent.color, Black
-			if brother.left != nil {
-				brother.left.color = Black
-			}
-			r.rightRoate(parent)
-			cur = r.root
 		}
 	}
 
-	if isred {
-		cur.color = Black
+	r.root.color = BLACK
+}
+
+func (r *RBTree) fixAfterDeletion(x *rbNode) {
+	for x != r.root && colorOf(x) == BLACK {
+		if x == leftOf(parentOf(x)) {
+			sib := rightOf(parentOf(x))
+
+			if colorOf(sib) == RED {
+				setColor(sib, BLACK)
+				setColor(parentOf(x), RED)
+				r.rotateLeft(parentOf(x))
+				sib = rightOf(parentOf(x))
+			}
+
+			if colorOf(leftOf(sib)) == BLACK && colorOf(rightOf(sib)) == BLACK {
+				setColor(sib, RED)
+				x = parentOf(x)
+			} else {
+				if colorOf(rightOf(sib)) == BLACK {
+					setColor(leftOf(sib), BLACK)
+					setColor(sib, RED)
+					r.rotateRight(sib)
+					sib = rightOf(parentOf(x))
+				}
+
+				setColor(sib, colorOf(parentOf(x)))
+				setColor(parentOf(x), BLACK)
+				setColor(rightOf(sib), BLACK)
+				r.rotateLeft(parentOf(x))
+				x = r.root
+			}
+		} else {
+			sib := leftOf(parentOf(x))
+			if colorOf(sib) == RED {
+				setColor(sib, BLACK)
+				setColor(parentOf(x), RED)
+				r.rotateRight(parentOf(x))
+				sib = leftOf(parentOf(x))
+			}
+
+			if colorOf(rightOf(sib)) == BLACK && colorOf(leftOf(sib)) == BLACK {
+				setColor(sib, RED)
+				x = parentOf(x)
+			} else {
+				if colorOf(leftOf(sib)) == BLACK {
+					setColor(rightOf(sib), BLACK)
+					setColor(sib, RED)
+					r.rotateLeft(sib)
+					sib = leftOf(parentOf(x))
+				}
+
+				setColor(sib, colorOf(parentOf(x)))
+				setColor(parentOf(x), BLACK)
+				setColor(leftOf(sib), BLACK)
+				r.rotateRight(parentOf(x))
+				x = r.root
+			}
+		}
 	}
 
-	if r.root != nil {
-		r.root.color = Black
-		r.root.parent = nil
+	setColor(x, BLACK)
+}
+
+// 寻找 node 的后继节点(顺序上);
+// 如果 node 存在右子树, 向下查找"右子树的最左的孩子";
+// 否则, 向上查找到 "右子树上的第一个左子节点";
+func (r *RBTree) successor(node *rbNode) *rbNode {
+	if node == nil {
+		return node
+	} else if node.right != nil {
+		p := node.right
+		for p.left != nil {
+			p = p.left
+		}
+		return p
+	} else {
+		// 向上查找 "右子树上的第一个左子节点"
+		p := node.parent
+		ch := node
+		for p != nil && ch == p.right {
+			ch = p
+			p = p.parent
+		}
+		return p
 	}
 }
 
-func (r *RBTree) removeMin(min *rbNode) *rbNode {
-	parent := min
-	// 寻找到最小点
-	for min != nil && min.left != nil {
-		parent = min
-		min = parent.left
-	}
-
-	// 最小节点就是当前传入的节点(此时: min.left = nil)
-	if parent == min {
-		return min
-	}
-
-	// 删除最小节点, 此时: min.left = nil
-	parent.left = min.right
-	if min.right != nil {
-		min.right.parent = parent
-	}
-
-	return min
-}
-
-func (r *RBTree) isBlack(node *rbNode) bool {
-	return node == nil || node.color == Black
-}
-func (r *RBTree) isRed(node *rbNode) bool {
-	return node != nil && node.color == Red
-}
-
-func Valid(root *rbNode) bool {
+func (r *RBTree) Valid() bool {
+	root := r.root
 	if root == nil {
 		return true
 	}
 
-	if root.color == Red {
+	if root.color == RED {
 		return false
 	}
 
@@ -596,16 +521,16 @@ func dfs(node *rbNode, ans *bool) int {
 	}
 
 	if node.left == nil && node.right == nil {
-		return ifelse(node.color == Black, 1, 0)
+		return ifelse(node.color == BLACK, 1, 0)
 	}
 
-	if node.left != nil && node.color == Red {
+	if node.left != nil && node.color == RED {
 		if node.color == node.left.color {
 			log.Println("color left", node)
 			*ans = false
 		}
 	}
-	if node.right != nil && node.color == Red {
+	if node.right != nil && node.color == RED {
 		if node.color == node.right.color {
 			log.Println("color right", node)
 			*ans = false
@@ -620,7 +545,7 @@ func dfs(node *rbNode, ans *bool) int {
 		*ans = false
 	}
 
-	return L + ifelse(node.color == Black, 1, 0)
+	return L + ifelse(node.color == BLACK, 1, 0)
 }
 
 func ifelse(conditio bool, ifresult, elseresult int) int {
