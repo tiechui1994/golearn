@@ -171,52 +171,6 @@ func (r *RBTree) Println() string {
 	return buf.String()
 }
 
-/*
-[doc](https://tech.meituan.com/2016/12/02/redblack-tree.html)
-
-删除:
-
-首先查找要删除节点的后面的节点(中序遍历)
-
-
-删除修复操作在遇到被删除的节点是红色节点或者到达root节点, 修复完毕.
-
-删除修复操作是针对删除黑色节点才有的. 处理思想是从兄弟节点上借调黑色节点过来, 如果兄弟节点没有黑色节点可以借调, 只能往上
-追溯, 将每一级的黑节点数减去一个, 使得整棵树符合定义.
-
-1. 待删除的节点的兄弟节点是红色.
-思路: 兄弟节点是红色, 无法借调黑色节点, 因此需要将兄弟提升为父节点, 由于兄弟是红色的, 根据定义, 兄弟节点的子节点是黑色的
-就可以从它的子节点借调了. (兄弟相反的方向旋转, 旋转点是兄弟. 父节点和兄弟节点交换颜色)
-
-这个时候, 情况就会转换为 2, 3 情况了.
-
-
-2. 待删除的节点的兄弟节点是黑色
-2.1 兄弟节点中的子节点都是黑色.
-
-思路: 兄弟可以消除一个黑色节点, 因为兄弟子节点都是黑色的, 所以可以将兄弟节点变红, 从而保证局部树的局部颜色符合定义. 这时
-候将父节点变成新的节点, 继续向上调整. (兄弟变成红色)
-
-
-3. 待删除的节点的兄弟节点是黑色(相反)
-3.1 兄弟在右边, 兄弟的左子节点为红色
-3.2 兄弟在左边, 兄弟的右子节点为红色
-
-思路: 将左边的红色节点借调过来, 从而达到状态的转换. 使得转换为状态 4.
-以红色节点为点, 向相反的方向旋转. 红色变黑色, 兄弟变红色
-
-4. 待删除的节点的兄弟节点是黑色(相同)
-3.3 兄弟在右边, 兄弟的右子节点为红色
-3.4 兄弟在左边, 兄弟的左子节点为红色
-
-思路: 真正的节点借调操作, 将"兄弟节点"以及"兄弟的红色节点"借调过来.
-*/
-
-/*
-删除的思路: 先寻找到删除的节点; 然后使用 "删除节点右子树当中最小的节点" 或者 "删除节点的左孩子节点" 替换当前删除的节点;
-替换完成之后, 如果被替换的节点是黑色, 需要从替换的节点或者其其父亲向上递归修复. 修复就是上述提到的 4 种大情况.
-*/
-
 func colorOf(node *rbNode) Color {
 	if node == nil {
 		return BLACK
@@ -333,7 +287,12 @@ func (r *RBTree) remove(val int) int {
 		replace = node.right
 	}
 
+	// 分为三种情况讨论:
+	// 1. node 的左孩子或者右孩子不为空
+	// 2. node 的父节点为空(根节点)
+	// 3. node 的父节点不为空且左右孩子都为空
 	if replace != nil {
+		// 删除 node 节点
 		replace.parent = node.parent
 		if node.parent == nil {
 			r.root = replace
@@ -347,16 +306,19 @@ func (r *RBTree) remove(val int) int {
 		node.right = nil
 		node.parent = nil
 
+		// 从替换 node 的节点开始修复
 		if node.color == BLACK {
 			r.fixAfterDeletion(replace)
 		}
 	} else if node.parent == nil {
 		r.root = nil
 	} else {
+		// 从 node 节点开始修复
 		if node.color == BLACK {
 			r.fixAfterDeletion(node)
 		}
 
+		// 删除 node 节点
 		if node.parent != nil {
 			if node == node.parent.left {
 				node.parent.left = nil
@@ -415,11 +377,63 @@ func (r *RBTree) fixAfterInsertion(x *rbNode) {
 	r.root.color = BLACK
 }
 
+/*
+[doc](https://tech.meituan.com/2016/12/02/redblack-tree.html)
+
+删除:
+
+首先查找要删除节点的后面的节点(中序遍历)
+
+
+删除修复:
+
+删除修复操作在遇到被修复的节点是 "红色节点" 或 "root节点", 修复完毕(核心).
+
+删除修复操作是针对 "非根黑色" 节点才有的. 处理思想是从兄弟节点上借调黑色节点过来, 如果兄弟节点没有黑色节点可以借调, 只能
+往上追溯, 将每一级的黑节点数减去一个, 使得整棵树符合定义.
+
+1. 待删除的节点的兄弟节点是红色.
+思路: 兄弟节点是红色, 无法借调黑色节点, 因此需要将兄弟提升为父节点, 由于兄弟是红色的, 根据定义, 兄弟节点的子节点是黑色的
+就可以从它的子节点借调了.
+
+调整: 向 "父亲-兄弟" 向相反的方向进行旋转. 父节点变为红色, 兄弟节点变为黑色
+
+情况就会转换为 2, 3, 4 情况了.
+
+2. 待删除的节点的兄弟节点是黑色
+2.1 兄弟节点中的子节点都是黑色.
+
+思路: 兄弟可以消除一个黑色节点, 因为兄弟子节点都是黑色的, 所以可以将兄弟节点变红, 从而保证局部树的局部颜色符合定义. 这时
+候将父节点变成新的节点, 继续向上调整.
+
+调整: 兄弟变成红色, 使用父节点向上调整.
+
+
+3. 待删除的节点的兄弟节点是黑色(相反)
+3.1 兄弟在右边, 兄弟的左子节点为红色
+3.2 兄弟在左边, 兄弟的右子节点为红色
+
+思路: 将红色节点借调过来, 从而达到状态的转换. 使得转换为状态 4.
+
+调整: 向 "兄弟-兄弟红色孩子" 相反的方向进行进行调整. 兄弟红色子节点与兄弟节点颜色交换.
+
+
+4. 待删除的节点的兄弟节点是黑色(相同)
+4.1 兄弟在右边, 兄弟的右子节点为红色
+4.2 兄弟在左边, 兄弟的左子节点为红色
+
+思路: 真正的节点借调操作, 将"兄弟的黑色孩子"以及"父亲节点"借调过来. 从而实现平衡(调整完毕)
+
+调整: 向 "父亲-兄弟" 相反的方向进行调整. 兄弟的颜色就是父亲的颜色, 父亲, 兄弟的红色孩子节点变为黑色
+*/
 func (r *RBTree) fixAfterDeletion(x *rbNode) {
 	for x != r.root && colorOf(x) == BLACK {
+		// x 是左孩子
 		if x == leftOf(parentOf(x)) {
+			// 兄弟
 			sib := rightOf(parentOf(x))
 
+			// 兄弟是颜色是红色
 			if colorOf(sib) == RED {
 				setColor(sib, BLACK)
 				setColor(parentOf(x), RED)
@@ -427,17 +441,20 @@ func (r *RBTree) fixAfterDeletion(x *rbNode) {
 				sib = rightOf(parentOf(x))
 			}
 
+			// 兄弟的孩子都是黑色(不存在或者确实是黑色)
 			if colorOf(leftOf(sib)) == BLACK && colorOf(rightOf(sib)) == BLACK {
 				setColor(sib, RED)
 				x = parentOf(x)
 			} else {
-				if colorOf(rightOf(sib)) == BLACK {
+				// 兄弟的左孩子是红色
+				if colorOf(leftOf(sib)) == RED {
 					setColor(leftOf(sib), BLACK)
 					setColor(sib, RED)
 					r.rotateRight(sib)
-					sib = rightOf(parentOf(x))
+					sib = rightOf(parentOf(x)) // 重新获取兄弟节点(兄弟节点的左孩子)
 				}
 
+				// 兄弟的右孩子是红色
 				setColor(sib, colorOf(parentOf(x)))
 				setColor(parentOf(x), BLACK)
 				setColor(rightOf(sib), BLACK)
@@ -457,7 +474,7 @@ func (r *RBTree) fixAfterDeletion(x *rbNode) {
 				setColor(sib, RED)
 				x = parentOf(x)
 			} else {
-				if colorOf(leftOf(sib)) == BLACK {
+				if colorOf(rightOf(sib)) == RED {
 					setColor(rightOf(sib), BLACK)
 					setColor(sib, RED)
 					r.rotateLeft(sib)
@@ -496,6 +513,7 @@ func (r *RBTree) successor(node *rbNode) *rbNode {
 			ch = p
 			p = p.parent
 		}
+		log.Println("右子树上的第一个左子节点")
 		return p
 	}
 }

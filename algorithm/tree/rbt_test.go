@@ -24,8 +24,8 @@ func TestRBT(t *testing.T) {
 		860, 652, 42, 194, 820, 892, 47, 95, 788, 731,
 	}
 	_ = seeds
-	for i := 0; i < 999; i++ {
-		rnd := int(rand.Intn(1000000) + 1)
+	for i := 0; i < 9999; i++ {
+		rnd := int(rand.Intn(2000000) + 1)
 		nodes = append(nodes, rnd)
 		rbt.insert(rnd)
 		if !rbt.Valid() {
@@ -35,7 +35,6 @@ func TestRBT(t *testing.T) {
 	}
 
 	for len(nodes) > 0 {
-		log.Println("cur size", len(nodes))
 		idx := int(len(nodes) % 11)
 		if idx == len(nodes) {
 			idx -= 1
