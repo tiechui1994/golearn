@@ -313,3 +313,9 @@ loop:
 		goto loop
 	}
 }
+
+func TestDNS(t *testing.T) {
+	ips, err := DNS("www.baidu.com")
+	t.Log(err)
+	t.Log(ips)
+}
