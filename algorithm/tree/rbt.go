@@ -8,11 +8,13 @@ import (
 
 /*
 红黑树:
-1. 根节点永远是黑色的；
+1. 根节点永远是黑色的;
 2. 所有的叶节点都是是黑色的(指的是nil节点)
 3. 任何相邻的两个节点不能同时为红色; (每个红色节点的两个子节点一定都是黑色)
 4. 从任一节点到其子树中每个叶子节点的路径都包含相同数量的"黑色节点";
 */
+
+// 添加看叔叔, 删除看兄弟(侄子)
 
 type Color string
 
@@ -29,18 +31,6 @@ type rbNode struct {
 	parent *rbNode
 }
 
-func (n *rbNode) getUncle() *rbNode {
-	if n.parent == nil || n.parent.parent == nil {
-		return nil
-	}
-
-	if n.parent.parent.left == n.parent {
-		return n.parent.parent.right
-	}
-
-	return n.parent.parent.left
-}
-
 func (n *rbNode) String() string {
 	return fmt.Sprintf("%v", n.val)
 }
@@ -55,7 +45,7 @@ func (n *rbNode) String() string {
 1. 新插入节点的父节点是黑色, 则修复完成.
 
 2. 新插入节点的父节点是红色
-2.1 叔叔是红色.
+2.1 叔叔节点存在, 且为红色.
 a) 父节点和叔叔变黑, 祖父变红
 b) 祖父变成新节点
 
@@ -337,19 +327,23 @@ func (r *RBTree) fixAfterInsertion(x *rbNode) {
 	x.color = RED
 
 	for x != nil && x != r.root && x.parent.color == RED {
+		// 父亲是左孩子
 		if parentOf(x) == leftOf(parentOf(parentOf(x))) {
-			y := rightOf(parentOf(parentOf(x)))
+			y := rightOf(parentOf(parentOf(x))) // 叔叔节点
+			// 1. 叔叔是红色, 变色, 替换
 			if colorOf(y) == RED {
 				setColor(parentOf(x), BLACK)
 				setColor(y, BLACK)
 				setColor(parentOf(parentOf(x)), RED)
 				x = parentOf(parentOf(x))
 			} else {
+				// 三者非一线, 只是旋转, (父亲)
 				if x == rightOf(parentOf(x)) {
 					x = parentOf(x)
 					r.rotateLeft(x)
 				}
 
+				// 三者一线, 变色+旋转, (当前节点)
 				setColor(parentOf(x), BLACK)
 				setColor(parentOf(parentOf(x)), RED)
 				r.rotateRight(parentOf(parentOf(x)))
