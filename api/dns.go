@@ -24,6 +24,9 @@ var dns = &http.Client{
 
 // ping.cn
 func DNS(host string) (ips []string, err error) {
+	if host == "" {
+		return ips, fmt.Errorf("invalid host")
+	}
 	token, err := token(host)
 	if err != nil {
 		return ips, err
