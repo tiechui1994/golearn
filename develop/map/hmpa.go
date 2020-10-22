@@ -37,6 +37,49 @@ func main() {
 	if p&hashWriting == 0 {
 		fmt.Println("success")
 	}
+
+	type bmap struct {
+		tophash [8]uint8
+	}
+
+	const dataOffset = unsafe.Offsetof(struct {
+		b bmap
+		v int64
+	}{}.v)
+
+	fmt.Println(dataOffset)
+	call()
 }
 
+func call() {
+	fmt.Println(" 0^1", 0^1)
+	fmt.Println("0&^1", 0&^1)
+	fmt.Println("1&^0", 1&^0)
 
+	fmt.Println(" 0^0", 0^0)
+	fmt.Println("0&^0", 0&^0)
+
+	fmt.Println(" 1^1", 1^1)
+	fmt.Println("1&^1", 1&^1)
+
+	fmt.Println("0|^0", 0 | ^uint8(0))
+	fmt.Println("0|^1", 0 | ^1)
+	fmt.Println("1|^0", 1 | ^0)
+	fmt.Println("1|^1", 1 | ^1)
+	const (
+		evacuatedX = 2
+		evacuatedY = 3
+	)
+	if evacuatedX+1 != evacuatedY || evacuatedX^1 != evacuatedY {
+		panic("bad evacuatedN")
+	}
+
+	x := 0
+	for ; x < 10; x++ {
+		if x%5 == 0 {
+			fmt.Println("----", &x)
+			x := 10
+			fmt.Println("current", &x)
+		}
+	}
+}
