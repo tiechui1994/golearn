@@ -315,7 +315,7 @@ loop:
 }
 
 func TestDNS(t *testing.T) {
-	ips, err := DNS("avs-alexa-12-na.amazon.com")
+	ips, err := DNS("avs-alexa-12-na.amazon.com", DNS_A)
 	t.Log(err)
 	t.Log(ips)
 }

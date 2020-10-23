@@ -1144,41 +1144,44 @@ func mapiterinit(t *maptype, h *hmap, it *hiter) {
 	it.B = h.B
 	it.buckets = h.buckets
 	if t.bucket.ptrdata == 0 {
-		// Allocate the current slice and remember pointers to both current and old.
-		// This preserves all relevant overflow buckets alive even if
-		// the table grows and/or overflow buckets are added to the table
-		// while we are iterating.
+		// 重新分配 overflow, 并在 hiter 中存储指向 overflow 和 oldoverflow.
+		// 这样在迭代的过程中, 可以让 overflow bucket 处于活动状态, 不论 table 的增长 and/or 新的 overflow
+		// buckets 被添加到table当中
 		h.createOverflow()
 		it.overflow = h.extra.overflow
 		it.oldoverflow = h.extra.oldoverflow
 	}
 
-	// decide where to start
-	r := uintptr(fastrand())
-	if h.B > 31-bucketCntBits {
-		r += uintptr(fastrand()) << 31
+	// 确定从哪里开始遍历, 这也是map遍历每次结果都一样的原因
+	r := uintptr(fastrand()) // 随机生成一个整数
+	if h.B > 31-bucketCntBits { 
+		r += uintptr(fastrand()) << 31 // 在B>28时, 增加一个偏移量
 	}
-	it.startBucket = r & bucketMask(h.B)
-	it.offset = uint8(r >> h.B & (bucketCnt - 1))
+	it.startBucket = r & bucketMask(h.B) // 开始 bucket 的 index
+	it.offset = uint8(r >> h.B & (bucketCnt - 1)) // 开始的 cell 位置(也是随机数[0-7])
 
 	// iterator state
 	it.bucket = it.startBucket
 
-	// Remember we have an iterator.
-	// Can run concurrently with another mapiterinit().
+	// 多个迭代器可以同事运行.
 	if old := h.flags; old&(iterator|oldIterator) != iterator|oldIterator {
-		atomic.Or8(&h.flags, iterator|oldIterator)
+		atomic.Or8(&h.flags, iterator|oldIterator) // 或操作
 	}
 
 	mapiternext(it)
 }
 
+// 迭代
 func mapiternext(it *hiter) {
 	h := it.h
+	
+	// 如果开启了竞态检测 -race
 	if raceenabled {
 		callerpc := getcallerpc()
 		racereadpc(unsafe.Pointer(h), callerpc, funcPC(mapiternext))
 	}
+	
+	// 并发访问和写入问题
 	if h.flags&hashWriting != 0 {
 		throw("concurrent map iteration and map write")
 	}
@@ -1189,18 +1192,21 @@ func mapiternext(it *hiter) {
 	checkBucket := it.checkBucket
 
 next:
+    // 迭代操作
+    // current bucket 为 nil
 	if b == nil {
+	    // 当前的 bucket 是开始的 bucket 并且已经遍历过了
 		if bucket == it.startBucket && it.wrapped {
-			// end of iteration
 			it.key = nil
 			it.elem = nil
 			return
 		}
+		
+		// 相同 B 进行扩容
 		if h.growing() && it.B == h.B {
-			// Iterator was started in the middle of a grow, and the grow isn't done yet.
-			// If the bucket we're looking at hasn't been filled in yet (i.e. the old
-			// bucket hasn't been evacuated) then we need to iterate through the old
-			// bucket and only return the ones that will be migrated to this bucket.
+			// 迭代器是在增长过程中启动的, 并且增长过程尚未完成.
+            // 如果我们要查看的存储桶尚未装满(即old bucket尚未搬移), 则我们需要遍历old bucket, 只返回将要迁移到
+            // 该 bucket 的 cell.
 			oldbucket := bucket & it.h.oldbucketmask()
 			b = (*bmap)(add(h.oldbuckets, oldbucket*uintptr(t.bucketsize)))
 			if !evacuated(b) {
@@ -1213,6 +1219,7 @@ next:
 			b = (*bmap)(add(it.buckets, bucket*uintptr(t.bucketsize)))
 			checkBucket = noCheck
 		}
+		
 		bucket++
 		if bucket == bucketShift(it.B) {
 			bucket = 0
@@ -1220,6 +1227,7 @@ next:
 		}
 		i = 0
 	}
+	
 	for ; i < bucketCnt; i++ {
 		offi := (i + it.offset) & (bucketCnt - 1)
 		if isEmpty(b.tophash[offi]) || b.tophash[offi] == evacuatedEmpty {

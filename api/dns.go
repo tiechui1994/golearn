@@ -22,8 +22,16 @@ var dns = &http.Client{
 	Timeout: time.Minute,
 }
 
+const (
+	DNS_A     = "A"
+	DNS_CNAME = "CNAME"
+	DNS_NS    = "NS"
+	DNS_MX    = "MX"
+	DNS_TXT   = "TXT"
+)
+
 // ping.cn
-func DNS(host string) (ips []string, err error) {
+func DNS(host, dnstype string) (ips []string, err error) {
 	if host == "" {
 		return ips, fmt.Errorf("invalid host")
 	}
@@ -33,9 +41,9 @@ func DNS(host string) (ips []string, err error) {
 	}
 
 	var taskid string
-	_, taskid, err = check(host, token, "", true)
+	_, taskid, err = check(host, token, "",dnstype, true)
 	for err != nil {
-		_, taskid, err = check(host, token, "", true)
+		_, taskid, err = check(host, token, "",dnstype, true)
 	}
 
 	stop := false
@@ -48,7 +56,7 @@ func DNS(host string) (ips []string, err error) {
 		case <-timer.C:
 			stop = true
 		default:
-			ips, _, err = check(host, token, taskid, false)
+			ips, _, err = check(host, token, taskid, DNS_MX,false)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
@@ -73,7 +81,7 @@ func token(host string) (string, error) {
 	return "", fmt.Errorf("invalid token")
 }
 
-func check(host, token, taskid string, isCreate bool) (ips []string, task string, err error) {
+func check(host, token, taskid, dnstype string, isCreate bool) (ips []string, task string, err error) {
 	value := url.Values{}
 	value.Set("host", host)
 	value.Set("_token", token)
@@ -85,7 +93,7 @@ func check(host, token, taskid string, isCreate bool) (ips []string, task string
 		value.Set("node_ids", "")
 		value.Set("isp", "1,2,3,9,10,11")
 		value.Set("dns_server", "")
-		value.Set("dns_type", "A")
+		value.Set("dns_type", dnstype)
 	} else {
 		value.Set("create_task", "0")
 		value.Set("task_id", taskid)
