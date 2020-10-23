@@ -1223,16 +1223,15 @@ next:
 		bucket++
 		if bucket == bucketShift(it.B) {
 			bucket = 0
-			it.wrapped = true
+			it.wrapped = true // 所有的 bucket 已经遍历完成
 		}
 		i = 0
 	}
 	
 	for ; i < bucketCnt; i++ {
 		offi := (i + it.offset) & (bucketCnt - 1)
+		// 状态是 empty 或者 已经迁移完成.
 		if isEmpty(b.tophash[offi]) || b.tophash[offi] == evacuatedEmpty {
-			// TODO: emptyRest is hard to use here, as we start iterating
-			// in the middle of a bucket. It's feasible, just tricky.
 			continue
 		}
 		k := add(unsafe.Pointer(b), dataOffset+uintptr(offi)*uintptr(t.keysize))
@@ -1240,17 +1239,15 @@ next:
 			k = *((*unsafe.Pointer)(k))
 		}
 		e := add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+uintptr(offi)*uintptr(t.elemsize))
+		
+		// 需要进行检查, 且处于增长扩容的状况下:
 		if checkBucket != noCheck && !h.sameSizeGrow() {
-			// Special case: iterator was started during a grow to a larger size
-			// and the grow is not done yet. We're working on a bucket whose
-			// oldbucket has not been evacuated yet. Or at least, it wasn't
-			// evacuated when we started the bucket. So we're iterating
-			// through the oldbucket, skipping any keys that will go
-			// to the other new bucket (each oldbucket expands to two
-			// buckets during a grow).
+			// 特殊情况: 迭代器是在增长到更大的大小期间启动的, 尚未完成增长. 
+			// 我们正在处理尚未搬移的oldbucket的存储桶. 至少, 当我们启动存储桶时, 它并没有被搬移.
+			// 因此, 我们正在遍历oldbucket, 跳过将要转到另一个新bucket的所有键 (在增长过程中, 每个oldbucket会扩
+			// 展为两个bucket).
 			if t.reflexivekey() || t.key.equal(k, k) {
-				// If the item in the oldbucket is not destined for
-				// the current new bucket in the iteration, skip it.
+				// 如果oldbucket中的 cell 不是搬移到迭代中的当前新存储桶的, 则将其跳过.
 				hash := t.hasher(k, uintptr(h.hash0))
 				if hash&bucketMask(it.B) != checkBucket {
 					continue
@@ -1268,6 +1265,7 @@ next:
 				}
 			}
 		}
+		
 		if (b.tophash[offi] != evacuatedX && b.tophash[offi] != evacuatedY) ||
 			!(t.reflexivekey() || t.key.equal(k, k)) {
 			// This is the golden data, we can return it.
