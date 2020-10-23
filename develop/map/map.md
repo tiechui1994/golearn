@@ -353,7 +353,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 
 ### map 插入
 
-// 插入操作
+// 插入操作, 实际上就是找到一个写入 value 的内存地址, 后续通过内存地址操作进行赋值. 
 ```cgo
 func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	// 如果h是空指针,赋值会引起panic
@@ -530,8 +530,7 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
 	var ovf *bmap
 	// 先检查是否有预分配的 overflow bucket, 如果有, 则从其中获取一个, 否则, 需要重新创建一个 bucket
 	if h.extra != nil && h.extra.nextOverflow != nil {
-		// 我们已经预分配了 overflow buckets.
-		// 详细状况参考 makeBucketArray() 函数
+		// 我们已经预分配了 overflow buckets [连续的内存地址]. 详细状况参考 makeBucketArray() 函数
 		ovf = h.extra.nextOverflow
 		if ovf.overflow(t) == nil {
 			// 不是最后一个预分配的溢出存储桶. 这时候只需要修改nextOverflow地址指向下一个溢出桶(因为内存是连续的)
@@ -969,7 +968,7 @@ func mapdelete(t *maptype, h *hmap, key unsafe.Pointer) {
 		racewritepc(unsafe.Pointer(h), callerpc, pc)
 		raceReadObjectPC(t.key, key, callerpc, pc)
 	}
-	/ 如果开启了memory sanitizer -msan
+	// 如果开启了memory sanitizer -msan
 	if msanenabled && h != nil {
 		msanread(key, t.key.size)
 	}
@@ -989,22 +988,35 @@ func mapdelete(t *maptype, h *hmap, key unsafe.Pointer) {
     
 	hash := t.hasher(key, uintptr(h.hash0))
 	
-	// Set hashWriting after calling t.hasher, since t.hasher may panic,
-	// in which case we have not actually done a write (delete).
+	// 将flags的值与hashWriting做按位 "异或" 运算
+    // 调用t.hasher后设置hashWriting, 因为t.hasher可能会 panic, 在这种情况下, 我们实际上并没有执行写(删除)操作.
 	h.flags ^= hashWriting
-
+    
+    // 计算出桶的位置
 	bucket := hash & bucketMask(h.B)
 	if h.growing() {
 		growWork(t, h, bucket)
 	}
+	
+	// 获取 bucket 的内存地址
 	b := (*bmap)(add(h.buckets, bucket*uintptr(t.bucketsize)))
 	bOrig := b
-	top := tophash(hash)
-
+	top := tophash(hash) // hash高8位
+	
+    // 以下是查找的核心逻辑
+    // 双重循环遍历: 外层循环是从桶到溢出桶遍历; 内层是桶中的cell遍历
+    // 跳出循环的条件有三种: 
+    // 第一种是已经找到key值, 并且已经完成清理工作.
+    // 第二种是当前桶再无溢出桶;
+    // 第三种是当前桶中有cell位的tophash值是emptyRest, 这个值在前面解释过, 它代表此时的桶后面的cell还未利用, 
+    // 所以无需再继续遍历. 
 search:
+
+    // 第二种情况
 	for ; b != nil; b = b.overflow(t) {
 		for i := uintptr(0); i < bucketCnt; i++ {
 			if b.tophash[i] != top {
+			    // 第三种情况
 				if b.tophash[i] == emptyRest {
 					break search
 				}
@@ -1018,12 +1030,15 @@ search:
 			if !t.key.equal(key, k2) {
 				continue
 			}
-			// Only clear key if there are pointers in it.
+			
+			// 第一种情况, 说明已经找到了 key 值完全一样
+			// 清理 key
 			if t.indirectkey() {
 				*(*unsafe.Pointer)(k) = nil
 			} else if t.key.ptrdata != 0 {
 				memclrHasPointers(k, t.key.size)
 			}
+			// 清理 value
 			e := add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
 			if t.indirectelem() {
 				*(*unsafe.Pointer)(e) = nil
@@ -1032,27 +1047,40 @@ search:
 			} else {
 				memclrNoHeapPointers(e, t.elem.size)
 			}
+			// 设置 tophash
 			b.tophash[i] = emptyOne
-			// If the bucket now ends in a bunch of emptyOne states,
-			// change those to emptyRest states.
-			// It would be nice to make this a separate function, but
-			// for loops are not currently inlineable.
+			
+			// 如果 bucket 现在以一堆emptyOne状态结束, 将其更改为emptyRest状态.
+            // 将此功能设为一个单独的函数会很好, 但是for循环当前不可内联.
+            // 可以立即结束循环的的两种状况:
+            // 情况1: 当前 cell 是 bucket 的最有一个 cell, 且后续的 overflow bucket 的 cell tophash 不为 emptyRest
+            // 情况2: 当前 cell 后续的 cell tophash 不为 emptyRest
 			if i == bucketCnt-1 {
+			    // 情况1
 				if b.overflow(t) != nil && b.overflow(t).tophash[0] != emptyRest {
 					goto notLast
 				}
 			} else {
+			    // 情况2
 				if b.tophash[i+1] != emptyRest {
 					goto notLast
 				}
 			}
+			
+			// 如果 bucket 现在以一堆emptyOne状态结束, 将其更改为emptyRest状态.
+			// 在这里存在两种情况:
+			// 跳出本循环的两种情况:
+			// 1. 遇到桶内的第一个 bucket. 注意: 桶实质上就是一个单向的链表.
+			// 2. 遇到 cell 的 tophash 非删除状态(emptyOne)
 			for {
 				b.tophash[i] = emptyRest
 				if i == 0 {
+				    // 回到桶开始的位置
 					if b == bOrig {
-						break // beginning of initial bucket, we're done.
+						break 
 					}
-					// Find previous bucket, continue at its last entry.
+					// 获取当前 bucket 的前面的 prev bucket(即 prev bucket 的 overflow 是当前 bucket)
+					// 每次都是从桶内的首个元素开始
 					c := b
 					for b = bOrig; b.overflow(t) != c; b = b.overflow(t) {
 					}
@@ -1060,6 +1088,8 @@ search:
 				} else {
 					i--
 				}
+			    
+			    // 首个非 emptyOne 
 				if b.tophash[i] != emptyOne {
 					break
 				}
@@ -1073,6 +1103,199 @@ search:
 	if h.flags&hashWriting == 0 {
 		throw("concurrent map writes")
 	}
+	
+	// 清除 hashWriting flag
 	h.flags &^= hashWriting
+}
+```
+
+
+### map 迭代
+
+```cgo
+// mapiterinit initializes the hiter struct used for ranging over maps.
+// The hiter struct pointed to by 'it' is allocated on the stack
+// by the compilers order pass or on the heap by reflect_mapiterinit.
+// Both need to have zeroed hiter since the struct contains pointers.
+
+// mapiterinit 初始化用于在 map 上进行遍历的hiter结构.
+// it 指向的hiter结构由编译器顺序传递在堆栈上分配, 或者由 reflect_mapiterinit 在堆上分配.
+// 由于结构包含指针, 因此两者都需要将hiter归零.
+func mapiterinit(t *maptype, h *hmap, it *hiter) {
+     // 如果开启了竞态检测 -race
+	if raceenabled && h != nil {
+		callerpc := getcallerpc()
+		racereadpc(unsafe.Pointer(h), callerpc, funcPC(mapiterinit))
+	}
+    
+    // hmap 不存在 或者 hmap 没有存储数据
+	if h == nil || h.count == 0 {
+		return
+	}
+    
+    // hiter 的大小是 12 个系统指针大小. 在 cmd/compile/internal/gc/reflect.go:hiter() 当中有这样的体现
+	if unsafe.Sizeof(hiter{})/sys.PtrSize != 12 {
+		throw("hash_iter size incorrect") // see cmd/compile/internal/gc/reflect.go
+	}
+	it.t = t
+	it.h = h
+
+	// 抓取桶状态快照
+	it.B = h.B
+	it.buckets = h.buckets
+	if t.bucket.ptrdata == 0 {
+		// Allocate the current slice and remember pointers to both current and old.
+		// This preserves all relevant overflow buckets alive even if
+		// the table grows and/or overflow buckets are added to the table
+		// while we are iterating.
+		h.createOverflow()
+		it.overflow = h.extra.overflow
+		it.oldoverflow = h.extra.oldoverflow
+	}
+
+	// decide where to start
+	r := uintptr(fastrand())
+	if h.B > 31-bucketCntBits {
+		r += uintptr(fastrand()) << 31
+	}
+	it.startBucket = r & bucketMask(h.B)
+	it.offset = uint8(r >> h.B & (bucketCnt - 1))
+
+	// iterator state
+	it.bucket = it.startBucket
+
+	// Remember we have an iterator.
+	// Can run concurrently with another mapiterinit().
+	if old := h.flags; old&(iterator|oldIterator) != iterator|oldIterator {
+		atomic.Or8(&h.flags, iterator|oldIterator)
+	}
+
+	mapiternext(it)
+}
+
+func mapiternext(it *hiter) {
+	h := it.h
+	if raceenabled {
+		callerpc := getcallerpc()
+		racereadpc(unsafe.Pointer(h), callerpc, funcPC(mapiternext))
+	}
+	if h.flags&hashWriting != 0 {
+		throw("concurrent map iteration and map write")
+	}
+	t := it.t
+	bucket := it.bucket
+	b := it.bptr
+	i := it.i
+	checkBucket := it.checkBucket
+
+next:
+	if b == nil {
+		if bucket == it.startBucket && it.wrapped {
+			// end of iteration
+			it.key = nil
+			it.elem = nil
+			return
+		}
+		if h.growing() && it.B == h.B {
+			// Iterator was started in the middle of a grow, and the grow isn't done yet.
+			// If the bucket we're looking at hasn't been filled in yet (i.e. the old
+			// bucket hasn't been evacuated) then we need to iterate through the old
+			// bucket and only return the ones that will be migrated to this bucket.
+			oldbucket := bucket & it.h.oldbucketmask()
+			b = (*bmap)(add(h.oldbuckets, oldbucket*uintptr(t.bucketsize)))
+			if !evacuated(b) {
+				checkBucket = bucket
+			} else {
+				b = (*bmap)(add(it.buckets, bucket*uintptr(t.bucketsize)))
+				checkBucket = noCheck
+			}
+		} else {
+			b = (*bmap)(add(it.buckets, bucket*uintptr(t.bucketsize)))
+			checkBucket = noCheck
+		}
+		bucket++
+		if bucket == bucketShift(it.B) {
+			bucket = 0
+			it.wrapped = true
+		}
+		i = 0
+	}
+	for ; i < bucketCnt; i++ {
+		offi := (i + it.offset) & (bucketCnt - 1)
+		if isEmpty(b.tophash[offi]) || b.tophash[offi] == evacuatedEmpty {
+			// TODO: emptyRest is hard to use here, as we start iterating
+			// in the middle of a bucket. It's feasible, just tricky.
+			continue
+		}
+		k := add(unsafe.Pointer(b), dataOffset+uintptr(offi)*uintptr(t.keysize))
+		if t.indirectkey() {
+			k = *((*unsafe.Pointer)(k))
+		}
+		e := add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+uintptr(offi)*uintptr(t.elemsize))
+		if checkBucket != noCheck && !h.sameSizeGrow() {
+			// Special case: iterator was started during a grow to a larger size
+			// and the grow is not done yet. We're working on a bucket whose
+			// oldbucket has not been evacuated yet. Or at least, it wasn't
+			// evacuated when we started the bucket. So we're iterating
+			// through the oldbucket, skipping any keys that will go
+			// to the other new bucket (each oldbucket expands to two
+			// buckets during a grow).
+			if t.reflexivekey() || t.key.equal(k, k) {
+				// If the item in the oldbucket is not destined for
+				// the current new bucket in the iteration, skip it.
+				hash := t.hasher(k, uintptr(h.hash0))
+				if hash&bucketMask(it.B) != checkBucket {
+					continue
+				}
+			} else {
+				// Hash isn't repeatable if k != k (NaNs).  We need a
+				// repeatable and randomish choice of which direction
+				// to send NaNs during evacuation. We'll use the low
+				// bit of tophash to decide which way NaNs go.
+				// NOTE: this case is why we need two evacuate tophash
+				// values, evacuatedX and evacuatedY, that differ in
+				// their low bit.
+				if checkBucket>>(it.B-1) != uintptr(b.tophash[offi]&1) {
+					continue
+				}
+			}
+		}
+		if (b.tophash[offi] != evacuatedX && b.tophash[offi] != evacuatedY) ||
+			!(t.reflexivekey() || t.key.equal(k, k)) {
+			// This is the golden data, we can return it.
+			// OR
+			// key!=key, so the entry can't be deleted or updated, so we can just return it.
+			// That's lucky for us because when key!=key we can't look it up successfully.
+			it.key = k
+			if t.indirectelem() {
+				e = *((*unsafe.Pointer)(e))
+			}
+			it.elem = e
+		} else {
+			// The hash table has grown since the iterator was started.
+			// The golden data for this key is now somewhere else.
+			// Check the current hash table for the data.
+			// This code handles the case where the key
+			// has been deleted, updated, or deleted and reinserted.
+			// NOTE: we need to regrab the key as it has potentially been
+			// updated to an equal() but not identical key (e.g. +0.0 vs -0.0).
+			rk, re := mapaccessK(t, h, k)
+			if rk == nil {
+				continue // key has been deleted
+			}
+			it.key = rk
+			it.elem = re
+		}
+		it.bucket = bucket
+		if it.bptr != b { // avoid unnecessary write barrier; see issue 14921
+			it.bptr = b
+		}
+		it.i = i + 1
+		it.checkBucket = checkBucket
+		return
+	}
+	b = b.overflow(t)
+	i = 0
+	goto next
 }
 ```
