@@ -222,9 +222,19 @@ func hmap(t *types.Type) *types.Type {
 }
 ```
 
-如图:
+bmap 也就是 bucket(桶)的内存模型图解如下(代码逻辑就是上述的 `bmap` 函数). 
 
 ![image](/images/develop_map_bmap.png)
+
+在上述图解当前, 该桶的第7,8位cell还未有对应的键值对. 注意: key和value是各自存储起来的, 并非想象中的 key/value/key/
+value...的形式. 这样的做法好处在于消除key/value之间的padding, 例如`map[int64]int`. 还有,在8个键值对数据后面还有
+一个overflow指针, 因为桶中最多只能装8个键值对, 如果有多余的键值对落到当前桶, 那么就需要再构建一个桶(溢出桶), 通过
+overflow 指针链接起来.
+
+最后, 这里展示一个 B=4 的完整 map 结构:
+
+![image](/images/develop_map_mapstruct.png)
+
 
 
 ### 辅助函数
