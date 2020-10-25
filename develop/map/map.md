@@ -1,4 +1,6 @@
-### 数据结构与实际的数据结构
+# golang map 源码解析
+
+## 数据结构与实际的数据结构
 
 map 中的数据被存放在一个数组中的, 数组的元素是桶(bucket), 每个桶至多包含8个键值对数据. 哈希值低位(low-order bits)
 用于选择桶, 哈希值高位(high-order bits)用于在一个独立的桶中区别出键. 哈希值高低位示意图如下:
@@ -235,7 +237,7 @@ bmap 也就是 bucket(桶)的内存模型图解如下(代码逻辑就是上述�
 ![image](/images/develop_map_mapstruct.png)
 
 
-### 辅助函数
+## 辅助函数
 
 ```cgo
 // 地址偏移(内存必须连续)
@@ -270,7 +272,7 @@ func evacuated(b *bmap) bool {
 ```
 
 
-### map 创建
+## map 创建
 
 源码位置 `src/runtime/map.go`
 
@@ -389,7 +391,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 只是被 `hmap` 中的不同的字段引用而已. 
 
 
-### map 插入
+## map 插入
 
 // 插入操作, 实际上就是找到一个写入 value 的内存地址, 后续通过内存地址操作进行赋值. 
 ```cgo
@@ -625,7 +627,7 @@ func (h *hmap) incrnoverflow() {
 ```
 
 
-### map 查询
+## map 查询
 
 // 查询操作
 ```cgo
@@ -718,12 +720,40 @@ bucketloop:
 }
 ```
 
+`mapaccess1` 查找过程图解:
+
+![image](/images/develop_map_access.png) 
+
+
+map 的元素查找, 对应go代码有两种形式:
+
+```cgo
+v := m[k]
+v, ok := m[k]
+```
+
+形式一的代码实现, 是上述的 `mapaccess1` 方法. 此外源码当中还有 `mapaccess2` 方法, 函数签名是:
+
+```cgo
+func mapaccess2(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, bool)
+```
+
+在 `mapaccess2` 多了一个 bool 类型的返回值, 它代表的map中是否存在相对应的 key.
+
+源码中还有 `mapaccessK` 方法, 函数签名是:
+
+```cgo
+func mapaccess2(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, unsafe.Pointer)
+```
+
+与 `mapaccess1` 相比, `mapaccessK` 同时返回了 key 和 value, 其代码逻辑也一致.
+
 > 说明:
 > mapaccess2() 返回 value 和 bool(表示key是否存在), mapaccessK() 返回 key 和 value. 它们和 mapaccess1() 的
 > 逻辑基本上是一样的.
 
 
-### map 扩容与数据搬移
+## map 扩容与数据搬移
 
 扩容条件说明:
 
@@ -1037,7 +1067,7 @@ func advanceEvacuationMark(h *hmap, t *maptype, newbit uintptr) {
 ![iamge](/images/develop_map_growth_zero.png)
 
 
-### map 删除
+## map 删除
 
 ```cgo
 func mapdelete(t *maptype, h *hmap, key unsafe.Pointer) {
@@ -1190,7 +1220,7 @@ search:
 ```
 
 
-### map 迭代
+## map 迭代
 
 ```cgo
 // mapiterinit 初始化用于在 map 上进行遍历的hiter结构.
