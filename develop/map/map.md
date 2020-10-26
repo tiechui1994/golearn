@@ -783,7 +783,7 @@ func mapaccess2(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, bool)
 源码中还有 `mapaccessK` 方法, 函数签名是:
 
 ```cgo
-func mapaccess2(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, unsafe.Pointer)
+func mapaccessK(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, unsafe.Pointer)
 ```
 
 与 `mapaccess1` 相比, `mapaccessK` 同时返回了 key 和 value, 其代码逻辑也一致.
