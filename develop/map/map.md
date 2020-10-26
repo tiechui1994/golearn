@@ -105,7 +105,7 @@ const (
 // bmap(即map中的bucket)内存结构
 ```cgo
 // src/cmd/compile/internal/gc/reflect.go:bmap
-// bucket 结构 
+// bucket 内存结构 
 func bmap(t *types.Type) *types.Type {
 	if t.MapType().Bucket != nil {
 		return t.MapType().Bucket
@@ -114,8 +114,10 @@ func bmap(t *types.Type) *types.Type {
 	bucket := types.New(TSTRUCT)
 	keytype := t.Key()
 	elemtype := t.Elem()
-	dowidth(keytype)
+	dowidth(keytype) // 确定 keytype 的size
 	dowidth(elemtype)
+	
+	// MAXKEYSIZE=128
 	if keytype.Width > MAXKEYSIZE {
 		keytype = types.NewPtr(keytype)
 	}
@@ -125,6 +127,7 @@ func bmap(t *types.Type) *types.Type {
 
 	field := make([]*types.Field, 0, 5)
 
+    // BUCKETSIZE=8
 	// The first field is: uint8 topbits[BUCKETSIZE].
 	arr := types.NewArray(types.Types[TUINT8], BUCKETSIZE)
 	field = append(field, makefield("topbits", arr))
@@ -176,6 +179,7 @@ func bmap(t *types.Type) *types.Type {
 // hmap(即map)内存结构
 ```cgo
 // src/cmd/compile/internal/gc/reflect.go:hmap
+// map 内存结构
 func hmap(t *types.Type) *types.Type {
 	if t.MapType().Hmap != nil {
 		return t.MapType().Hmap
@@ -240,7 +244,7 @@ bmap 也就是 bucket(桶)的内存模型图解如下(代码逻辑就是上述�
 ## 辅助函数
 
 ```cgo
-// 地址偏移(内存必须连续)
+// 地址偏移(内存地址连续, 这是map内存操作的一个基础)
 func add(p unsafe.Pointer, x uintptr) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(p) + x)
 }
@@ -268,6 +272,22 @@ func tophash(hash uintptr) uint8 {
 func evacuated(b *bmap) bool {
 	h := b.tophash[0]
 	return h > emptyOne && h < minTopHash
+}
+
+// 检测给定的tophash所对于的cell是否为空.
+func isEmpty(x uint8) bool {
+	return x <= emptyOne
+}
+
+// 获取 b 的 overflow 指针
+func (b *bmap) overflow(t *maptype) *bmap {
+    // 很巧妙, bucketsize 的最后一个 sys.PtrSize 即是 overflow 指针
+	return *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize))
+}
+
+// 设置 b 的 overflow 指针
+func (b *bmap) setoverflow(t *maptype, ovf *bmap) {
+	*(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)) = ovf
 }
 ```
 
@@ -364,7 +384,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 		buckets = dirtyalloc
 		size := t.bucket.size * nbuckets
 		if t.bucket.ptrdata != 0 {
-			memclrHasPointers(buckets, size) // 开启了写屏障
+			memclrHasPointers(buckets, size) // 开启了写屏障, 指针清理
 		} else {
 			memclrNoHeapPointers(buckets, size) // 最终都会调用此方法
 		}
@@ -393,6 +413,17 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 
 ## map 插入
 
+go 当中的位运算:
+
+```
+A  |  B, 或操作, 添加 B 当中相应的标记位1
+A  &  B, 与操作, 寻找 A,B 共有的标记1
+
+A  &^ B, 与非操作, 移除 B 当中相应的标记位1(是 "或" 运算的反向操作)
+A  ^  B, 异或操作, 移除 A,B 共有的标记1, 添加 A,B 不共有的标记
+```
+
+
 // 插入操作, 实际上就是找到一个写入 value 的内存地址, 后续通过内存地址操作进行赋值. 
 ```cgo
 func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
@@ -415,14 +446,14 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	if msanenabled {
 		msanread(key, t.key.size)
 	}
-	// 有其他goroutine正在往map中写key, 会抛出以下错误
+	// 有其他goroutine正在往map中写key, 会抛出以下错误. 不能并发写, 或者并发读写. 可以并发读取
 	if h.flags&hashWriting != 0 {
 		throw("concurrent map writes")
 	}
 	// 通过key和哈希种子, 算出对应哈希值
 	hash := t.hasher(key, uintptr(h.hash0))
 
-	// 将flags的值与hashWriting做按位 "异或" 运算
+	// 将flags的值与hashWriting做按位 "异或" 运算, 移除 hashWriting 的相应标记位
 	// 因为在当前goroutine可能还未完成key的写入, 再次调用t.hasher会发生panic.
 	h.flags ^= hashWriting
 
@@ -434,9 +465,9 @@ again:
     // bucketMask返回值是2的B次方减1
     // 因此,通过hash值与bucketMask返回值做按位与操作,返回的在buckets数组中的第几号桶
 	bucket := hash & bucketMask(h.B) // 获取bucket的位置
-	// 如果map正在搬迁(即h.oldbuckets != nil)中, 则先进行搬迁工作(当前的bucket). 
+	// 如果map正在扩容(即h.oldbuckets != nil)中, 则先进行搬移工作(当前的bucket). 
 	if h.growing() {
-		growWork(t, h, bucket)
+		growWork(t, h, bucket) // 最多搬移两个bucket
 	}
 	
 	// 计算出上面求出的第几号bucket的内存位置
@@ -444,7 +475,7 @@ again:
 	b := (*bmap)(unsafe.Pointer(uintptr(h.buckets) + bucket*uintptr(t.bucketsize)))
 	top := tophash(hash) // 获取 bucket 内的原始的位置(即hash的高8位)
 
-	var inserti *uint8         // 记录 tophash 的值的指针
+	var inserti *uint8         // 记录 tophash 对应位置的指针
 	var insertk unsafe.Pointer // 记录 key 的底层内存位置(要剥离指针)
 	var elem unsafe.Pointer    // 记录 value 的底层内存位置
 	
@@ -494,33 +525,34 @@ bucketloop:
 				continue
 			}
 			
-			// 到这里,说明key是相等的. 如果已经有该key了, 就更新它
+			// 到这里,说明 map 当中存在当前的 key, 只需要更新它即可. 这个时候是不再需要 inserti, insertk的值了
+			// 因为它们只是辅助后面的插入的动作的. 直接调到 done 即可.
 			// needkeyupdate() // true if we need to update key on an overwrite
 			if t.needkeyupdate() {
 				typedmemmove(t.key, k, key)
 			}
-			// 这里获取到了要插入key对应的value的内存地址
 			// pos = start(bucket) + dataOffset + 8*keysize + i*elemsize
 			elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
 			goto done
 		}
 		
-		// 如果桶中的8个cell遍历完,还未找到对应的空cell或覆盖cell,那么就进入它的溢出桶中去遍历
-		// *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)), 返回 *bmap
+		// 进入到 overflow bucket 当中查找
+		// *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)), 很巧妙的方法
 		// 说明: t.bucketsize 是 bucket 的大小, 而最后一个指针就是 *bmap
 		ovf := b.overflow(t)
-		// 如果连溢出桶中都没有找到合适的cell,跳出循环. 
+		// overflow bucket 为空, 终止当前的循环. 
 		if ovf == nil {
-			break // 终止外层循环
+			break
 		}
 		b = ovf
 	}
 
 	// 在已有的桶和溢出桶中都未找到合适的cell供key写入, 那么有可能会触发以下两种情况
 	// 情况一:
-	// 判断当前map的装载因子是否达到设定的6.5阈值,或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一,则进行扩容操作. 
-	// hashGrow()实际并未完成扩容,对哈希表数据的搬迁(复制)操作是通过growWork()来完成的. 
-	// 重新跳入again逻辑,在进行完growWork()操作后,再次遍历新的桶. 
+	// 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一, 则进行扩容
+	// 操作. 
+	// hashGrow()实际并未完成扩容, 对哈希表数据的搬迁(复制)操作是通过growWork()来完成的. 
+	// 重新跳入again逻辑, 在进行完growWork()操作后, 再次遍历新的桶. 
 	// 分别分析情况1(装载因子) 和 情况2(buckets与overflow buckets)
 	if !h.growing() && (overLoadFactor(h.count+1, h.B) || tooManyOverflowBuckets(h.noverflow, h.B)) {
 		hashGrow(t, h)
@@ -528,7 +560,8 @@ bucketloop:
 	}
 
 	// 情况二:
-	// 在不满足情况一的条件下,会为当前桶再新建溢出桶,并将tophash,key插入到新建溢出桶的对应内存的0号位置
+	// 在不满足情况一的条件下, 并且没有找到插入位置, 会为当前桶再新建溢出桶,并将tophash,key插入到新建溢出桶的对应内存
+	// 的0号位置
 	if inserti == nil {
 		// all current buckets are full, allocate a new one.
 		newb := h.newoverflow(t, b)
@@ -600,6 +633,12 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
 }
 ```
 
+> 结论: 通过 newoverflow() 可以看出, overflow 先是使用预先分配的溢出桶内存(此时桶和溢出桶是一整块完整的内存), 当预
+先分配的溢出桶(数量为 2^(B-4) 个)使用完了之后, 后续直接创建不连续的溢出桶. 注意: 无论是哪种溢出桶, 其内部的内存一定是
+连续的, 否则 `add()` 函数操作将变得无效.
+>
+> map 的桶的内存一定是连续的, 这个在初始化或者扩容的时候进行分配好.
+
 ```cgo
 // incrnoverflow 递增 h.noverflow.
 // noverflow 计算溢出桶的数量.
@@ -662,11 +701,12 @@ func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	hash := t.hasher(key, uintptr(h.hash0))
 	m := bucketMask(h.B)
 	
-	// 按位与操作, 找到对应的bucket
+	// 找到对应的bucket指针地址
 	b := (*bmap)(add(h.buckets, (hash&m)*uintptr(t.bucketsize)))
-	// 如果oldbuckets不为空, 那么证明map发生了扩容
+	// 如果 oldbuckets 不为空, 那么证明map发生了扩容
 	// 如果有扩容发生, 老的buckets中的数据可能还未搬迁至新的buckets里, 所以需要先在老的buckets中找
 	if c := h.oldbuckets; c != nil {
+	    // 增量扩容
 		if !h.sameSizeGrow() {
 			m >>= 1
 		}
@@ -677,6 +717,7 @@ func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 			b = oldb
 		}
 	}
+	
 	// 取出当前key值的tophash值
 	top := tophash(hash)
 	// 以下是查找的核心逻辑
@@ -690,9 +731,8 @@ bucketloop:
     // 第二种情况
 	for ; b != nil; b = b.overflow(t) {
 		for i := uintptr(0); i < bucketCnt; i++ {
-			// 判断tophash值是否相等
 			if b.tophash[i] != top {
-			    // 第三种情况
+			    // 第三种情况, 这种状况肯定是找不到了
 				if b.tophash[i] == emptyRest {
 					break bucketloop
 				}
@@ -826,7 +866,7 @@ func hashGrow(t *maptype, h *hmap) {
 	
 	// 记录老的buckets
 	oldbuckets := h.buckets
-	// 申请新的buckets空间
+	// 申请新的buckets空间, 可能包括部分溢出桶
 	newbuckets, nextOverflow := makeBucketArray(t, h.B+bigger, nil)
 	// A  &^ B, 与非操作, 移除 B 当中相应的标记位1
 	// A  ^  B, 异或操作, 移除 A,B 共有的标记, 添加 A,B 不共有的标记
