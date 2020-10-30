@@ -1,8 +1,8 @@
 package list
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 	"time"
 )
 

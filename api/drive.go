@@ -1,17 +1,17 @@
 package api
 
 import (
-	"net/url"
-	"net/http"
 	"bytes"
-	"time"
 	"crypto/tls"
-	"net"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
+	"net/url"
 	"strings"
-	"fmt"
-	"encoding/json"
+	"time"
 
 	"github.com/pborman/uuid"
 )

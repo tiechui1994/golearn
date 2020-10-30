@@ -2,13 +2,13 @@ package compress
 
 import (
 	"archive/tar"
-	"os"
-	"io"
 	"bytes"
 	"compress/gzip"
-	"path"
-	"fmt"
 	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
 )
 
 func Tgz(dest string, src []string) error {

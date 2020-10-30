@@ -1,14 +1,14 @@
 package main
 
 import (
-	"net"
-	"bytes"
 	"bufio"
+	"bytes"
+	"net"
 	"strings"
 )
 
 func main() {
-	net.DialTCP("", nil,nil)
+	net.DialTCP("", nil, nil)
 
 	// ReadFrom
 	_ = bytes.Buffer{}

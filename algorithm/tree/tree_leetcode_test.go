@@ -1,8 +1,8 @@
 package tree
 
 import (
-	"testing"
 	"log"
+	"testing"
 )
 
 func TestMaxSumPath(t *testing.T) {

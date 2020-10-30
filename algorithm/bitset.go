@@ -78,7 +78,7 @@ func (set *BitSet) Clear(n int) *BitSet {
 
 	if set.data[index]&pos(n) != 0 {
 		set.data[index] &^= pos(n)
-		set.size --
+		set.size--
 		set.trim()
 	}
 

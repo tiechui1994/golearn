@@ -43,7 +43,6 @@ func MulticastCommon() {
 		log.Printf("SetControl: %v", err)
 	}
 
-
 	//5. 接收消息
 	buf := make([]byte, 1500)
 	for {

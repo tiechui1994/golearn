@@ -1,13 +1,13 @@
 package main
 
 import (
-	_ "net/http/pprof"
-	"net/http"
-	"log"
-	"sync"
 	"fmt"
-	"time"
 	"io/ioutil"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"sync"
+	"time"
 )
 
 func main() {

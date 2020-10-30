@@ -79,7 +79,7 @@ func (t *BT) Split() *BT {
 func (t *BT) Insert(value int) *BT {
 	var i int
 	ok, _, node := t.Search(value) //1、先在整颗树中找到要插入到哪个节点中
-	if !ok { //树中不存在此节点
+	if !ok {                       //树中不存在此节点
 		node.key[0] = value
 		for i = node.keyNum; i > 0 && value < node.key[i]; i-- {
 			node.key[i+1] = node.key[i]
@@ -100,12 +100,12 @@ func (t *BT) Insert(value int) *BT {
 }
 
 /*删除关键字
-	1）要删除的key位于非叶子结点上，则用后继key覆盖要删除的key，然后删除该后继key。
-	2）该结点key个数大于等于Math.ceil(m/2)-1，结束删除操作，否则执行第3步。
-	3）如果兄弟结点key个数大于Math.ceil(m/2)-1，则父结点中的key下移到该结点，
-	3）兄弟结点中的一个key上移，删除操作结束。
-	否则，将父结点中的key下移与当前结点及它的兄弟结点中的key合并，形成一个新的结点。
-	然后当前结点的指针指向父结点，重复上第2步。
+1）要删除的key位于非叶子结点上，则用后继key覆盖要删除的key，然后删除该后继key。
+2）该结点key个数大于等于Math.ceil(m/2)-1，结束删除操作，否则执行第3步。
+3）如果兄弟结点key个数大于Math.ceil(m/2)-1，则父结点中的key下移到该结点，
+3）兄弟结点中的一个key上移，删除操作结束。
+否则，将父结点中的key下移与当前结点及它的兄弟结点中的key合并，形成一个新的结点。
+然后当前结点的指针指向父结点，重复上第2步。
 */
 
 //在整颗树中找到要删除的关键字在哪个节点中
@@ -187,7 +187,7 @@ func (t *BT) MergeNode() *BT {
 	if j > 0 { //t有左兄弟，与左兄弟合并
 		b = parent.child[j-1]
 		b.keyNum++
-		b.key[b.keyNum] = parent.key[j] //父结点中关键字下移
+		b.key[b.keyNum] = parent.key[j]  //父结点中关键字下移
 		for k := 1; k <= t.keyNum; k++ { //t节点中关键字移到左兄弟节点中
 			b.keyNum++
 			b.key[b.keyNum] = t.key[k]
@@ -200,7 +200,7 @@ func (t *BT) MergeNode() *BT {
 	} else { //与右兄弟合并
 		b = parent.child[j+1]
 		t.keyNum++
-		t.key[t.keyNum] = parent.key[j] //父结点中关键字下移
+		t.key[t.keyNum] = parent.key[j]  //父结点中关键字下移
 		for k := 1; k <= b.keyNum; k++ { //兄弟节点中关键字移到t节点中
 			t.keyNum++
 			t.key[t.keyNum] = b.key[k]

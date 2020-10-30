@@ -10,7 +10,7 @@ func Tee(done <-chan interface{}, in <-chan interface{}) (_, _ <-chan interface{
 		defer close(out2)
 		for val := range OrDone(done, in) {
 			var out1, out2 = out1, out2 // 1
-			for i := 0; i < 2; i++ { // 2
+			for i := 0; i < 2; i++ {    // 2
 				select {
 				case <-done:
 				case out1 <- val:

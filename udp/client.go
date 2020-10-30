@@ -100,7 +100,6 @@ func MulticastClient() {
 	log.Printf("read from <%v> data [%v]", addr.String(), n)
 }
 
-
 func main() {
 	MulticastClient()
 }

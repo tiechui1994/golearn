@@ -1,15 +1,10 @@
 package promise
 
 import (
+	"math/rand"
 	"sync/atomic"
 	"unsafe"
-	"math/rand"
 )
-
-type anyPromiseResult struct {
-	result interface{}
-	i      int
-}
 
 /**************************************************************
 开启一个goroutine用来执行一个act函数并返回一个Future(act执行的结果).
@@ -187,16 +182,16 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 	if len(futures) == 1 {
 		select {
 		case fail := <-fails:
-			if _, ok := fail.result.(CancelledError); ok {
+			if _, ok := fail.value.(CancelledError); ok {
 				promise.Cancel()
 			} else {
-				promise.Reject(newNoMatchedError(fail.result))
+				promise.Reject(newNoMatchedError(fail.value))
 			}
 		case done := <-dones:
-			if predicate(done.result) {
-				promise.Resolve(done.result)
+			if predicate(done.value) {
+				promise.Resolve(done.value)
 			} else {
-				promise.Reject(newNoMatchedError(done.result))
+				promise.Reject(newNoMatchedError(done.value))
 			}
 		}
 
@@ -211,15 +206,15 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 				promise.Reject(newErrorWithStacks(e))
 			}
 		}()
-		
+
 	loop:
 		for j := 0; ; {
 			select {
 			case fail := <-fails:
-				results[fail.i] = getError(fail.result)
+				results[fail.index] = getError(fail.value)
 
 			case done := <-dones:
-				if predicate(done.result) {
+				if predicate(done.value) {
 					// meet expect result, cancel other task and return
 					for _, future := range futures {
 						future.Cancel()
@@ -234,11 +229,11 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 					closeChan(fails)
 
 					// 成功执行并且返回
-					promise.Resolve(done.result)
+					promise.Resolve(done.value)
 					break loop
 
 				} else {
-					results[done.i] = done.result
+					results[done.index] = done.value
 				}
 			}
 
@@ -271,7 +266,7 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 
 // 如果所有的Future都成功执行, 当前的Future也会成功执行并且返回相应的结果数组(成功执行的Future的结果);
 // 否则, 当前的Future将会执行失败, 并且返回所有Future的执行结果.
-func WhenAll(actions ...interface{}) (*Future) {
+func WhenAll(actions ...interface{}) *Future {
 	promise := NewPromise()
 
 	if len(actions) == 0 {
@@ -326,33 +321,25 @@ func WhenAll(actions ...interface{}) (*Future) {
 	return promise.Future
 }
 
-var (
-	CANCELLED error = &CancelledError{}
-)
-
-// future退出时的错误
-type CancelledError struct{}
-
-func (e *CancelledError) Error() string {
-	return "Task be cancelled"
+// only used in WhenAnyMatched()/WhenAny() and
+// store intermediate results
+type anyPromiseResult struct {
+	value interface{}
+	index int
 }
 
 // Future最终的状态
 type resultType int
 
 const (
-	RESULT_SUCCESS   resultType = iota
+	RESULT_SUCCESS resultType = iota
 	RESULT_FAILURE
 	RESULT_CANCELLED
 )
 
-// Promise的结果
-// Type: 0, Result是Future的返回结果
-// Type: 1, Result是Future的返回的错误
-// Type: 2, Result是null
 type PromiseResult struct {
-	Result interface{}
-	Type   resultType // success, failure, or cancelled?
+	Value interface{}
+	Type  resultType
 }
 
 /*********************************************************************
@@ -364,50 +351,40 @@ type Promise struct {
 	*Future
 }
 
-/*********************************************************************
- 方法总体说明:
-	1. Cancel() Resolve() Reject(), 这些方法的调用会导致Promise任务执行完毕
-	2. OnXxx() 此类型的方法是设置回调函数, 应当在Promise的任务执行完毕前调用添加
-*********************************************************************/
-
-// Cancel() 会将 Promise 的结果的 Type 设置为RESULT_CANCELLED。
-// 如果promise被取消了, 调用Get()将返回nil和CANCELED错误. 并且所有的回调函数将不会被执行
+// cancel exeute
 func (promise *Promise) Cancel() (e error) {
 	return promise.setResult(&PromiseResult{CANCELLED, RESULT_CANCELLED})
 }
 
-// Resolve() 会将 Promise 的结果的 Type 设置为RESULT_SUCCESS. Result设置为特定值
-// 如果promise被取消了, 调用Get()将返回相应的值和nil
+// set result to success
 func (promise *Promise) Resolve(v interface{}) (e error) {
 	return promise.setResult(&PromiseResult{v, RESULT_SUCCESS})
 }
 
-// Resolve() 会将 Promise 的结果的 Type 设置为RESULT_FAILURE.
+// set result to failure
 func (promise *Promise) Reject(err error) (e error) {
 	return promise.setResult(&PromiseResult{err, RESULT_FAILURE})
 }
 
-// OnSuccess注册一个回调函数, 该函数将在Promise有成功返回的时候调用. Promise的值将是Done回调函数的参数.
+// Callback when success
 func (promise *Promise) OnSuccess(callback func(v interface{})) *Promise {
 	promise.Future.OnSuccess(callback)
 	return promise
 }
 
-// OnSuccess注册一个回调函数, 该函数将在Promise有失败返回的时候调用. Promise的error将是Done回调函数的参数.
+// Callback when failure
 func (promise *Promise) OnFailure(callback func(v interface{})) *Promise {
 	promise.Future.OnFailure(callback)
 	return promise
 }
 
-// OnComplete注册一个回调函数，该函数将在Promise成功或者失败返回的时候被调用.
-// 根据Promise的状态，值或错误将是Always回调函数的参数.
-// 如果Promise被调用, 则不会调用回调函数.
+// Callback when success or failure
 func (promise *Promise) OnComplete(callback func(v interface{})) *Promise {
 	promise.Future.OnComplete(callback)
 	return promise
 }
 
-// OnSuccess注册一个回调函数, 该函数将在Promise被取消的时候调用
+// Callback when cancel
 func (promise *Promise) OnCancel(callback func()) *Promise {
 	promise.Future.OnCancel(callback)
 	return promise

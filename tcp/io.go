@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log"
 	"encoding/json"
-	"net/http"
-	"io/ioutil"
 	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
 )
 
 func init() {

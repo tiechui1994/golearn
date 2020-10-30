@@ -1,8 +1,8 @@
 package algorithm
 
 import (
-	"math/bits"
 	"fmt"
+	"math/bits"
 	"testing"
 )
 

@@ -1,9 +1,9 @@
 package ext
 
 import (
-	"sync"
 	"container/list"
 	"context"
+	"sync"
 )
 
 // 信号量, 链表记录等待者 + context的方式实现阻塞方式(ctx+channel)的获取

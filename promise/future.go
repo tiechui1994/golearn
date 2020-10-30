@@ -1,16 +1,17 @@
 package promise
 
 import (
-	"sync/atomic"
-	"unsafe"
-	"time"
 	"errors"
+	"fmt"
+	"sync/atomic"
+	"time"
+	"unsafe"
 )
 
 type callbackType int
 
 const (
-	CALLBACK_DONE   callbackType = iota
+	CALLBACK_DONE callbackType = iota
 	CALLBACK_FAIL
 	CALLBACK_ALWAYS
 	CALLBACK_CANCEL
@@ -33,10 +34,9 @@ func (pipe *pipe) getPipe(isResolved bool) (Task, *Promise) {
 	}
 }
 
-//----------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------
 
-// 检查Future是否被取消
-// 它通常被传递给Future任务函数, Future任务函数可以检查Future是否被取消
+
 type Canceller interface {
 	IsCancelled() bool
 	Cancel()
@@ -53,7 +53,7 @@ func (cancel *canceller) IsCancelled() bool {
 	return cancel.future.IsCancelled()
 }
 
-//----------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------
 
 // Future val
 type value struct {
@@ -65,11 +65,20 @@ type value struct {
 
 // Future 提供的是一个只读的Promise的视图. 它的值在调用Promise的 Resolve | Reject | Cancel 方法之后被确定
 type Future struct {
-	ID    int // Future的唯一标识
+	ID    int // Future 的唯一标识
 	final chan struct{}
-	// val 是 value 的一个指针.
-	// 如果需要修改Future的状态, 必须先copy一个新的futureValue, 并修改它的值, 然后使用CAS将这新的futureValue设置给value
-	val unsafe.Pointer
+	val   unsafe.Pointer // val 指向 value 的指针地址, 使用CAS方法原子修改它的值
+}
+
+// return to user need value
+func (future *Future) getResultValue(r *PromiseResult) (interface{}, error) {
+	if r.Type == RESULT_SUCCESS {
+		return r.Value, nil
+	} else if r.Type == RESULT_FAILURE {
+		return nil, getError(r.Value)
+	} else {
+		return nil, getError(r.Value)
+	}
 }
 
 func (future *Future) loadResult() *PromiseResult {
@@ -122,7 +131,7 @@ func (future *Future) GetChan() <-chan *PromiseResult {
 // get result
 func (future *Future) Get() (interface{}, error) {
 	<-future.final
-	return getFutureReturnVal(future.loadResult())
+	return future.getResultValue(future.loadResult())
 }
 
 // in timeout time get result
@@ -137,35 +146,29 @@ func (future *Future) GetOrTimeout(timeout uint) (interface{}, error, bool) {
 	case <-time.After((time.Duration)(timeout) * time.Nanosecond):
 		return nil, nil, true
 	case <-future.final:
-		result, err := getFutureReturnVal(future.loadResult())
+		result, err := future.getResultValue(future.loadResult())
 		return result, err, false
 	}
 }
 
-// 设置 Promise 的状态为 RESULT_CANCELLED.
+// cancel execute
 func (future *Future) Cancel() (e error) {
 	return future.setResult(&PromiseResult{CANCELLED, RESULT_CANCELLED})
 }
 
-// 注册成功返回的回调函数
+// register callback
 func (future *Future) OnSuccess(callback func(v interface{})) *Future {
 	future.callback(callback, CALLBACK_DONE)
 	return future
 }
-
-// 注册失败返回的回调函数
 func (future *Future) OnFailure(callback func(v interface{})) *Future {
 	future.callback(callback, CALLBACK_FAIL)
 	return future
 }
-
-// 注册 Promise 有返回(不论成功或者失败)结果的回调函数
 func (future *Future) OnComplete(callback func(v interface{})) *Future {
 	future.callback(callback, CALLBACK_ALWAYS)
 	return future
 }
-
-// 注册Promise取消的回调函数
 func (future *Future) OnCancel(callback func()) *Future {
 	future.callback(callback, CALLBACK_CANCEL)
 	return future
@@ -230,9 +233,9 @@ func (future *Future) Pipe(callbacks ...interface{}) (new *Future, ok bool) {
 		if result != nil {
 			// 执行完成
 			if result.Type == RESULT_SUCCESS && tasks[0] != nil {
-				new = tasks[0](result.Result)
+				new = tasks[0](result.Value)
 			} else if result.Type == RESULT_FAILURE && len(tasks) > 1 && tasks[1] != nil {
-				new = tasks[1](result.Result)
+				new = tasks[1](result.Value)
 			} else {
 				new = future
 			}
@@ -302,7 +305,7 @@ func (future *Future) callback(callback interface{}, t callbackType) {
 			if (t == CALLBACK_DONE && result.Type == RESULT_SUCCESS) ||
 				(t == CALLBACK_FAIL && result.Type == RESULT_FAILURE) ||
 				(t == CALLBACK_ALWAYS && result.Type != RESULT_CANCELLED) {
-				callback.(func(interface{}))(result.Result)
+				callback.(func(interface{}))(result.Value)
 			} else if t == CALLBACK_CANCEL && result.Type == RESULT_CANCELLED {
 				callback.(func())()
 			}
@@ -312,7 +315,7 @@ func (future *Future) callback(callback interface{}, t callbackType) {
 	}
 }
 
-// call once
+// call can do once
 func (future *Future) setResult(result *PromiseResult) (e error) {
 	defer func() {
 		if err := getError(recover()); err != nil {
@@ -347,7 +350,7 @@ func (future *Future) setResult(result *PromiseResult) (e error) {
 				go func() {
 					for _, pipe := range val.pipes {
 						task, promise := pipe.getPipe(result.Type == RESULT_SUCCESS)
-						startPipe(result, task, promise)
+						execPipe(result, task, promise)
 					}
 				}()
 			}
@@ -357,4 +360,65 @@ func (future *Future) setResult(result *PromiseResult) (e error) {
 	}
 
 	return e
+}
+
+// 执行回调函数
+func execCallback(r *PromiseResult,
+	dones []func(v interface{}),
+	fails []func(v interface{}),
+	always []func(v interface{}),
+	cancels []func()) {
+
+	if r.Type == RESULT_CANCELLED {
+		for _, f := range cancels {
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						err := newErrorWithStacks(e)
+						fmt.Println("error happens:\n ", err)
+					}
+				}()
+				f()
+			}()
+		}
+		return
+	}
+
+	var callbacks []func(v interface{})
+	if r.Type == RESULT_SUCCESS {
+		callbacks = dones
+	} else {
+		callbacks = fails
+	}
+
+	forFs := func(s []func(interface{})) {
+		forSlice(s, func(f func(interface{})) { f(r.Value) })
+	}
+
+	forFs(callbacks)
+	forFs(always)
+}
+
+func forSlice(s []func(v interface{}), f func(func(v interface{}))) {
+	for _, e := range s {
+		func() {
+			defer func() {
+				if e := recover(); e != nil {
+					err := newErrorWithStacks(e)
+					fmt.Println("error happens:\n ", err)
+				}
+			}()
+			f(e)
+		}()
+	}
+}
+
+func execPipe(r *PromiseResult, task func(interface{}) *Future, promise *Promise) {
+	if task != nil {
+		task(r.Value).OnSuccess(func(v interface{}) {
+			promise.Resolve(v)
+		}).OnFailure(func(v interface{}) {
+			promise.Reject(getError(v))
+		})
+	}
 }

@@ -1,8 +1,8 @@
 package tree
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"log"
 )
 

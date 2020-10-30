@@ -1,25 +1,25 @@
 package api
 
 import (
-	"fmt"
-	"time"
-	"net/http"
-	"net"
 	"bytes"
-	"io/ioutil"
-	"encoding/json"
-	"log"
-	"crypto/hmac"
-	"crypto/sha256"
-	"strings"
-	"encoding/hex"
-	"os"
-	"io"
-	"mime/multipart"
-	"crypto/cipher"
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/gob"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"time"
 )
 
 var scleint = &http.Client{
@@ -411,11 +411,11 @@ func OCR(src, lan string) (msg string, err error) {
 		Language    string  `json:"language"`
 		TextAngle   float64 `json:"textAngle"`
 		Orientation string  `json:"orientation"`
-		Regions []struct {
+		Regions     []struct {
 			BoundingBox string `json:"boundingBox"`
-			Lines []struct {
+			Lines       []struct {
 				BoundingBox string `json:"boundingBox"`
-				Words []struct {
+				Words       []struct {
 					BoundingBox string `json:"boundingBox"`
 					Text        string `json:"text"`
 				} `json:"words"`

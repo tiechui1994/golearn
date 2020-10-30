@@ -7,7 +7,6 @@ import (
 
 var str = "BBCABCDABABCDABCDABDE"
 
-
 func BenchmarkBruteForce(t *testing.B) {
 	var count int64
 	var j int

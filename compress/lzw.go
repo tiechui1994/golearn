@@ -1,10 +1,10 @@
 package compress
 
 import (
-	"compress/lzw"
 	"bytes"
-	"os"
+	"compress/lzw"
 	"io"
+	"os"
 )
 
 func Lzw(data []byte) ([]byte, error) {

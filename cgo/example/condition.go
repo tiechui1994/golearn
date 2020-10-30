@@ -31,9 +31,9 @@ union C {
 */
 import "C"
 import (
+	"encoding/binary"
 	"fmt"
 	"unsafe"
-	"encoding/binary"
 )
 
 func unpack() {

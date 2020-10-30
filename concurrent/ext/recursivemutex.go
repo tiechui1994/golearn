@@ -1,9 +1,9 @@
 package ext
 
 import (
-	"sync/atomic"
-	"sync"
 	"fmt"
+	"sync"
+	"sync/atomic"
 )
 
 // 可重入锁定, 针对goroutine
@@ -38,4 +38,3 @@ func (m *TokenRecursiveMutex) Unlock(token int64) {
 	atomic.StoreInt64(&m.token, 0)
 	m.Mutex.Unlock()
 }
-

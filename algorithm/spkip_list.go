@@ -1,8 +1,8 @@
 package algorithm
 
 import (
-	"math/rand"
 	"fmt"
+	"math/rand"
 )
 
 const SKIPLIST_MAXLEVEL = 32 //8
@@ -164,7 +164,7 @@ func (skipList *SkipList) Remove(key int) {
 
 	for i, v := range update {
 		if v == skipList.Header {
-			skipList.Level --
+			skipList.Level--
 		}
 		v.Next[i] = v.Next[i].Next[i]
 	}

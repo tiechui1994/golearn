@@ -1,12 +1,12 @@
 package concurrent
 
 import (
-	"golang.org/x/sync/errgroup"
 	"context"
-	"net/http"
 	"fmt"
-	"time"
+	"golang.org/x/sync/errgroup"
+	"net/http"
 	"sync"
+	"time"
 )
 
 func ErrGroup() {

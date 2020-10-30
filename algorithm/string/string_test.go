@@ -1,8 +1,8 @@
 package string
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestStrIP(t *testing.T) {

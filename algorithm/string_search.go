@@ -101,7 +101,7 @@ func KMP(main string, sub string) int {
    注意: next[j] = k
 
    若p[k] ≠ p[j], 如果此时p[next[k]] == p[j], 则next[j+1]=next[k] + 1, 否则继续递归前缀索引k=next[k], 而后
-   重复此过程. 
+   重复此过程.
 
    相当于在字符p[j+1]之前不存在长度为k+1的前缀 "p0 p1, …, pk-1 pk" 跟后缀 "pj-k pj-k+1, …, pj-1 pj" 相等, 那
    么是否可能存在另一个值 t+1 < k+1, 使得长度更小的前缀 "p0 p1, …, pt-1 pt" 等于长度更小的后缀 "pj-t pj-t+1, …,

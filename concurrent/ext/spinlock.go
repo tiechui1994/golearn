@@ -3,8 +3,8 @@ package ext
 import (
 	"runtime"
 
-	"sync/atomic"
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,4 +25,3 @@ func (sl *SpinLock) Unlock() {
 func (sl *SpinLock) TryLock() bool {
 	return atomic.CompareAndSwapUint32(&sl.f, 0, 1)
 }
-

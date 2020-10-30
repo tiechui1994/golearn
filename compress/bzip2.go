@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func UnBizp2File(dest string, src string) (error) {
+func UnBizp2File(dest string, src string) error {
 	reader, err := os.Open(src)
 	if err != nil {
 		return err

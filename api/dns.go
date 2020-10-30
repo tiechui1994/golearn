@@ -1,15 +1,15 @@
 package api
 
 import (
-	"time"
-	"net/http"
-	"net"
-	"io/ioutil"
-	"regexp"
-	"fmt"
-	"net/url"
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"net/url"
+	"regexp"
+	"time"
 )
 
 var dns = &http.Client{
@@ -41,9 +41,9 @@ func DNS(host, dnstype string) (ips []string, err error) {
 	}
 
 	var taskid string
-	_, taskid, err = check(host, token, "",dnstype, true)
+	_, taskid, err = check(host, token, "", dnstype, true)
 	for err != nil {
-		_, taskid, err = check(host, token, "",dnstype, true)
+		_, taskid, err = check(host, token, "", dnstype, true)
 	}
 
 	stop := false
@@ -56,7 +56,7 @@ func DNS(host, dnstype string) (ips []string, err error) {
 		case <-timer.C:
 			stop = true
 		default:
-			ips, _, err = check(host, token, taskid, DNS_MX,false)
+			ips, _, err = check(host, token, taskid, DNS_MX, false)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}

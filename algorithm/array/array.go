@@ -9,7 +9,7 @@ import (
 输入：(2 -> 4 -> 3) + (5 -> 6 -> 4)
 输出：7 -> 0 -> 8
 原因：342 + 465 = 807
- */
+*/
 
 /**
 * Definition for singly-linked list.
@@ -17,7 +17,7 @@ import (
 *     Val int
 *     Next *ListNode
 * }
-*/
+ */
 
 type ListNode struct {
 	Val  int
@@ -339,7 +339,7 @@ func ksum(nums []int, start, k, target int) [][]int {
 	n := len(nums)
 	var res [][]int
 	if k == 2 {
-		var left, right = start, n-1
+		var left, right = start, n - 1
 		for left < right {
 			sum := nums[left] + nums[right]
 			if sum == target {
@@ -399,7 +399,7 @@ func threeSumClosest(nums []int, target int) int {
 
 	res := nums[0] + nums[1] + nums[2]
 	for i := 0; i < n; i++ {
-		var left, right = i+1, n-1
+		var left, right = i + 1, n - 1
 		for left < right {
 			sum := nums[left] + nums[right] + nums[i]
 
@@ -761,7 +761,7 @@ func spiralMatrixIII(R int, C int, r0 int, c0 int) [][]int {
 }
 
 func findRoateIndex(nums []int) int {
-	var left, right = 0, len(nums)-1
+	var left, right = 0, len(nums) - 1
 	if nums[left] < nums[right] {
 		return 0
 	}
@@ -775,7 +775,7 @@ func findRoateIndex(nums []int) int {
 			right = mid
 		}
 		if nums[left] <= nums[mid] && nums[mid] <= nums[right] {
-			right --
+			right--
 		}
 	}
 
@@ -807,6 +807,6 @@ func searchRange(nums []int, target int) []int {
 		return res
 	}
 	res[0] = leftIndex
-	res[1] = find(false)-1
+	res[1] = find(false) - 1
 	return res
 }

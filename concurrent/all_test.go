@@ -1,11 +1,11 @@
 package concurrent
 
 import (
-	"testing"
 	"fmt"
-	"time"
 	"log"
 	"os"
+	"testing"
+	"time"
 )
 
 func TestDeadlock(t *testing.T) {
@@ -29,7 +29,7 @@ func TestBridge(t *testing.T) {
 		chans := make(chan (<-chan interface{}))
 		go func() {
 			defer close(chans)
-			for i := 0; i < 10; i ++ {
+			for i := 0; i < 10; i++ {
 				stream := make(chan interface{}, 2)
 				stream <- i
 				close(stream)
@@ -188,7 +188,7 @@ func TestNewSteward(t *testing.T) {
 func TestNewSteward2(t *testing.T) {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ltime | log.LUTC)
-    // 信号流 ->
+	// 信号流 ->
 	done := make(chan interface{})
 	defer close(done)
 	dowork, intstream := doworkFn(done, 1, 2, -1, 3, 4, 5) // 模拟通信流(goroutine的状况)

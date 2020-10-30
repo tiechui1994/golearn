@@ -1,9 +1,9 @@
 package ext
 
 import (
-	"time"
-	"testing"
 	"fmt"
+	"testing"
+	"time"
 )
 
 func TestSpinLock(t *testing.T) {

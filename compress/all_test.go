@@ -1,9 +1,9 @@
 package compress
 
 import (
-	"testing"
 	"bytes"
 	"encoding/hex"
+	"testing"
 )
 
 func TestZip(t *testing.T) {

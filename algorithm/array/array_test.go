@@ -2,9 +2,9 @@ package array
 
 import (
 	"fmt"
-	"testing"
 	"math/rand"
 	"strings"
+	"testing"
 )
 
 func TestThreeSum(t *testing.T) {

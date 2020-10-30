@@ -75,7 +75,7 @@ func (l *liststack) push(node *Node) {
 }
 func (l *liststack) pop() *Node {
 	node := (*l)[l.len()-1]
-	*l = (*l)[0:l.len()-1]
+	*l = (*l)[0 : l.len()-1]
 	return node
 }
 func (l *liststack) len() int {

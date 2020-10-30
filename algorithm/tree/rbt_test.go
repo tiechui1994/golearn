@@ -1,9 +1,9 @@
 package tree
 
 import (
-	"testing"
 	"log"
 	"math/rand"
+	"testing"
 )
 
 func TestRBT(t *testing.T) {

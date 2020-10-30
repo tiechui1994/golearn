@@ -1,13 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"path/filepath"
-	"crypto/tls"
-	"io/ioutil"
-	"crypto/x509"
 	"time"
-	"log"
 )
 
 var (

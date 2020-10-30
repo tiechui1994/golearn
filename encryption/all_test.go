@@ -1,8 +1,8 @@
 package encryption
 
 import (
-	"testing"
 	"encoding/base64"
+	"testing"
 )
 
 func TestRSA(t *testing.T) {

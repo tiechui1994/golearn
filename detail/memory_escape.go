@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"unsafe"
-	"reflect"
-	"math/rand"
 	"io"
+	"math/rand"
 	"os"
+	"reflect"
+	"unsafe"
 )
 
 /*
@@ -26,7 +26,7 @@ import (
 参考 http://npat-efault.github.io/programming/2016/10/10/escape-analysis-and-interfaces.html
 
 5. 尽管能够符合分配到栈的场景, 但是其大小不能够在在编译时候确定的情况, 也会分配到堆上
- */
+*/
 
 type Name struct {
 	A *string

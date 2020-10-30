@@ -1,15 +1,15 @@
 package api
 
 import (
-	"fmt"
-	"time"
-	"net/http"
-	"log"
-	"io/ioutil"
-	"sync"
-	"errors"
-	"strings"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -206,7 +206,7 @@ retry:
 	for n < length {
 		var body []byte
 		if n+len_body < length {
-			body = data[n:n+len_body]
+			body = data[n : n+len_body]
 		} else {
 			body = data[n:]
 		}

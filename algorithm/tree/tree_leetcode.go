@@ -1,8 +1,8 @@
 package tree
 
 import (
-	"math"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 )

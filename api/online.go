@@ -1,24 +1,24 @@
 package api
 
 import (
-	"time"
-	"net/http"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"log"
+	mrand "math/rand"
+	"mime/multipart"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
-	"fmt"
-	"strings"
-	"log"
-	"bytes"
-	"mime/multipart"
-	"io/ioutil"
-	"encoding/json"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"errors"
-	mrand "math/rand"
-	"strconv"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -60,7 +60,7 @@ type Audio struct {
 	DurationTs     int64  `json:"duration_ts"`
 	Duration       string `json:"duration"`
 	BitRate        string `json:"bit_rate"`
-	Disposition struct {
+	Disposition    struct {
 		Default         int `json:"default"`
 		Dub             int `json:"dub"`
 		Original        int `json:"original"`
@@ -188,7 +188,7 @@ func flow(vals url.Values, data []byte) (tmpfile string, err error) {
 		TmpFilename      string `json:"tmp_filename"`
 		OriginalFilename string `json:"original_filename"`
 		FileType         string `json:"file_type"`
-		Id3 struct {
+		Id3              struct {
 			TagWasRead          bool   `json:"tag_was_read"`
 			TrackTagGenre       string `json:"track_tag_genre"`
 			TrackTagTracknumber string `json:"track_tag_tracknumber"`
@@ -204,7 +204,7 @@ func flow(vals url.Values, data []byte) (tmpfile string, err error) {
 			HasAudioStreams        bool   `json:"has_audio_streams"`
 			HasVedioStreams        bool   `json:"has_vedio_streams"`
 			Filesize               string `json:"filesize"`
-			Streams struct {
+			Streams                struct {
 				Audio []Audio `json:"audio"`
 			} `json:"streams"`
 			Format struct {
@@ -350,8 +350,8 @@ type Socket struct {
 	closed bool   // 是否已经关闭
 	mode   string // 模式
 	done   chan struct{}
-	task struct {
-		job chan string
+	task   struct {
+		job    chan string
 		result chan struct {
 			err error
 			url string
@@ -651,7 +651,7 @@ func (s *Socket) Poll() error {
 		for len(result) > 3 {
 			i := strings.Index(result, ":")
 			length, _ := strconv.ParseInt(result[:i], 10, 64)
-			data := result[i+1:i+1+int(length)]
+			data := result[i+1 : i+1+int(length)]
 			s.cmdDecode(data)
 			result = result[i+1+int(length):]
 		}
@@ -779,44 +779,44 @@ func (s *Socket) cmdEncode(tmpfilename, operationid, format string) string {
 	common["preset_priority"] = false
 
 	/*[
-    	"encode",
-		{
-			"site_id":"aconv",
-			"uid":"WzOJjPokRKpPPgnJ9P85eeb1b4d3c035",
-			"user_id":null,
-			"operation_id":"1592467396827_fsanxfdbcp",
-			"action_type":"encode",
-			"enable_user_system":false,
-			"format":"ogg",
-			"preset":2,
-			"format_type":"audio",
-			"trackinfo":{
-				"set_tag":false,
-				"track_tag_title":"",
-				"track_tag_artist":"",
-				"track_tag_album":"",
-				"track_tag_year":"",
-				"track_tag_genre":"",
-				"track_tag_comment":""
-			},
-			"bitrate_type":"constant",
-			"constant_bitrate":"160",
-			"variable_bitrate":"5",
-			"sample_rate":"8000",
-			"channels":"2",
-			"fastmode":false,
-			"fadein":true,
-			"fadeout":true,
-			"remove_voice":false,
-			"reverse":true,
-			"preset_priority":false,
-			"tmp_filename":"s111RuUGertW.amr",
-			"duration_in_seconds":3,
-			"lang_id":"cn",
-			"host":"online-audio-converter.com",
-			"protocol":"https:"
-		}
-	]*/
+	    	"encode",
+			{
+				"site_id":"aconv",
+				"uid":"WzOJjPokRKpPPgnJ9P85eeb1b4d3c035",
+				"user_id":null,
+				"operation_id":"1592467396827_fsanxfdbcp",
+				"action_type":"encode",
+				"enable_user_system":false,
+				"format":"ogg",
+				"preset":2,
+				"format_type":"audio",
+				"trackinfo":{
+					"set_tag":false,
+					"track_tag_title":"",
+					"track_tag_artist":"",
+					"track_tag_album":"",
+					"track_tag_year":"",
+					"track_tag_genre":"",
+					"track_tag_comment":""
+				},
+				"bitrate_type":"constant",
+				"constant_bitrate":"160",
+				"variable_bitrate":"5",
+				"sample_rate":"8000",
+				"channels":"2",
+				"fastmode":false,
+				"fadein":true,
+				"fadeout":true,
+				"remove_voice":false,
+				"reverse":true,
+				"preset_priority":false,
+				"tmp_filename":"s111RuUGertW.amr",
+				"duration_in_seconds":3,
+				"lang_id":"cn",
+				"host":"online-audio-converter.com",
+				"protocol":"https:"
+			}
+		]*/
 
 	data, _ := json.Marshal(common)
 	cmd := fmt.Sprintf(`%v["%v",%v]`, cmd_prefix, "encode", string(data))

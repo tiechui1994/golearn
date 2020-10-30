@@ -62,12 +62,12 @@ func call() {
 	fmt.Println(" 1^1", 1^1)
 	fmt.Println("1&^1", 1&^1)
 
-	fmt.Println("0|^0", 0 | ^uint8(0))
-	fmt.Println("0|^1", 0 | ^1)
-	fmt.Println("1|^0", 1 | ^0)
-	fmt.Println("1|^1", 1 | ^1)
+	fmt.Println("0|^0", 0|^uint8(0))
+	fmt.Println("0|^1", 0|^1)
+	fmt.Println("1|^0", 1|^0)
+	fmt.Println("1|^1", 1|^1)
 
-	fmt.Println(1&^1)
+	fmt.Println(1 &^ 1)
 	const (
 		evacuatedX = 2
 		evacuatedY = 3
@@ -85,7 +85,7 @@ func call() {
 		}
 	}
 
-	var p struct{
+	var p struct {
 		A string
 		B [2]int64
 	}

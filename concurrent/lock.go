@@ -1,11 +1,11 @@
 package concurrent
 
 import (
-	"sync"
-	"time"
-	"fmt"
 	"bytes"
+	"fmt"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 func Deadlock() {

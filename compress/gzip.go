@@ -1,8 +1,8 @@
 package compress
 
 import (
-	"compress/gzip"
 	"bytes"
+	"compress/gzip"
 	"io"
 	"os"
 	"path"

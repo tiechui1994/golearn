@@ -97,7 +97,7 @@ func main() {
 	fd.Sync()
 
 	var payload = &pb.LenPayload{
-		ArgMap:   map[string]int32{"A": 1, "B": 2, "C": 3,},
+		ArgMap:   map[string]int32{"A": 1, "B": 2, "C": 3},
 		ArgStr:   "Hello",
 		ArgBytes: []byte("Hello"),
 		ArgBit64: bit64,

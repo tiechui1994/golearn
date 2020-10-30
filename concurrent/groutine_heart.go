@@ -1,8 +1,8 @@
 package concurrent
 
 import (
-	"time"
 	"log"
+	"time"
 )
 
 type StartGroutineFn func(done <-chan interface{}, pulseInterval time.Duration) (
@@ -63,7 +63,7 @@ func doworkFn(done <-chan interface{}, nums ...int) (StartGroutineFn, <-chan int
 	intchanstream := make(chan (<-chan interface{})) // 2. bridge模式
 	intstream := bridge(done, intchanstream)         // 1.将监控关闭的内容放回返回值, 并返回所有监控器用来交流数据的通道
 
-	return func(done <-chan interface{}, pulseInterval time.Duration) (<-chan interface{}) {
+	return func(done <-chan interface{}, pulseInterval time.Duration) <-chan interface{} {
 		heartbeat := make(chan interface{}) // 3. 建立闭包控制器的启动和关闭
 		intstream := make(chan interface{}) // 4. 向各通道与监控器交互数据的实例
 

@@ -1,17 +1,17 @@
 package api
 
 import (
-	"testing"
-	"time"
-	"math/rand"
-	"log"
-	"encoding/gob"
-	"os"
-	"strings"
 	"bytes"
-	"path/filepath"
+	"encoding/gob"
 	"flag"
 	"io/ioutil"
+	"log"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
 )
 
 func TestUploadFlow(t *testing.T) {

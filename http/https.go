@@ -1,14 +1,14 @@
 package main
 
 import (
-	"net/http"
 	"crypto/tls"
-	"log"
-	"io/ioutil"
 	"crypto/x509"
 	"io"
-	"path/filepath"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
+	"path/filepath"
 )
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {

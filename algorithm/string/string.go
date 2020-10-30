@@ -79,7 +79,7 @@ func longPalindromeI(str string) string {
 		}
 	}
 
-	return str[start: end+1]
+	return str[start : end+1]
 }
 
 // 784 letter-case-permutation

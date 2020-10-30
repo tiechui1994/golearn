@@ -1,12 +1,12 @@
 package encryption
 
 import (
-	"io/ioutil"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"crypto/x509"
-	"crypto/rsa"
-	"crypto/rand"
+	"io/ioutil"
 )
 
 var (

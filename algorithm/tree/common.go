@@ -1,8 +1,8 @@
 package tree
 
 import (
-	"strconv"
 	"fmt"
+	"strconv"
 )
 
 type Node struct {
@@ -11,7 +11,7 @@ type Node struct {
 	Val   int
 }
 
-func (node *Node) String() string  {
+func (node *Node) String() string {
 	return fmt.Sprintf("{val=%v,left=%v,right=%v}", node.Val, node.Left, node.Right)
 }
 
@@ -31,7 +31,7 @@ func (s *Stack) pop() *Node {
 	}
 
 	node := (*s)[len(*s)-1]
-	*s = (*s)[0:len(*s)-1]
+	*s = (*s)[0 : len(*s)-1]
 	return node
 }
 
@@ -97,7 +97,7 @@ func (s *Set) set() []int {
 
 ///////////////////////////////////////
 
-func SliceToNode(strs []string) ([]*Node) {
+func SliceToNode(strs []string) []*Node {
 	if strs == nil || len(strs) == 0 {
 		return nil
 	}

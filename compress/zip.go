@@ -1,14 +1,14 @@
 package compress
 
 import (
-	"compress/zlib"
+	"archive/zip"
 	"bytes"
+	"compress/zlib"
+	"errors"
+	"fmt"
 	"io"
 	"os"
-	"archive/zip"
 	"path"
-	"fmt"
-	"errors"
 )
 
 func Zip(data []byte) ([]byte, error) {

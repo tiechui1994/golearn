@@ -2,8 +2,8 @@ package concurrent
 
 //FanIn扇入, 多个合并成一个
 import (
-	"sync"
 	"reflect"
+	"sync"
 )
 
 // 使用WaitGroup的方式将goroutine(与chan)绑定, 在goroutine当中进队列

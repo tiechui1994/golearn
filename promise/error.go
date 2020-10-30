@@ -8,6 +8,17 @@ import (
 	"strconv"
 )
 
+var (
+	CANCELLED error = &CancelledError{}
+)
+
+// Cancel
+type CancelledError struct{}
+
+func (e *CancelledError) Error() string {
+	return "Task be cancelled"
+}
+
 // NoMatchedError presents no future that returns matched result in WhenAnyTrue function.
 type NoMatchedError struct {
 	Results []interface{}
@@ -72,89 +83,18 @@ func newErrorWithStacks(i interface{}) (e error) {
 		fun := runtime.FuncForPC(v)
 		file, line := fun.FileLine(v)
 		name := fun.Name()
-		//fmt.Println(name, file + ":", line)
 		writeStrings(buf, []string{name, " ", file, ":", strconv.Itoa(line), "\n"})
 	}
 	return errors.New(buf.String())
 }
 
-// 对action进行代理包装
-
-func startPipe(r *PromiseResult, pipeTask func(v interface{}) *Future, pipePromise *Promise) {
-	//处理链式异步任务
-	if pipeTask != nil {
-		f := pipeTask(r.Result)
-		f.OnSuccess(func(v interface{}) {
-			pipePromise.Resolve(v)
-		}).OnFailure(func(v interface{}) {
-			pipePromise.Reject(getError(v))
-		})
-	}
-
-}
-
-func getFutureReturnVal(r *PromiseResult) (interface{}, error) {
-	if r.Type == RESULT_SUCCESS {
-		return r.Result, nil
-	} else if r.Type == RESULT_FAILURE {
-		return nil, getError(r.Result)
-	} else {
-		return nil, getError(r.Result) //&CancelledError{}
+func writeStrings(buf *bytes.Buffer, strings []string) {
+	for _, s := range strings {
+		buf.WriteString(s)
 	}
 }
 
-// 执行回调函数
-func execCallback(r *PromiseResult,
-	dones []func(v interface{}),
-	fails []func(v interface{}),
-	always []func(v interface{}),
-	cancels []func()) {
-
-	if r.Type == RESULT_CANCELLED {
-		for _, f := range cancels {
-			func() {
-				defer func() {
-					if e := recover(); e != nil {
-						err := newErrorWithStacks(e)
-						fmt.Println("error happens:\n ", err)
-					}
-				}()
-				f()
-			}()
-		}
-		return
-	}
-
-	var callbacks []func(v interface{})
-	if r.Type == RESULT_SUCCESS {
-		callbacks = dones
-	} else {
-		callbacks = fails
-	}
-
-	forFs := func(s []func(interface{})) {
-		forSlice(s, func(f func(interface{})) { f(r.Result) })
-	}
-
-	forFs(callbacks)
-	forFs(always)
-}
-
-func forSlice(s []func(v interface{}), f func(func(v interface{}))) {
-	for _, e := range s {
-		func() {
-			defer func() {
-				if e := recover(); e != nil {
-					err := newErrorWithStacks(e)
-					fmt.Println("error happens:\n ", err)
-				}
-			}()
-			f(e)
-		}()
-	}
-}
-
-// Error handling struct and functions
+// error handling struct and functions
 type stringer interface {
 	String() string
 }
@@ -174,11 +114,6 @@ func getError(i interface{}) (e error) {
 			}
 		}
 	}
-	return
-}
 
-func writeStrings(buf *bytes.Buffer, strings []string) {
-	for _, s := range strings {
-		buf.WriteString(s)
-	}
+	return
 }

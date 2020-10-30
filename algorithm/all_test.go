@@ -1,9 +1,9 @@
 package algorithm
 
 import (
-	"testing"
 	"fmt"
 	"math/rand"
+	"testing"
 	"time"
 )
 
