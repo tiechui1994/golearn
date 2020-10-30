@@ -28,8 +28,8 @@ func Start(action interface{}, syncs ...bool) *Future {
 
 	promise := NewPromise()
 	if proxy := getProxy(promise, action); proxy != nil {
-		if syncs != nil && len(syncs) > 0 && !syncs[0] {
-			// 同步调用
+		if syncs != nil && len(syncs) > 0 && syncs[0] {
+			// sync
 			result, err := proxy()
 			if promise.IsCancelled() {
 				promise.Cancel()
@@ -43,7 +43,7 @@ func Start(action interface{}, syncs ...bool) *Future {
 			}
 
 		} else {
-			// 异步调用
+			// async
 			go func() {
 				r, err := proxy()
 				if promise.IsCancelled() {
@@ -211,6 +211,7 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 				promise.Reject(newErrorWithStacks(e))
 			}
 		}()
+		
 	loop:
 		for j := 0; ; {
 			select {
