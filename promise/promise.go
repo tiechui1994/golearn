@@ -22,36 +22,39 @@ act的函数类型可以是以下4种:
   func(promise.Canceller)
 ***************************************************************/
 func Start(action interface{}, syncs ...bool) *Future {
-	promise := NewPromise()
 	if f, ok := action.(*Future); ok {
 		return f
 	}
 
-	if proxy := getAction(promise, action); proxy != nil {
+	promise := NewPromise()
+	if proxy := getProxy(promise, action); proxy != nil {
 		if syncs != nil && len(syncs) > 0 && !syncs[0] {
 			// 同步调用
 			result, err := proxy()
 			if promise.IsCancelled() {
 				promise.Cancel()
-			} else {
-				if err == nil {
-					promise.Resolve(result)
-				} else {
-					promise.Reject(err)
-				}
+				return promise.Future
 			}
+
+			if err == nil {
+				promise.Resolve(result)
+			} else {
+				promise.Reject(err)
+			}
+
 		} else {
 			// 异步调用
 			go func() {
 				r, err := proxy()
 				if promise.IsCancelled() {
 					promise.Cancel()
+					return
+				}
+
+				if err == nil {
+					promise.Resolve(r)
 				} else {
-					if err == nil {
-						promise.Resolve(r)
-					} else {
-						promise.Reject(err)
-					}
+					promise.Reject(err)
 				}
 			}()
 		}
@@ -60,7 +63,71 @@ func Start(action interface{}, syncs ...bool) *Future {
 	return promise.Future
 }
 
-// 包装Future
+func getProxy(promise *Promise, action interface{}) (proxy func() (interface{}, error)) {
+	var (
+		canCancel bool
+		func1     func() (interface{}, error)
+		func2     func(Canceller) (interface{}, error)
+	)
+
+	switch v := action.(type) {
+	case func() (interface{}, error):
+		canCancel = false
+		func1 = v
+
+	case func(Canceller) (interface{}, error):
+		canCancel = true
+		func2 = v
+
+	case func():
+		canCancel = false
+		func1 = func() (interface{}, error) {
+			v()
+			return nil, nil
+		}
+
+	case func(Canceller):
+		canCancel = true
+		func2 = func(canceller Canceller) (interface{}, error) {
+			v(canceller)
+			return nil, nil
+		}
+
+	default:
+		if e, ok := v.(error); !ok {
+			promise.Resolve(v)
+		} else {
+			promise.Reject(e)
+		}
+		return nil
+	}
+
+	// 当action函数带有参数Canceller, 则Future将来可以被取消
+	var canceller Canceller = nil
+	if promise != nil && canCancel {
+		canceller = promise.Canceller()
+	}
+
+	// 返回代理action的函数
+	proxy = func() (result interface{}, err error) {
+		defer func() {
+			if e := recover(); e != nil {
+				err = newErrorWithStacks(e)
+			}
+		}()
+
+		if canCancel {
+			result, err = func2(canceller)
+		} else {
+			result, err = func1()
+		}
+
+		return result, err
+	}
+
+	return proxy
+}
+
 func Wrap(value interface{}) *Future {
 	promise := NewPromise()
 	if e, ok := value.(error); !ok {
@@ -72,14 +139,12 @@ func Wrap(value interface{}) *Future {
 	return promise.Future
 }
 
-// 返回一个Future
-// 如果任何一个Future执行成功, 当前的Future也将会执行成功,并且返回已经成功执行的Future的值; 否则,
-// 当前的Future将会执行失败, 并且返回所有Future的执行结果.
+// 如果任何一个Future执行成功, 当前的Future也将会执行成功,并且返回已经成功执行的Future的值;
+// 否则, 当前的Future将会执行失败, 并且返回所有Future的执行结果.
 func WhenAny(actions ...interface{}) *Future {
 	return WhenAnyMatched(nil, actions...)
 }
 
-// 返回一个Future
 // 如果任何一个Future执行成功并且predicate()函数执返回true, 当前的Future也将会执行成功,并且返回已经成功执行的Future的值.
 // 如果所有的Future都被取消, 当前的Future也会被取消; 否则, 当前的Future将会执行失败NoMatchedError, 并且返回所有Future的执行结果.
 func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *Future {
@@ -87,191 +152,175 @@ func WhenAnyMatched(predicate func(interface{}) bool, actions ...interface{}) *F
 		predicate = func(v interface{}) bool { return true }
 	}
 
-	// todo: action包装成Future
-	functions := make([]*Future, len(actions))
+	// build to Future
+	futures := make([]*Future, len(actions))
 	for i, act := range actions {
-		functions[i] = Start(act)
+		futures[i] = Start(act)
 	}
 
-	// todo: 构建 Promise 和 返回结果集合
-	promise, results := NewPromise(), make([]interface{}, len(functions))
+	// results
+	promise := NewPromise()
 	if len(actions) == 0 {
 		promise.Resolve(nil)
+		return promise.Future
 	}
 
-	// todo: 设置channel
-	chFails, chDones := make(chan anyPromiseResult), make(chan anyPromiseResult)
+	fails, dones := make(chan anyPromiseResult), make(chan anyPromiseResult)
 	go func() {
-		for i, function := range functions {
+		// register callback for everyone
+		for i, future := range futures {
 			k := i
-			function.OnSuccess(func(v interface{}) {
+			future.OnSuccess(func(v interface{}) {
 				defer func() { _ = recover() }()
-				chDones <- anyPromiseResult{v, k}
+				dones <- anyPromiseResult{v, k}
 			}).OnFailure(func(v interface{}) {
 				defer func() { _ = recover() }()
-				chFails <- anyPromiseResult{v, k}
+				fails <- anyPromiseResult{v, k}
 			}).OnCancel(func() {
 				defer func() { _ = recover() }()
-				chFails <- anyPromiseResult{CANCELLED, k}
+				fails <- anyPromiseResult{CANCELLED, k}
 			})
 		}
 	}()
 
-	// todo: 根据预定的规则执行(阻塞)
-	if len(functions) == 1 {
+	// sync exec
+	if len(futures) == 1 {
 		select {
-		case fail := <-chFails:
+		case fail := <-fails:
 			if _, ok := fail.result.(CancelledError); ok {
 				promise.Cancel()
 			} else {
 				promise.Reject(newNoMatchedError(fail.result))
 			}
-		case done := <-chDones:
+		case done := <-dones:
 			if predicate(done.result) {
 				promise.Resolve(done.result)
 			} else {
 				promise.Reject(newNoMatchedError(done.result))
 			}
 		}
-	} else {
-		go func() {
-			defer func() {
-				if e := recover(); e != nil {
-					promise.Reject(newErrorWithStacks(e))
-				}
-			}()
 
-			j := 0
-			for {
-				// todo: 有一个执行结果返回
-				select {
-				case fail := <-chFails:
-					results[fail.i] = getError(fail.result)
-				case done := <-chDones:
-					if predicate(done.result) {
-						// 任何一个Future成功返回, 当前的Future也需要成功返回. 此时需要取消其他的Future的执行
-						for _, function := range functions {
-							function.Cancel()
-						}
+		return promise.Future
+	}
 
-						// 关闭channel以避免 `发送方` 被阻塞
-						closeChan := func(c chan anyPromiseResult) {
-							defer func() { _ = recover() }()
-							close(c)
-						}
-						closeChan(chDones)
-						closeChan(chFails)
-
-						// 成功执行并且返回
-						promise.Resolve(done.result) // 成功执行并返回
-						return
-					} else {
-						results[done.i] = done.result
-					}
-				}
-
-				// todo: 执行的次数和functions的长度一致, 需要退出循环
-				if j++; j == len(functions) {
-					m := 0
-					for _, result := range results {
-						switch val := result.(type) {
-						case CancelledError:
-						default:
-							m++
-							_ = val
-						}
-					}
-					if m > 0 {
-						promise.Reject(newNoMatchedError(results)) // 存在取消的Future
-					} else {
-						promise.Cancel() // 所有的Future都已经被执行(没有取消), 这个时候可以取消当前Promise的执行
-					}
-					break
-				}
+	// async exec
+	results := make([]interface{}, len(futures))
+	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				promise.Reject(newErrorWithStacks(e))
 			}
 		}()
-	}
+	loop:
+		for j := 0; ; {
+			select {
+			case fail := <-fails:
+				results[fail.i] = getError(fail.result)
+
+			case done := <-dones:
+				if predicate(done.result) {
+					// meet expect result, cancel other task and return
+					for _, future := range futures {
+						future.Cancel()
+					}
+
+					// close chan
+					closeChan := func(c chan anyPromiseResult) {
+						defer func() { _ = recover() }()
+						close(c)
+					}
+					closeChan(dones)
+					closeChan(fails)
+
+					// 成功执行并且返回
+					promise.Resolve(done.result)
+					break loop
+
+				} else {
+					results[done.i] = done.result
+				}
+			}
+
+			// exec n times
+			if j++; j == len(futures) {
+				m := 0 // count not cancel result
+				for _, result := range results {
+					switch result.(type) {
+					case CancelledError:
+					default:
+						m++
+					}
+				}
+
+				if m > 0 {
+					// no cancel result
+					promise.Reject(newNoMatchedError(results))
+				} else {
+					// all canceled
+					promise.Cancel()
+				}
+
+				break loop
+			}
+		}
+	}()
 
 	return promise.Future
 }
 
-// 返回一个Future
 // 如果所有的Future都成功执行, 当前的Future也会成功执行并且返回相应的结果数组(成功执行的Future的结果);
 // 否则, 当前的Future将会执行失败, 并且返回所有Future的执行结果.
-func WhenAll(actions ...interface{}) (future *Future) {
+func WhenAll(actions ...interface{}) (*Future) {
 	promise := NewPromise()
-	future = promise.Future
 
 	if len(actions) == 0 {
 		promise.Resolve([]interface{}{})
-		return
+		return promise.Future
 	}
 
-	// todo: function封装成Future
-	functions := make([]*Future, len(actions))
+	// build future
+	futures := make([]*Future, len(actions))
 	for i, act := range actions {
-		functions[i] = Start(act)
+		futures[i] = Start(act)
 	}
 
-	future = whenAllFuture(functions...)
-
-	return
-}
-
-// 返回一个Future
-// 如果所有的Future都成功执行, 当前的Future也会成功执行并且返回相应的结果数组(成功执行的Future的结果).
-// 如果任何一个Future被取消, 当前的Future也会被取消; 否则, 当前的Future将会执行失败, 并且返回所有Future的执行结果.
-func whenAllFuture(futures ...*Future) *Future {
-	promise := NewPromise()
-	results := make([]interface{}, len(futures))
-
-	if len(futures) == 0 {
-		promise.Resolve([]interface{}{})
-	} else {
-		n := int32(len(futures))
-		cancelOthers := func(j int) {
-			for k, future := range futures {
-				if k != j {
-					future.Cancel()
-				}
+	// can execute once
+	n := int32(len(futures))
+	cancel := func(j int) {
+		for k, future := range futures {
+			if k != j {
+				future.Cancel()
 			}
 		}
-
-		// todo 逻辑: 全部成功->成功, 任何一下取消->取消, 任何一个失败 -> 失败
-		go func() {
-			isCancelled := int32(0) // 只能设置一次
-			for i, future := range futures {
-				j := i
-				// 注册函数
-				future.OnSuccess(func(v interface{}) {
-					results[j] = v
-					if atomic.AddInt32(&n, -1) == 0 {
-						promise.Resolve(results)
-					}
-				})
-
-				future.OnFailure(func(v interface{}) {
-					// 任何一个失败, 当前Future失败
-					if atomic.CompareAndSwapInt32(&isCancelled, 0, 1) {
-
-						cancelOthers(j)
-
-						e := newAggregateError("Error appears in WhenAll:", v)
-						promise.Reject(e) // 失败
-					}
-				})
-
-				future.OnCancel(func() {
-					if atomic.CompareAndSwapInt32(&isCancelled, 0, 1) {
-
-						cancelOthers(j)
-
-						promise.Cancel() // 取消
-					}
-				})
-			}
-		}()
 	}
+
+	// exec
+	results := make([]interface{}, len(futures))
+	go func() {
+		isCancelled := int32(0)
+		for i, future := range futures {
+			j := i
+			// register call back for evenry one
+			future.OnSuccess(func(v interface{}) {
+				results[j] = v
+				if atomic.AddInt32(&n, -1) == 0 {
+					promise.Resolve(results)
+				}
+			}).OnFailure(func(v interface{}) {
+				// CAS
+				if atomic.CompareAndSwapInt32(&isCancelled, 0, 1) {
+					cancel(j)
+					promise.Reject(newAggregateError("Error appears in WhenAll:", v))
+				}
+			}).OnCancel(func() {
+				// CAS
+				if atomic.CompareAndSwapInt32(&isCancelled, 0, 1) {
+					cancel(j)
+					promise.Cancel()
+				}
+			})
+		}
+	}()
 
 	return promise.Future
 }
@@ -364,7 +413,7 @@ func (promise *Promise) OnCancel(callback func()) *Promise {
 }
 
 func NewPromise() *Promise {
-	value := &futureValue{
+	value := &value{
 		dones:   make([]func(v interface{}), 0, 8),
 		fails:   make([]func(v interface{}), 0, 8),
 		always:  make([]func(v interface{}), 0, 4),
@@ -377,7 +426,7 @@ func NewPromise() *Promise {
 		Future: &Future{
 			ID:    rand.Int(),
 			final: make(chan struct{}),
-			value: unsafe.Pointer(value),
+			val:   unsafe.Pointer(value),
 		},
 	}
 

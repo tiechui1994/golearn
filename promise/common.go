@@ -79,65 +79,6 @@ func newErrorWithStacks(i interface{}) (e error) {
 }
 
 // 对action进行代理包装
-func getAction(promise *Promise, action interface{}) (proxy func() (r interface{}, err error)) {
-	var (
-		func1 func() (interface{}, error)
-		func2 func(Canceller) (interface{}, error)
-	)
-	canCancel := false
-
-	// 包装action函数: func([Canceller]) (interface{}, error)
-	switch v := action.(type) {
-	case func() (interface{}, error):
-		func1 = v
-	case func(Canceller) (interface{}, error):
-		canCancel = true
-		func2 = v
-	case func():
-		func1 = func() (interface{}, error) {
-			v()
-			return nil, nil
-		}
-	case func(Canceller):
-		canCancel = true
-		func2 = func(canceller Canceller) (interface{}, error) {
-			v(canceller)
-			return nil, nil
-		}
-	default:
-		if e, ok := v.(error); !ok {
-			promise.Resolve(v)
-		} else {
-			promise.Reject(e)
-		}
-		return nil
-	}
-
-	// 当action函数带有参数Canceller, 则Future将来可以被取消
-	var canceller Canceller = nil
-	if promise != nil && canCancel {
-		canceller = promise.Canceller()
-	}
-
-	// 返回代理action的函数
-	proxy = func() (result interface{}, err error) {
-		defer func() {
-			if e := recover(); e != nil {
-				err = newErrorWithStacks(e)
-			}
-		}()
-
-		if canCancel {
-			result, err = func2(canceller)
-		} else {
-			result, err = func1()
-		}
-
-		return result, err
-	}
-
-	return proxy
-}
 
 func startPipe(r *PromiseResult, pipeTask func(v interface{}) *Future, pipePromise *Promise) {
 	//处理链式异步任务
@@ -191,13 +132,12 @@ func execCallback(r *PromiseResult,
 		callbacks = fails
 	}
 
-	forFs := func(s []func(v interface{})) {
-		forSlice(s, func(f func(v interface{})) { f(r.Result) })
+	forFs := func(s []func(interface{})) {
+		forSlice(s, func(f func(interface{})) { f(r.Result) })
 	}
 
 	forFs(callbacks)
 	forFs(always)
-
 }
 
 func forSlice(s []func(v interface{}), f func(func(v interface{}))) {
