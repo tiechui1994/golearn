@@ -1,7 +1,6 @@
 # golang channel 源码解析
 
-
-## 数据结构
+### 数据结构
 
 ```cgo
 type hchan struct {
@@ -65,6 +64,18 @@ func (c *hchan) raceaddr() unsafe.Pointer {
 
 ### 创建 chan
 
+一般而言, 使用 `make` 创建一个能收能发的通道:
+
+```cgo
+// 无缓冲通道
+ch1 := make(chan int)
+
+// 有缓冲通道
+ch2 := make(chan int, 10)
+```
+
+通过汇编分析, 最终创建 chan 的函数是 `makechan`
+
 ```cgo
 func makechan(t *chantype, size int) *hchan {
 	elem := t.elem
@@ -115,13 +126,17 @@ func makechan(t *chantype, size int) *hchan {
 }
 ```
 
+例如, 当我们创建一个 size 为 6, 元素类型为 int 的 chan, 其内存结构如下:
+
+![image](/images/develop_chan_struct.png)
+
 ### 发送
 
 ```cgo
 // 如果 block 不为 true, 则该 protocol 不会休眠
 // 当关闭与休眠有关的chan时, 可以使用 g.param == nil 唤醒休眠. 
 func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
-    // channnl 为nil时, 当进行非阻塞状况下(即 block 为 false), 立即返回, 否则休眠当前的 goroutine 到永远.
+    // channnl 为nil时, 当进行非阻塞状况下(即 block 为 false), 立即返回, 否则永远休眠当前的 goroutine 到永远.
 	if c == nil {
 		if !block {
 			return false
@@ -135,19 +150,13 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		racereadpc(c.raceaddr(), callerpc, funcPC(chansend))
 	}
 
-	// 快速判断: 非阻塞模式下, 快速检测到失败, 不用获取锁, 快速返回(false)
-    //
-    // 考量:
-    // 在观察到通道未关闭之后, 我们观察到该通道尚未准备好发送. 这些观察中的每一个都是 world-size 大小的读取(取决于通
-    // 道的类型, 第一个 c.closed 和第二个 c.recvq.first 或 c.qcount).
+	// 快速判断: 在非阻塞模式下, 快速检测到失败, 不用获取锁, 快速返回(false)
     // 
-    // 由于关闭的通道无法从"准备发送"转换为"未准备发送", 因此即使在两个观测值之间通道已关闭, 它们也隐含着两者之间的一个
-    // 时刻, 即通道既未关闭又未关闭. 我们的行为就好像我们当时在观察该通道, 并报告发送无法继续进行.
-    //
-    // 如果在此处对读取进行了重新排序, 也可以: 如果我们观察到该通道尚未准备好发送, 然后观察到它没有关闭, 则表明该通道在
-    // 第一次观察期间没有关闭.
-    
-    // c.closed == 0, channel 未关闭
+    // 如果 chan 未关闭且 chan 没有多余的缓冲空间. 这可能是:
+    // 1. chan 是非缓冲型的, 且等待接收队列里没有 goroutine
+    // 2. chan 是缓冲型的, 但缓冲队列已经装满了元素
+    // 
+    // c.closed == 0, chan 未关闭
     // c.dataqsiz == 0 && c.recvq.first == nil, 非缓冲型 chan, 且 "接收队列(recvq)" 当中没有元素
     // c.dataqsiz > 0 && c.qcount == c.dataqsiz, 缓存型 chan, 且 "缓冲队列(buf)" 已满
 	if !block && c.closed == 0 && ((c.dataqsiz == 0 && c.recvq.first == nil) ||
@@ -176,7 +185,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		return true
 	}
     
-    // 当前的接收队列为空. 这个时候需要借助缓冲区来存储发送的元素了.
+    // 对于缓冲型 chan, 还存在缓冲空间
 	if c.qcount < c.dataqsiz {
 		// 存在可用的缓冲区, 将发送元素入队列
 		qp := chanbuf(c, c.sendx)
@@ -216,8 +225,8 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		mysg.releasetime = -1
 	}
 	
-	// 在 "分配elem" 和 "将mysg入队到gp.waitcopy可以找到它的地方" 之间没有堆栈拆分.
-	mysg.elem = ep
+	// 在"分配elem"和"将mysg入队到gp.waitcopy可以找到它的地方" 之间没有堆栈拆分.
+	mysg.elem = ep // 
 	mysg.waitlink = nil
 	mysg.g = gp
 	mysg.isSelect = false
@@ -368,6 +377,26 @@ bulkBarrierPreWrite 的任何调用者都必须首先确保基础分配包含指
 
 ### 接收
 
+接收操作有两种, 一种带 "ok", 反应 chan 是否关闭; 一种不带 "ok", 这种写法, 当收到相应类型为零值时无法知道是真实发送者
+发送的值, 还是 chan 被关闭后, 返回接收者的默认类型的零值. 两种写法, 都有各种使用的场景.
+
+编译器对于上述两种写法的处理最终会转换成源码里的两个函数:
+
+```cgo
+// 不带"ok"类型, 例如 val := <-ch
+func chanrecv1(c *hchan, elem unsafe.Pointer) {
+    chanrecv(c, elem, true)
+}
+
+// 带"ok"类型, 例如 val, ok := <-ch
+func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
+    _, received = chanrecv(c, elem, true)
+    return
+}
+```
+
+最终的处理函数都是 `chanrecv`.
+
 ```cgo
 // chanrecv在chan c上接收并将接收到的数据写入 ep.
 // ep可能为nil, 在这种情况下, 接收到的数据将被忽略.
@@ -384,18 +413,22 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
 		if !block {
 			return
 		}
+		
+		// 当前的 goroutine 永远休眠下去
 		gopark(nil, nil, waitReasonChanReceiveNilChan, traceEvGoStop, 2)
 		throw("unreachable")
 	}
 
 	
-	// 快速判断: 非阻塞模式下, 快速检测到失败, 不用获取锁, 快速返回(false, false)
+	// 快速判断: 在非阻塞模式下, 快速检测到失败, 不用获取锁, 快速返回(false, false)
     //
-    // 在观察到 chan 尚未准备好接收之后, 我们观察到通道未关闭. 这些观察中的每一个都是单个 word-sized 的读取(第一个
-    // c.sendq.first或c.qcount, 第二个c.closed)
-    //
-    // 由于无法重新打开通道, 因此对通道未关闭的后续观察意味着它在第一次观察时也未关闭. 我们的行为就好像我们当时在观察该
-    // 通道, 并报告接收无法继续进行.
+    // 当我们观察到 chan 没准备好接收:
+    // 1. 非缓冲型, 等待发送队列 sendq 里没有 goroutine 在等待
+    // 2. 缓冲型, 在缓冲队列 buf 当中没有元素
+    // 
+    // 之后, 又观察到 closed == 0, 即 chan 关闭了.
+    // 由于 chan 不可能被重复打开, 所以前一个观察的时候 chan 也是未关闭的,  因此在这种状况下直接接收失败, 
+    // 返回 (fasle, false)
     //
     // 这里操作顺序在这里很重要: 在进行近距离追踪时, 反转操作可能导致错误的行为.
     //
@@ -413,29 +446,36 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
 		t0 = cputicks()
 	}
     
-    // 锁定处理
+    // 加锁
 	lock(&c.lock)
     
-    // 当前 chan 未关闭的状况下, "缓存队列" 的元素数量为0, 说明目前没有接收到元素.
+    // 当前 chan 关闭的状况下, 并且"缓存队列(buf)"里面没有元素. 
+    // 也就是说, 即使是关闭状态, 对于缓冲型的 chan, "缓冲队列(buf)" 里面的元素依旧可以被接收到(qcount>0).
 	if c.closed != 0 && c.qcount == 0 {
 		if raceenabled {
 			raceacquire(c.raceaddr())
 		}
 		unlock(&c.lock)
 		if ep != nil {
-			typedmemclr(c.elemtype, ep) // 清空 ep 内存
+			typedmemclr(c.elemtype, ep) // 根据类型清理相应的内存
 		}
 		return true, false
 	}
     
     // 阻塞的 "发送队列(sendq)" 当中存在 sender. 则说明当前的缓冲队列已满.
+    // 可能的状况:
+    // 1. 非缓冲型的 chan
+    // 2. 缓冲型的 chan, 但 buf 已经满了
+    // 针对1, 直接内存拷贝
+    // 针对2, 接收到 buf 的头元素(recvx), 并将发送者的元素放到 buf 的尾部(sendx) (这里sendx和recvx其实值是
+    // 一样的), 然后唤醒休眠的发送者.
 	if sg := c.sendq.dequeue(); sg != nil {
 	    // 详细参考 recv 当中的解释
 		recv(c, sg, ep, func() { unlock(&c.lock) }, 3)
 		return true, true
 	}
     
-    // 当前的缓存队列存在元素
+    // 缓冲型, 当前的缓存队列存在元素
 	if c.qcount > 0 {
 		qp := chanbuf(c, c.recvx)
 		if raceenabled {
@@ -459,14 +499,15 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
 		return true, true
 	}
     
-    // 当前缓队列没有任何元素, 当然了, "发送队列(sendq)肯定为空".
+    // 当前缓队列没有任何元素, 隐含着 "发送队列(sendq)为空".
     // 非阻塞状况下(block为false), 快速返回 (false, false)
     // 阻塞状况下(block为true), 休眠当前的 goroutine
 	if !block {
 		unlock(&c.lock)
 		return false, false
 	}
-
+    
+    // 休眠当前的 goroutine
 	gp := getg()
 	mysg := acquireSudog()
 	mysg.releasetime = 0
@@ -474,14 +515,14 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
 		mysg.releasetime = -1
 	}
 	
-	mysg.elem = ep
+	mysg.elem = ep // 保存接收数据的地址
 	mysg.waitlink = nil
 	gp.waiting = mysg
 	mysg.g = gp
 	mysg.isSelect = false
 	mysg.c = c
 	gp.param = nil
-	c.recvq.enqueue(mysg) // 将当前的 sudog 入队列recvq
+	c.recvq.enqueue(mysg) // 将当前的 sudog 入接收队列 recvq
 	
 	// 持有锁的状况下休眠
 	goparkunlock(&c.lock, waitReasonChanReceive, traceEvGoBlockRecv, 3)
@@ -573,6 +614,16 @@ func recvDirect(t *_type, sg *sudog, dst unsafe.Pointer) {
 }
 ```
 
+`recvq` 的数据结构如下:
+
+![image](/images/develop_chan_recvq.png)
+
+从整体上来看一下此时 chan 的状态:
+
+![iamge](/images/develop_chan_recvchan.png)
+
+> G1 和 G2 被挂起了, 状态是 `WAITING`.
+
 ### 关闭
 
 ```cgo
@@ -651,3 +702,76 @@ func closechan(c *hchan) {
 	}
 }
 ```
+
+
+# channel 进阶
+
+### 发送和接收元素的本质
+
+chan 发送和接收元素的本质是什么? [深入 channel 底层](#) 里是这样回答的:
+
+> Remember all transfer of value on the go channels happens with the copy of value.
+
+也就是说 channel 的发送和接收的本质上都是 "值的拷贝", 无论是从 send goroutine 的栈到 chan buf, 还是从 chan buf
+到 receiver goroutine, 或者是直接从 send goroutine 到 receiver goroutine.
+
+`因为值拷贝, 解决了数据竞争的问题, 使得数据能够做到独立(类似于进程的内存空间独立), 这样 chan 就具有了并发安全的特性.`
+
+下面使用一个例子, 更加详细的介绍上述的观点:
+
+```cgo
+type user struct {
+    name string
+    age int8
+}
+
+var u = user{name: "Ankur", age: 25}
+var g = &u
+
+func modifyUser(pu *user) {
+    fmt.Println("modifyUser Received Vaule", pu)
+    pu.name = "Anand"
+}
+
+func printUser(u <-chan *user) {
+    time.Sleep(2 * time.Second)
+    fmt.Println("printUser goRoutine called", <-u)
+}
+
+func main() {
+    c := make(chan *user, 5)
+    c <- g
+    fmt.Println(g)
+    // modify g
+    g = &user{name: "Ankur Anand", age: 100}
+    go printUser(c)
+    go modifyUser(g)
+    time.Sleep(5 * time.Second)
+    fmt.Println(g)
+}
+```
+
+运行结果:
+
+```
+&{Ankur 25}
+modifyUser Received Value &{Ankur Anand 100}
+printUser goRoutine called &{Ankur 25}
+&{Anand 100}
+```
+
+这是一个很好的 `share memory by comunicating` 的案例.
+
+![image](/images/develop_chan_copyvalue.png)
+
+> 一开始构造了结构体 u, 地址是 0x566420, 图中地址上方是它的内容. 接着把 `&u` 赋值给指针 `g`, g 的地址是 0x565bb0
+它的内容就是一个地址, 指向 u.
+>
+> main程序里, 先把 g 发送到 c, 根据 `copy value` 的本质, 进入到 chan buf 里的就是 `0x566420`, 它是指针 g 的值
+(不是它指向的内容), 所以打印从 channel 接收到的元素时, 它就是 `&{Ankur 25}`. 因此, 这里并不是将指针 g "发送" 到
+chan 里, 只是拷贝它值而已.
+
+
+文章参考:
+
+- [深度解密 Go 语言之 channel](https://learnku.com/articles/32142)   
