@@ -91,7 +91,7 @@ type heapArena struct {
 
 ## 内存管理单元
 
-Go 语言的内存分配器包含内存管理单元, 线程缓存, 中心缓存和页堆几个重要组件.  分别对应数据结构 `runtime.mspan`, 
+Go 语言的内存分配器包含内存管理单元, 线程缓存, 中心缓存和页堆几个重要组件. 分别对应数据结构 `runtime.mspan`, 
 `runtime.mcache`, `runtime.mcentral` 和 `runtime.mheap`. 
 
 ![image](/images/develop_memory_layout.jpeg)
@@ -109,23 +109,42 @@ Go 语言的内存分配器包含内存管理单元, 线程缓存, 中心缓存�
 
 ### 内存管理单元
 
-`runtime.mspan` 是 Go内存管理的基本单元, 该结构体包含了 `next` 和 `prev` 两个字段, 它们分别指向了前一个和后一个
-`runtime.mspan`.
+`runtime.mspan` 是 Go内存管理的基本单元, 是一片连续的 `8KB` 的页组成的大块内存. 注意: 这里的页和操作系统本身的页并
+不是一回事, 它一般是操作系统页大小的几倍. `runtime.msapn` 是一个包含起始地址, `mspan`规格, 页的数量等内容的双端链表.
+
+
+每个 `runtime.mspan` 按照它自身的属性 `Size Class` 的大小分割成若干个 `object`, 每个 `object` 可存储一个对象.
+并且会使用一个位图标记其尚未使用的 `object`. 属性 `Size Class` 决定 `object` 大小, 而 `runtime.msapn` 只会分配
+给和 `object` 尺寸大小接近的对象, 当然了, 对象的大小要小于 `object` 大小. 还有一个概念: `Span Class`. 它和 `Size
+Class` 的含义差不多.
+
+```
+Size_Class = Span_Class/2
+```
+
+因为其实每个 `Size Class` 有两个 `runtime.msapn`, 也就是两个 `Span Class`. 其中一个分配给含有指针的对象, 另一个
+分配给不含指针的对象. 这会给垃圾回收机制带来利好.
+
+下图展示了 `runtime.mspan` 由一组连续的页组成, 按照一定大小划分成 `object`:
+
+![image](/images/develop_memory_mspan_pic.jpeg)
 
 ```cgo
 type mspan struct {
-	next *mspan     // next span in list, or nil if none
-	prev *mspan     // previous span in list, or nil if none
+    // 链表后向地址, 用于将 span 链接起来
+	next *mspan  
+	// 链表前向地址, 用于将 span 链接起来
+	prev *mspan    
+	
 	list *mSpanList // For debugging. TODO: Remove.
 
-	startAddr uintptr // 起始地址
-	npages    uintptr // 页数, 每个页大小为 8KB
+	startAddr uintptr // 起始地址, 即所管理页的地址
+	npages    uintptr // 管理的页数, 每个页大小为 8KB
 
-	manualFreeList gclinkptr // list of free objects in mSpanManual spans
 
-	freeindex uintptr // 扫描页中空闲对象的初始索引
-	nelems uintptr // 当前 mspan 当中存储的对象的个数
-
+	nelems uintptr // 块个数, 表示有多少个块可供分配
+    
+    allocCount  uint16 // 已经分配的个数
 	allocCache uint64 // allocBits的补码, 用于快速查找未被使用的内存
 
 	allocBits  *gcBits // 标记内存的占用情况
@@ -134,14 +153,13 @@ type mspan struct {
 	sweepgen    uint32
 	divMul      uint16     // for divide by elemsize - divMagic.mul
 	baseMask    uint16     // if non-0, elemsize is a power of 2, & this will get object allocation base
-	allocCount  uint16     // number of allocated objects
-	spanclass   spanClass  // 跨度类, size class and noscan (uint8)
+	spanclass   spanClass  // 跨度类, Class 表中的 class ID,和 Size Class相关
 	state       mSpanState // 状态, mspaninuse etc
 	needzero    uint8      // needs to be zeroed before allocation
 	divShift    uint8      // for divide by elemsize - divMagic.shift
 	divShift2   uint8      // for divide by elemsize - divMagic.shift2
 	scavenged   bool       // whether this span has had its pages released to the OS
-	elemsize    uintptr    // computed from sizeclass or from npages
+	elemsize    uintptr    // class表中的对象大小, 即块大小
 	limit       uintptr    // end of data in span
 	speciallock mutex      // guards specials list
 	specials    *special   // linked list of special records sorted by offset.
@@ -189,6 +207,7 @@ type mspan struct {
 设置 `runtime.mspan` 结构体状态的读写操作必须是原子性的, 避免垃圾回收造成的线程竞争问题.
 
 > 跨度类
+
 
 `runtime.spanClass` 是 `runtime.mspan` 结构体的跨度类, 它决定了内存管理单元中存储的对象大小和个数.
 
