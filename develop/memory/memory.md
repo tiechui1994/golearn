@@ -8,11 +8,24 @@
 1.10 版本在启动时会初始化整片虚拟内存区域, 如下所示的三个区域 `spans`, `bitmap` 和 `arena` 分别预留了 512MB, 16GB,
 512GB的内存空间, 这些内存并不是真正存在的物理内存, 而是虚拟内存:
 
-- `spans` 区域存储了指向内存管理单元 `runtime.mspan` 的指针, 每个内存管理单元会管理几页的内存空间, 每页大小为 8KB
+![image](/images/develop_memory_linemem.jpeg)
 
-- `bitmap` 用于标识 `arena` 区域中那些地址保存了对象, 位图中的每个字节都会标示堆区域中的32字节是否空闲. 1b -> 32b
+- `arena` 区域是真正的堆区, 运行时将**8KB**看做一页, 这些内存页中存储了所有堆上初始化的对象. 一些页组合起来称为 `mspan`.
 
-- `arena` 区域是真正的堆区, 运行时将8KB看做一页, 这些内存页中存储了所有堆上初始化的对象.
+- `bitmap` 用于标识 `arena` 区域中哪些地址保存了对象, 并且用 4bit 标志位表示对象是否包含指针, GC标记信息. bitmap 
+中的一个 byte(8bit) 大小的内存对应 `area` 区域中 4 个指针大小(指针大小为 8byte)的内存. 1byte -> 32byte, 所以 
+`bitmap` 区域的大小是 `512GB/(4*8)=16GB`
+
+![image](/images/develop_memory_bitmap.jpeg)
+
+> 从上图可以看到, bitmap的高地址指向 arena 区域的低地址部分. 即 bitmap 的地址是由高地址向低地址增长的.
+
+
+- `spans` 区域存储了指向内存管理单元 `runtime.mspan`(`arena`分割的页组合起来的内存管理基本单元) 的指针, 
+每个指针对应一页, 所以 `spans` 区域的大小是 `512GB/8KB*8B=512MB`. 除以 `8KB` 是计算 `arena` 区域的页数, 乘以 
+8B是计算 `spans` 区域所有指针的大小. 每个内存管理单元会管理几页(页大小为 8KB)的内存空间. 创建 `mspan` 时, 按页填充
+对应的的 `spans` 区域, 在回收 object 的时候, 根据地址很容易获得它所属的 `mspan`.
+
 
 
 对于任意一个地址, 都可以根据 `arena` 的基地址计算该地址所在的页数, 并通过 `spans` 数组获得管理该片内存的管理单元
@@ -30,7 +43,7 @@ Go 在垃圾回收时会根据指针的地址判断对象是否在堆中, 并通
 稀疏内存是 GO 在 1.11 中提出的方案, 使用稀疏的内存布局不仅能够移除堆大小的上限,  还能解决 C 和 Go 混合使用的地址空间
 冲突问题. 不过因为稀疏内存的内存管理失去了内存的连续性这一个假设, 内存管理变得更加复杂.
 
-![image](/images/mem_spe_heap.png)
+![image](/images/develop_memory_heap.png)
 
 运行时使用二维的 `runtime.heapArena` 数组管理所有的内存, 每个单元会管理 64MB 的内存空间:
 
@@ -81,7 +94,7 @@ type heapArena struct {
 Go 语言的内存分配器包含内存管理单元, 线程缓存, 中心缓存和页堆几个重要组件.  分别对应数据结构 `runtime.mspan`, 
 `runtime.mcache`, `runtime.mcentral` 和 `runtime.mheap`. 
 
-![image](/images/mem_layout.jpeg)
+![image](/images/develop_memory_layout.jpeg)
 
 所有的 Go 语言程序都会在启动时初始化如上图的内存布局, 每一个处理器都会被分配一个线程缓存 `runtime.mcache` 用于处理微
 对象和小对象的分配, 它们会持有内存管理单元 `runtime.mspan`
@@ -150,13 +163,13 @@ type mspan struct {
 
 `runtime.mspan` 会以两种不同是视角看待管理的内存. 当结构体管理的内存不足时, 运行时会以页为单位向堆申请内存:
 
-![image](/images/mem_mspan_heap.png)
+![image](/images/develop_memory_mspan_heap.png)
 
 
 当用户程序或者线程向 `runtime.mspan` 申请内存时, 该结构体会使用 `allocCache` 字段**以对象为单位**在管理的内存中快
 速查找待分配的空间:
 
-![image](/images/mem_mspan_user.png)
+![image](/images/develop_memory_mspan_user.png)
 
 
 > 状态
@@ -782,7 +795,7 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 
 下面是一个例子:
 
-![image](/images/mem_tiny_alloc.png)
+![image](/develop_memory_tiny_alloc.png)
 
 微分配器已经在16字节的内存块中分配了12字节的对象, 如果下一个待分配的对象小于4字节, 它就会使用上述的内存块的剩余部分, 减
 少内存碎片, 不过该内存块只有2个对象都被标记为垃圾时才会被回收.
