@@ -129,6 +129,50 @@ Size_Class = Span_Class/2
 
 ![image](/images/develop_memory_mspan_pic.jpeg)
 
+
+在 Go1.9.2里 `runtime.mspan` 的 `Size Class` 共有 67 种. 每种 `mspan` 分割的 `object` 大小是 8*2n 的倍数.
+这个是写死在代码里面的:
+
+```
+// path: src/runtime/sizeclasses.go
+var class_to_size = [67]uint16{
+0, 8, 16, 32, 48, 64, 80, 96, 112, 128, 
+144, 160, 176, 192, 208, 224, 240, 256, 
+288, 320, 352, 384, 416, 448, 480, 512, 
+576, 640, 704, 768, 896, 1024, 
+1152, 1280, 1408, 1536, 1792, 2048, 
+2304, 2688, 3072, 3200, 3456, 4096, 
+4864, 5376, 6144, 6528, 6784, 6912, 8192, 
+9472, 9728, 10240, 10880, 12288, 13568, 14336, 16384, 
+18432, 19072, 20480, 21760, 24576, 27264, 28672, 32768}
+```
+
+根据 `mspan` 的 `Size Class` 可以得到它划分的 `object` 大小. 比如 `Size Class` 等于3, `object` 大小就是 32B,
+`object` 大小就是 32B. 32B大小的object可以存储对象的范围在 17B~32B 的对象. 而对于微小对象(小于16B), 分配器会将其
+进行合并, 将几个对象分配到同一个 `object` 中.
+
+数组当中最大的数是 32768, 也就是32KB, 超过此大小就是大对象了, 它会被特别对待. `Size Class` 为 0 表示大对象, 它直接
+由堆内存分配, 而小对象都要通过 `mspan` 来分配.
+
+对于 `mspan`, 它的 `Size Class` 会决定它所能分到的页数, 这也是写死的:
+
+```
+var class_to_allocnpages = [67]uint8{
+0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 
+1, 1, 1, 1, 1, 1, 1, 1, 
+1, 1, 1, 1, 1, 1, 1, 1, 
+1, 1, 1, 1, 1, 1, 
+1, 1, 2, 1, 2, 1, 
+2, 1, 3, 2, 3, 1, 
+3, 2, 3, 4, 5, 6, 1, 
+7, 6, 5, 4, 3, 5, 7, 2, 
+9, 7, 5, 8, 3, 10, 7, 4}
+```
+
+比如, 当申请一个 `object` 大小为 32B 的 `mspan` 时, 在 `class_to_size` 里对应的索引是 3, 而索引3在 `class_to_allocnpages`
+数组里对应的页数是1.
+
+
 ```cgo
 type mspan struct {
     // 链表后向地址, 用于将 span 链接起来
@@ -141,7 +185,6 @@ type mspan struct {
 	startAddr uintptr // 起始地址, 即所管理页的地址
 	npages    uintptr // 管理的页数, 每个页大小为 8KB
 
-
 	nelems uintptr // 块个数, 表示有多少个块可供分配
     
     allocCount  uint16 // 已经分配的个数
@@ -153,8 +196,8 @@ type mspan struct {
 	sweepgen    uint32
 	divMul      uint16     // for divide by elemsize - divMagic.mul
 	baseMask    uint16     // if non-0, elemsize is a power of 2, & this will get object allocation base
-	spanclass   spanClass  // 跨度类, Class 表中的 class ID,和 Size Class相关
-	state       mSpanState // 状态, mspaninuse etc
+	spanclass   spanClass  // 跨度类, 与 Size Class 相关. (sizeclass<<1) | bool2int(noscan)
+	state       mSpanState // 状态
 	needzero    uint8      // needs to be zeroed before allocation
 	divShift    uint8      // for divide by elemsize - divMagic.shift
 	divShift2   uint8      // for divide by elemsize - divMagic.shift2
@@ -165,6 +208,8 @@ type mspan struct {
 	specials    *special   // linked list of special records sorted by offset.
 }
 ```
+
+> Size Class 实质就是 class_to_size 的索引. 通过它可以直接查找到elemsize和npages. 从而可以计算出 nelems. 
 
 串联后的 `mspan` 是双向链表, 运行时会使用 `runtime.mSpanList` 存储双向链表的头结点和尾节点, 并在线程缓存以及中心缓
 存中使用.
@@ -179,15 +224,20 @@ type mspan struct {
 
 - `allocCache`, 是 `allocBits` 的补码, 可以用于快速查找内存中未被使用的内存;
 
-`runtime.mspan` 会以两种不同是视角看待管理的内存. 当结构体管理的内存不足时, 运行时会以页为单位向堆申请内存:
+`runtime.mspan` 会以三种不同是视角看待管理的内存. 当结构体管理的内存不足时, 运行时会以页为单位向堆申请内存:
 
-![image](/images/develop_memory_mspan_heap.png)
+![image](/images/develop_memory_mspan_inheap.png)
 
 
 当用户程序或者线程向 `runtime.mspan` 申请内存时, 该结构体会使用 `allocCache` 字段**以对象为单位**在管理的内存中快
 速查找待分配的空间:
 
-![image](/images/develop_memory_mspan_user.png)
+![image](/images/develop_memory_mspan_inuser.png)
+
+
+运行时的 `runtime.mspan` 结构如下:
+
+![image](/images/develop_memory_mspan_inglobal.jpeg)
 
 
 > 状态
