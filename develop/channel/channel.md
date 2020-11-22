@@ -358,7 +358,7 @@ slot 执行写屏障. 这会在执行 memmove 之前执行必要的写屏障.
 > 调用方应在调用memmove(dst,src,size) 之前立即调用bulkBarrierPreWrite. 此函数标记为 nosplit, 以避免被抢占; GC
 不得停止memmove和执行屏障之间的goroutine. 调用者还负责cgo指针检查, 这可能是将Go指针写入非Go内存中.
 >
-> 对于分配的内存中完全不包含指针的情况(即src和dst不包含指针), 不维护 pointer bitmap; 通常, 通过检查 typ.ptrdata/ 
+> 对于分配的内存中完全不包含指针的情况(即src和dst不包含指针), 不维护 pointer bitmap; 通常, 通过检查 typ.ptrdata, 
 bulkBarrierPreWrite 的任何调用者都必须首先确保基础分配包含指针.
 
 ---
