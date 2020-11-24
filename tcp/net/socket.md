@@ -2,7 +2,7 @@
 
 ##  socket 编程的流程
 
-![image](/images/socket.png)
+![image](/images/tcp_net_socket.png)
 
 
 ## socket 相关的函数
