@@ -36,10 +36,32 @@ type itab struct {
     inter  *interfacetype // 静态类型
     _type  *_type         // 动态类型
     hash   unit32         // copy _type.hash
-    bad    bool
-    inhash bool
-    unused [2]byte
+    _     [4]byte
     fun    [1]unitptr     // method table
+}
+
+type interfacetype struct {
+	typ     _type
+	pkgpath name
+	mhdr    []imethod
+}
+
+
+type _type struct {
+	size       uintptr
+	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+	hash       uint32
+	tflag      tflag
+	align      uint8
+	fieldalign uint8
+	kind       uint8
+	alg        *typeAlg
+	// gcdata存储垃圾回收器的GC类型数据.
+    // 如果 KindGCProg 位设置为 kind, 则gcdata是GC程序. 否则为 ptrmask 位图. 
+    // 有关详细信息, 请参见 mbitmap.go.
+	gcdata    *byte
+	str       nameOff
+	ptrToThis typeOff
 }
 ```
 
