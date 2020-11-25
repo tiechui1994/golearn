@@ -33,14 +33,13 @@ type iface struct {
 }
 
 type itab struct {
-    inter  *interfacetype
-    _type  *_type
-    link   *itab
-    hash   unit32
+    inter  *interfacetype // 静态类型
+    _type  *_type         // 动态类型
+    hash   unit32         // copy _type.hash
     bad    bool
     inhash bool
     unused [2]byte
-    fun    [1]unitptr
+    fun    [1]unitptr     // method table
 }
 ```
 
@@ -54,7 +53,7 @@ type itab struct {
 
 ```cgo
 type eface struct {
-    _type *_type
+    _type *_type        // 动态类型
     data unsafe.Pointer
 }
 ```
@@ -133,3 +132,44 @@ empty = w
 的信息, 包含大小, 包路径, 还包含绑定在类型上各种方法. 补充一些 `*os.File` 结构体的图:
 
 ![image](/images/develop_reflect_empty_detail.png)
+
+参考案例 `reflect.go` 当中的代码.
+
+
+## 反射的基本函数
+
+`reflect` 包里定义了一个接口和一个结构体, 即 `reflect.Type` 和 `reflect.Value`, 它们提供很多函数来获取存储接口里
+的类型信息.
+
+`reflect.Type` 主要提供关于类型相关的信息, 所以它和 `_type` 关联比较紧密;
+
+`reflect.Value` 则结合 `_type` 和 `data` 两者, 因此程序可获取甚至改变类型的值.
+
+`reflect.Typeof` 函数用于提取一个接口中值的类型信息.  
+
+
+`Type()`, `Interface()` 可以打通 `interface`, `Type`, `Value` 三者.
+
+![image](/images/develop_reflect_convert.png) 
+
+小结: `TypeOf()` 返回一个接口, 这个接口定义了一系列的方法, 利用这些方法可以获取关于类型的所有信息; `ValueOf()` 返回
+一个结构体变量, 包含类型信息以及实际的值.
+
+![image](/images/develop_reflect_sum.png)
+
+> `rtype` 实现了 `Type` 接口, 是所有类型的公共部分, `emptyface` 结构体和 `eface` 其实是一个东西, 而 `rtype` 和
+`_type` 也是一个东西, 只是一些字段上稍微有点差别. 
+
+
+## 反射三大定律
+
+1. Reflection goes from interface value to reflection object.
+2. Reflection goes from reflection object to interface value.
+3. To modify a reflection object, the value must be settable.
+
+- 第一条: 反射是一种检测存储在 `interface` 中的类型和值机制. 这可以通过 `TypeOf()` 和 `ValueOf()` 得到.
+
+- 第二条和第一条是相反的机制, 它将 `Value` 通过 `Interface()` 函数反向转变成 `interface` 变量
+
+- 第三条, 如果需要修改一个反射变量的值, 那么它必须是可设置的. 反射变量可设置的本质是它存储了原变量本身, 这样对反射变量的
+操作, 就会反映到原变量本身; 反之, 如果反射变量不能代表原变量, 那么操作了反射变量, 不会对原变量产生任何影响.
