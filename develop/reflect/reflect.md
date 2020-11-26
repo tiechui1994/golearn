@@ -68,7 +68,7 @@ type _type struct {
 其中 itab 由具体类型 `_type` 以及 `interfacetype` 组成. `_type` 表示具体类型, `interfacetype` 表示具体类型实
 现的接口类型. 
 
-![image](/images/develop_reflect_iface.jpeg)
+![image](/images/develop_reflect_iface.png)
 
 实际上, iface 描述的是非空接口, 它包含方法; 与之相对的是 eface, 描述的是空接口, 不包含任何方法. Go 语言里所有的类型都
 "实现了" 空接口.
@@ -83,7 +83,7 @@ type eface struct {
 与 `iface` 相比, `eface` 就比较简单了. 只维护了一个 `_type` 字段, 表示空接口所承载的具体的实体类型. `data` 描述了
 具体的值.
 
-![image](/images/develop_reflect_eface.jpeg)
+![image](/images/develop_reflect_eface.png)
 
 举个例子:
 

@@ -238,7 +238,7 @@ bmap 也就是 bucket(桶)的内存模型图解如下(代码逻辑就是上述�
 
 最后, 这里展示一个 B=4 的完整 map 结构:
 
-![image](/images/develop_map_mapstruct.png)
+![image](/images/develop_map_mapstruct.jpeg)
 
 
 ## 辅助函数
@@ -1104,7 +1104,7 @@ func advanceEvacuationMark(h *hmap, t *maptype, newbit uintptr) {
 
 等量扩容下 map 搬移的图解, 其中 B=3, oldbuckets, buckets数组都是8
 
-![iamge](/images/develop_map_growth_zero.png)
+![iamge](/images/develop_map_growth_zero.jpeg)
 
 
 ## map 删除
