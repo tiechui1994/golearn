@@ -170,5 +170,42 @@ func main() {
 
 ## 编译器自动检测类型是否实现接口
 
+奇怪的代码:
+
+```cgo
+var _ io.Writer = (*myWriter)(nil)
+```
+
+为啥有上面的代码, 上面的代码究竟是要干什么? 编译器会通过上述的代码检查 `*myWriter` 类型是否实现了 `io.Writer` 接口.
+
+例子:
+
+```cgo
+type myWriter struct{
+}
+
+/*
+func (w myWriter) Write(p []byte) (n int, err error) {
+    return
+}
+*/
+
+func main() {
+    // 检查 *myWriter 是否实现了 io.Writer 接口
+    var _ io.Writer = (*myWriter)(nil)
+    
+    // 检查 myWriter 是否实现了 io.Writer 接口
+    var _ io.Writer = myWriter{}
+}
+```
+
+> 注释掉为 myWriter 定义的 Writer 函数后, 运行程序, 报错信息: `*myWriter/myWriter 未实现 io.Writer 接口`, 也
+就是未实现 Write 方法. 解除注释后, 运行程序不报错.
+
+
+实际上, 上述赋值语句会发生隐式转换, 在转换的过程中, 编译器会检测等号右边的类型是否实现了等号左边接口所规定的函数.
+
+### 接口的构造过程
+
 
 [参考文档](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
