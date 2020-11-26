@@ -1,3 +1,174 @@
 # interface
 
-[doc](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
+
+## `eface` vs `iface`
+
+`eface` 和 `iface` 都是 Go 中描述接口的底层数据结构, 区别在于 `iface` 描述的接口包含方法, 而 `eface` 则是不包含
+任何方法的空接口: `interface{}`. 
+
+接口的底层数据结构:
+
+```cgo
+// 空接口, interface{} 的底层结构
+type eface struct {
+	_type *_type
+	data  unsafe.Pointer
+}
+
+// 方法接口, 自定义的接口的数据结构
+type iface struct {
+	tab  *itab
+	data unsafe.Pointer
+}
+
+type itab struct {
+	inter *interfacetype // 接口类型
+	_type *_type         // 值类型
+	hash  uint32         // 值类型 _type 当中的 hash 的拷贝
+	_     [4]byte
+	fun   [1]uintptr
+}
+
+type interfacetype struct {
+	typ     _type
+	pkgpath name
+	mhdr    []imethod
+}
+
+type name struct {
+	bytes *byte
+}
+type imethod struct {
+	name int32
+	ityp int32
+}
+
+type _type struct {
+	size       uintptr
+	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+	hash       uint32
+	tflag      uint8
+	align      uint8
+	fieldalign uint8
+	kind       uint8
+	alg        uintptr
+	gcdata     *byte
+	str        int32
+	ptrToThis  int32
+}
+```
+
+`iface` 维护两个指针, `tab` 指向一个 `itab` 实体, 它表示接口的类型 以及赋值给这个接口的实体类型. `data` 则指向接口
+具体的值, 一般情况下是一个指向堆内存的指针.
+
+`itab` 结构: `inter` 字段描述了接口的类型(静态), `_type` 字段描述了接口值的类型(动态), 包括内存对齐方式, 大小等.
+`fun` 字段放置接口类型的方法地址 (*与接口方法对于的具体数据类型的方法地址??*), 实现接口调用方法的动态分派.
+
+为何 `fun` 数组的大小为1, 如果接口定义了多个方法怎么办? 实际上, 这里存储的是第一个方法的函数指针, 如果有更多的方法, 在
+它之后的内存空间里继续存在. 从汇编角度来看, 通过增加地址就能获取到这些函数指针, 没什么影响. 方法是按照函数名称的字典顺序
+进行排列的.
+
+`iterfacetype` 类型, 它描述了接口的类型(静态). 它包装了 `_type` 类型, `_type` 是描述 Go 语言各种数据类型的结构体.
+`mhdr` 字段, 表示接口定义的函数列表, 通过这里的内容, 在反射的时候可以获取实际函数的指针. `pkgpath` 描述了接口的包名.
+
+
+![image](/images/develop_interface_iface.png)
+
+
+相比 `iface`, `eface` 就比较简单, 只维护了一个 `_type` 字段, 表示空接口所承载的具体的实体类型. `data` 描述了其值.
+
+![image](/images/develop_interface_eface.png)
+
+
+## 接口的动态类型和动态值
+
+接口类型和 `nil` 做比较:
+
+接口值的零值指 `动态类型` 和 `动态值` 都为 nil. 当且仅当这两部分的值都为 `nil` 的状况下, 这个接口值才被认为 `接口值 == nil`.
+
+例子1:
+
+```cgo
+type Coder interface {
+    code()
+}
+
+type Gopher struct {
+    name string
+}
+
+func (g Gopher) code() {
+    fmt.Printf("%s is coding\n", g.name)
+}
+
+func main() {
+    var c Coder
+    fmt.Println(c == nil) // true
+    fmt.Printf("c: %T, %v\n", c, c)
+
+    var g *Gopher
+    fmt.Println(g == nil) // true
+
+    c = g
+    fmt.Println(c == nil) // fasle, 值类型为 *Gopher, 值是 nil
+    fmt.Printf("c: %T, %v\n", c, c)
+}
+```
+
+例子2:
+
+```cgo
+type MyError struct {}
+
+func (i MyError) Error() string {
+    return "MyError"
+}
+
+func Process() error {
+    var err *MyError = nil
+    return err // 值类型为 *MyError, 值是 nil
+}
+
+func main() {
+    err := Process()
+    fmt.Println(err) // nil
+
+    fmt.Println(err == nil) // false
+}
+```
+
+例子3:
+
+```cgo
+type iface struct {
+    itab, data uintptr
+}
+
+func main() {
+    var a interface{} = nil
+    
+    /* 
+     * 等价形式:
+     * var t *int
+     * var b interface{} = t
+     */
+    var b interface{} = (*int)(nil) 
+
+    x := 5
+    var c interface{} = (*int)(&x)
+
+    ia := *(*iface)(unsafe.Pointer(&a)) // 值类型为 nil, 值为 nil
+    ib := *(*iface)(unsafe.Pointer(&b)) // 值类型为 *int, 值为 nil
+    ic := *(*iface)(unsafe.Pointer(&c)) // 值类型为 *int, 值为 5
+
+    fmt.Println(ia, ib, ic) 
+
+    fmt.Println(*(*int)(unsafe.Pointer(ic.data)))
+}
+```
+
+
+## 编译器自动检测类型是否实现接口
+
+
+[参考文档](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
