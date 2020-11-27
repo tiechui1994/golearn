@@ -210,25 +210,22 @@ func main() {
 先从一个例子开始:
 
 ```cgo
-package main
-
-import "fmt"
-
 type Person interface {
-	growUp()
+	grow()
 }
 
 type Student struct {
 	age int
+	name string
 }
 
-func (p Student) growUp() {
+func (p Student) grow() {
 	p.age += 1
 	return
 }
 
 func main() {
-	var qcrao = Person(Student{age: 18})
+	var qcrao = Person(Student{age: 18, name:"san"})
 
 	fmt.Println(qcrao)
 }
@@ -237,58 +234,73 @@ func main() {
 使用 `go tool compile -S example.go` 打印汇编代码. go 版本是 `1.13`
 
 ```
-"".main STEXT size=148 args=0x0 locals=0x58
-        0x0000 00000 (example.go:18)    TEXT    "".main(SB), ABIInternal, $88-0
-        0x0000 00000 (example.go:18)    MOVQ    (TLS), CX
-        0x0009 00009 (example.go:18)    CMPQ    SP, 16(CX)
-        0x000d 00013 (example.go:18)    JLS     138
-        0x000f 00015 (example.go:18)    SUBQ    $88, SP
-        0x0013 00019 (example.go:18)    MOVQ    BP, 80(SP)
-        0x0018 00024 (example.go:18)    LEAQ    80(SP), BP
-        0x001d 00029 (example.go:18)    FUNCDATA        $0, gclocals·69c1753bd5f81501d95132d08af04464(SB)
-        0x001d 00029 (example.go:18)    FUNCDATA        $1, gclocals·568470801006e5c0dc3947ea998fe279(SB)
-        0x001d 00029 (example.go:18)    FUNCDATA        $2, gclocals·bfec7e55b3f043d1941c093912808913(SB)
-        0x001d 00029 (example.go:18)    FUNCDATA        $3, "".main.stkobj(SB)
-        0x001d 00029 (example.go:19)    PCDATA  $0, $0
-        0x001d 00029 (example.go:19)    PCDATA  $1, $0
-        0x001d 00029 (example.go:19)    MOVQ    $18, (SP)
-        0x0025 00037 (example.go:19)    CALL    runtime.convT64(SB)
-        0x002a 00042 (example.go:19)    PCDATA  $0, $1
-        0x002a 00042 (example.go:19)    MOVQ    8(SP), AX
-        0x002f 00047 (example.go:21)    PCDATA  $0, $2
-        0x002f 00047 (example.go:21)    MOVQ    go.itab."".Student,"".Person+8(SB), CX
-        0x0036 00054 (example.go:21)    PCDATA  $1, $1
-        0x0036 00054 (example.go:21)    XORPS   X0, X0
-        0x0039 00057 (example.go:21)    MOVUPS  X0, ""..autotmp_16+64(SP)
-        0x003e 00062 (example.go:21)    PCDATA  $0, $1
-        0x003e 00062 (example.go:21)    MOVQ    CX, ""..autotmp_16+64(SP)
-        0x0043 00067 (example.go:21)    PCDATA  $0, $0
-        0x0043 00067 (example.go:21)    MOVQ    AX, ""..autotmp_16+72(SP)
-        0x0048 00072 (<unknown line number>)    NOP
-        0x0048 00072 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $1
-        0x0048 00072 ($GOROOT/src/fmt/print.go:274)     MOVQ    os.Stdout(SB), AX
-        0x004f 00079 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $2
-        0x004f 00079 ($GOROOT/src/fmt/print.go:274)     LEAQ    go.itab.*os.File,io.Writer(SB), CX
-        0x0056 00086 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $1
-        0x0056 00086 ($GOROOT/src/fmt/print.go:274)     MOVQ    CX, (SP)
-        0x005a 00090 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $0
-        0x005a 00090 ($GOROOT/src/fmt/print.go:274)     MOVQ    AX, 8(SP)
-        0x005f 00095 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $1
-        0x005f 00095 ($GOROOT/src/fmt/print.go:274)     PCDATA  $1, $0
-        0x005f 00095 ($GOROOT/src/fmt/print.go:274)     LEAQ    ""..autotmp_16+64(SP), AX
-        0x0064 00100 ($GOROOT/src/fmt/print.go:274)     PCDATA  $0, $0
-        0x0064 00100 ($GOROOT/src/fmt/print.go:274)     MOVQ    AX, 16(SP)
-        0x0069 00105 ($GOROOT/src/fmt/print.go:274)     MOVQ    $1, 24(SP)
-        0x0072 00114 ($GOROOT/src/fmt/print.go:274)     MOVQ    $1, 32(SP)
-        0x007b 00123 ($GOROOT/src/fmt/print.go:274)     CALL    fmt.Fprintln(SB)
-        0x0080 00128 (<unknown line number>)    MOVQ    80(SP), BP
-        0x0085 00133 (<unknown line number>)    ADDQ    $88, SP
-        0x0089 00137 (<unknown line number>)    RET
-        0x008a 00138 (<unknown line number>)    NOP
-        0x008a 00138 (example.go:18)    PCDATA  $1, $-1
-        0x008a 00138 (example.go:18)    PCDATA  $0, $-1
-        0x008a 00138 (example.go:18)    CALL    runtime.morestack_noctxt(SB)
-        0x008f 00143 (example.go:18)    JMP     0
+"".main STEXT size=219 args=0x0 locals=0x70
+	0x0000 00000 (example.go:19)	TEXT	"".main(SB), ABIInternal, $112-0
+	0x0000 00000 (example.go:19)	MOVQ	(TLS), CX
+	0x0009 00009 (example.go:19)	CMPQ	SP, 16(CX)
+	0x000d 00013 (example.go:19)	JLS	209
+	0x0013 00019 (example.go:19)	SUBQ	$112, SP
+	0x0017 00023 (example.go:19)	MOVQ	BP, 104(SP)
+	0x001c 00028 (example.go:19)	LEAQ	104(SP), BP
+	0x0021 00033 (example.go:19)	FUNCDATA	$0, gclocals·7d2d5fca80364273fb07d5820a76fef4(SB)
+	0x0021 00033 (example.go:19)	FUNCDATA	$1, gclocals·ec3d218f521c2fd49f31b3bbe678b423(SB)
+	0x0021 00033 (example.go:19)	FUNCDATA	$2, gclocals·bfec7e55b3f043d1941c093912808913(SB)
+	0x0021 00033 (example.go:19)	FUNCDATA	$3, "".main.stkobj(SB)
+	0x0021 00033 (example.go:20)	PCDATA	$0, $0
+	0x0021 00033 (example.go:20)	PCDATA	$1, $1
+	0x0021 00033 (example.go:20)	XORPS	X0, X0
+	0x0024 00036 (example.go:20)	MOVUPS	X0, ""..autotmp_7+80(SP)
+	0x0029 00041 (example.go:20)	MOVQ	$0, ""..autotmp_7+96(SP)
+	0x0032 00050 (example.go:20)	MOVQ	$18, ""..autotmp_7+80(SP)
+	0x003b 00059 (example.go:20)	PCDATA	$0, $1
+	0x003b 00059 (example.go:20)	LEAQ	go.string."san"(SB), AX
+	0x0042 00066 (example.go:20)	PCDATA	$0, $0
+	0x0042 00066 (example.go:20)	MOVQ	AX, ""..autotmp_7+88(SP)
+	0x0047 00071 (example.go:20)	MOVQ	$3, ""..autotmp_7+96(SP)
+	0x0050 00080 (example.go:20)	PCDATA	$0, $1
+	0x0050 00080 (example.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
+	0x0057 00087 (example.go:20)	PCDATA	$0, $0
+	0x0057 00087 (example.go:20)	MOVQ	AX, (SP)
+	0x005b 00091 (example.go:20)	PCDATA	$0, $1
+	0x005b 00091 (example.go:20)	PCDATA	$1, $0
+	0x005b 00091 (example.go:20)	LEAQ	""..autotmp_7+80(SP), AX
+	0x0060 00096 (example.go:20)	PCDATA	$0, $0
+	0x0060 00096 (example.go:20)	MOVQ	AX, 8(SP)
+	0x0065 00101 (example.go:20)	CALL	runtime.convT2I(SB)
+	0x006a 00106 (example.go:20)	PCDATA	$0, $1
+	0x006a 00106 (example.go:20)	MOVQ	24(SP), AX
+	0x006f 00111 (example.go:20)	PCDATA	$0, $2
+	0x006f 00111 (example.go:20)	MOVQ	16(SP), CX
+	0x0074 00116 (example.go:22)	TESTQ	CX, CX
+	0x0077 00119 (example.go:22)	JEQ	125
+	0x0079 00121 (example.go:22)	MOVQ	8(CX), CX
+	0x007d 00125 (example.go:22)	PCDATA	$1, $2
+	0x007d 00125 (example.go:22)	XORPS	X0, X0
+	0x0080 00128 (example.go:22)	MOVUPS	X0, ""..autotmp_15+64(SP)
+	0x0085 00133 (example.go:22)	PCDATA	$0, $1
+	0x0085 00133 (example.go:22)	MOVQ	CX, ""..autotmp_15+64(SP)
+	0x008a 00138 (example.go:22)	PCDATA	$0, $0
+	0x008a 00138 (example.go:22)	MOVQ	AX, ""..autotmp_15+72(SP)
+	0x008f 00143 (<unknown line number>)	NOP
+	0x008f 00143 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
+	0x008f 00143 ($GOROOT/src/fmt/print.go:274)	MOVQ	os.Stdout(SB), AX
+	0x0096 00150 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $2
+	0x0096 00150 ($GOROOT/src/fmt/print.go:274)	LEAQ	go.itab.*os.File,io.Writer(SB), CX
+	0x009d 00157 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
+	0x009d 00157 ($GOROOT/src/fmt/print.go:274)	MOVQ	CX, (SP)
+	0x00a1 00161 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $0
+	0x00a1 00161 ($GOROOT/src/fmt/print.go:274)	MOVQ	AX, 8(SP)
+	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
+	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	PCDATA	$1, $0
+	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	LEAQ	""..autotmp_15+64(SP), AX
+	0x00ab 00171 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $0
+	0x00ab 00171 ($GOROOT/src/fmt/print.go:274)	MOVQ	AX, 16(SP)
+	0x00b0 00176 ($GOROOT/src/fmt/print.go:274)	MOVQ	$1, 24(SP)
+	0x00b9 00185 ($GOROOT/src/fmt/print.go:274)	MOVQ	$1, 32(SP)
+	0x00c2 00194 ($GOROOT/src/fmt/print.go:274)	CALL	fmt.Fprintln(SB)
+	0x00c7 00199 (<unknown line number>)	MOVQ	104(SP), BP
+	0x00cc 00204 (<unknown line number>)	ADDQ	$112, SP
+	0x00d0 00208 (<unknown line number>)	RET
 ```
 
 从第15行开始看, 前面的对当前的分析不重要. 可以忽略.
@@ -296,7 +308,7 @@ func main() {
 
 
 ```cgo
-
+// 源码位置 src/runtime/iface.go
 var (
 	uint64Eface interface{} = uint64InterfacePtr(0)
 	stringEface interface{} = stringInterfacePtr("")
@@ -307,6 +319,7 @@ var (
 	sliceType  *_type = (*eface)(unsafe.Pointer(&sliceEface))._type
 )
 
+// type(uint64) -> interface
 func convT64(val uint64) (x unsafe.Pointer) {
 	if val == 0 {
 		x = unsafe.Pointer(&zeroVal[0])
@@ -317,6 +330,7 @@ func convT64(val uint64) (x unsafe.Pointer) {
 	return
 }
 
+// type(uint64) -> interface
 func convTstring(val string) (x unsafe.Pointer) {
 	if val == "" {
 		x = unsafe.Pointer(&zeroVal[0])
@@ -324,6 +338,43 @@ func convTstring(val string) (x unsafe.Pointer) {
 		x = mallocgc(unsafe.Sizeof(val), stringType, true)
 		*(*string)(x) = val
 	}
+	return
+}
+
+// type -> iface 
+func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
+	t := tab._type
+	
+	// 启用了 -race 选项
+	if raceenabled {
+		raceReadObjectPC(t, elem, getcallerpc(), funcPC(convT2I))
+	}
+	// 启用了 -msan 选项
+	if msanenabled {
+		msanread(elem, t.size)
+	}
+	
+	// 生成 itab 当中动态类型的内存空间(指针), 并将 elem 的值拷贝相应位置
+	x := mallocgc(t.size, t, true) // convT2I 和 convT2Enoptr 的区别
+	typedmemmove(t, x, elem)
+	i.tab = tab
+	i.data = x
+	return
+}
+
+// iface -> iface
+func convI2I(inter *interfacetype, i iface) (r iface) {
+	tab := i.tab
+	if tab == nil {
+		return
+	}
+	if tab.inter == inter {
+		r.tab = tab
+		r.data = i.data
+		return
+	}
+	r.tab = getitab(inter, tab._type, false)
+	r.data = i.data
 	return
 }
 ```
