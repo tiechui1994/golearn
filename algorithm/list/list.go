@@ -1,7 +1,32 @@
 package list
 
-/**
+import (
+	"fmt"
+)
 
+type ListNode struct {
+	Next *ListNode
+	Val  int
+}
+
+func (l *ListNode) String() string {
+	res := "["
+	cur := l
+	for cur != nil {
+		res += fmt.Sprintf("%v,", cur.Val)
+		cur = cur.Next
+	}
+
+	if res == "[" {
+		return res + "]"
+	}
+
+	return res[:len(res)-1] + "]"
+}
+
+//==================================================================================================
+
+/**
 存在环理论证明:
 
 假设环的长度是 R, 当慢指针slow走到环入口时, 快指针quick处于环中的某个位置, 且两者之间的距离是S
@@ -17,7 +42,7 @@ package list
 
 
 环入口位置:
-假设环入口距离链表头的长度为L, 快慢指针相遇的位置是cross, 且该位置距离环入口的长度是S.
+假设环入口距离链表头的长度为L, 快慢指针相遇的位置是cross, 且该位置距离环入口的长度是S. R是环的长度
 
 慢指针: L+S
 快指针: L+S+nR
@@ -31,12 +56,7 @@ package list
 移动nR步后回到cross位置, 倒退S步后是环入口.
 **/
 
-type Node struct {
-	Next *Node
-	Val  int
-}
-
-func findCycleNode(root *Node) *Node {
+func findCycleNode(root *ListNode) *ListNode {
 	slow := root
 	quick := root
 	// 相遇
@@ -67,15 +87,61 @@ func findCycleNode(root *Node) *Node {
 	return slow
 }
 
-// 两个链表相交的节点
-type liststack []*Node
+//==================================================================================================
 
-func (l *liststack) push(node *Node) {
+/*
+141. 环形链表(判断是否存在环)
+*/
+
+// 方式一: 快慢指针(需要环的理论支持)
+func hasCycleI(head *ListNode) bool {
+	if head == nil || head.Next == nil {
+		return false
+	}
+
+	slow := head
+	quick := head
+
+	for slow != nil && quick != nil && quick.Next != nil {
+		slow = slow.Next
+		quick = quick.Next.Next
+
+		if slow == quick {
+			return true
+		}
+	}
+
+	return false
+}
+
+// 方式二: 删除头部指针(巧妙删除).
+// 删除的方法: cur.Next=cur 断开与后面的联系, 如果存在环, 必然会指向到已经删除的节点, 这个时候 cur.Next == cur
+func hasCycleII(head *ListNode) bool {
+	if head == nil || head.Next == nil {
+		return false
+	}
+
+	if head.Next == head {
+		return true
+	}
+
+	next := head.Next
+	head.Next = head
+
+	return hasCycleII(next)
+}
+
+//==================================================================================================
+
+// 两个链表相交的节点
+type liststack []*ListNode
+
+func (l *liststack) push(node *ListNode) {
 	*l = append(*l, node)
 }
-func (l *liststack) pop() *Node {
+func (l *liststack) pop() *ListNode {
 	node := (*l)[l.len()-1]
-	*l = (*l)[0 : l.len()-1]
+	*l = (*l)[0: l.len()-1]
 	return node
 }
 func (l *liststack) len() int {
@@ -83,7 +149,7 @@ func (l *liststack) len() int {
 }
 
 // 使用栈方法
-func findTwoListIntersectionNodeI(a, b *Node) *Node {
+func findTwoListIntersectionNodeI(a, b *ListNode) *ListNode {
 	if a == nil || b == nil {
 		return nil
 	}
@@ -122,12 +188,12 @@ func findTwoListIntersectionNodeI(a, b *Node) *Node {
 }
 
 // 不使用栈的方法, O(N)
-func findTwoListIntersectionNodeII(a, b *Node) *Node {
+func findTwoListIntersectionNodeII(a, b *ListNode) *ListNode {
 	if a == nil || b == nil {
 		return nil
 	}
 
-	var aLast, bLast *Node
+	var aLast, bLast *ListNode
 	var aLen, bLen int
 	var rA, rB = a, b
 
@@ -153,7 +219,7 @@ func findTwoListIntersectionNodeII(a, b *Node) *Node {
 		return nil
 	}
 
-	var long, short *Node
+	var long, short *ListNode
 	var diff int
 
 	if aLen > bLen {
@@ -175,6 +241,8 @@ func findTwoListIntersectionNodeII(a, b *Node) *Node {
 
 	return long
 }
+
+//==================================================================================================
 
 // 删除倒数第N个Node
 // 双指针, 第一次, first 从头遍历 n 次
@@ -230,4 +298,170 @@ func reverseBetween(head *ListNode, m int, n int) *ListNode {
 	}
 
 	return head
+}
+
+//==================================================================================================
+
+/*
+234. 回文链表(进阶方法), O(N)+O(1)
+*/
+
+/*
+快慢指针:
+
+所谓的快慢指针, 开始的位置都是 root, 只不过 slow 指针每次迭代一次, quick 指针每次迭代两次.
+循环条件: slow != nil && quck != nil && quck.Next != nil (也是可以改进的)
+
+最终出现的结果是: slow指针的索引位置(中间位置后面的第一个): N/2 向上取整.
+
+反转链表(head):
+
+pre = nil
+cur = head
+
+loop:
+	next := cur.Next
+
+	// 反转
+	cur.Next = pre
+	pre = cur
+
+	cur = next
+
+最终的结果是 pre
+*/
+
+// 方式一: 快慢指针找到中点, 然后翻转重点指针后面的部分
+// 注意事项: 一定要将 slow 指针的前面那个指针断开
+func isPalindromeI(head *ListNode) bool {
+	if head == nil || head.Next == nil {
+		return true
+	}
+
+	if head.Next.Next == nil {
+		return head.Val == head.Next.Val
+	}
+
+	reverse := func(node *ListNode) *ListNode {
+		var pre *ListNode
+		cur := node
+		for cur != nil {
+			next := cur.Next
+
+			// 翻转
+			cur.Next = pre
+			pre = cur
+
+			cur = next
+		}
+
+		return pre
+	}
+
+	pre := head
+	slow := head
+	quick := head
+	for slow != nil && quick.Next != nil {
+		pre = slow
+		slow = slow.Next
+		quick = quick.Next.Next
+	}
+	pre.Next = nil // 断开链接, 重点
+
+	c1 := reverse(slow)
+	c2 := head
+	for c1 != nil && c2 != nil {
+		if c1.Val != c2.Val {
+			return false
+		}
+
+		c1 = c1.Next
+		c2 = c2.Next
+	}
+
+	return true
+}
+
+// 方式二: hash 方法(需要理论支持), 这个思路比较独特, 数学要好才可以.
+//
+// hash = hash * seed + val, seed 是一个质数, val 是节点的值, 哈希结果为:
+// hash1 = a[1]*seed^(n-1) + a[2]*seed^(n-2) + ... + a[n-1]*seed^(1) + a[n]*seed^(0)
+//
+// 逆序的哈希结果:
+// hash2 = a[1]*seed^(0) + a[2]*seed^(1) + ... + a[n-1]*seed^(n-2) + a[n]*seed^(n-1)
+//
+// 如果 hash1 == hash2, 可以保证是回文的
+func isPalindromeII(head *ListNode) bool {
+	if head == nil || head.Next == nil {
+		return true
+	}
+
+	var (
+		hash1, hash2 int64
+		seed         int64 = 0x1000193
+		h            int64 = 1
+	)
+
+	cur := head
+	for cur != nil {
+		hash1 = hash1*seed + int64(cur.Val)
+		hash2 = hash2 + int64(cur.Val)*h
+
+		h *= seed
+		cur = cur.Next
+	}
+
+	return hash2 == hash1
+}
+
+//==================================================================================================
+/*
+25. K个一组翻转链表(主要是逻辑比较复杂而已)
+*/
+func reverseKGroup(head *ListNode, k int) *ListNode {
+	count := 0
+	cur := head
+	for cur != nil {
+		count += 1
+		cur = cur.Next
+	}
+
+	var root *ListNode
+	var pre, end, pend *ListNode
+
+	idx := 0
+	stop := count - count%k
+
+	cur = head
+	pend, end = head, head
+	for cur != nil {
+		next := cur.Next
+
+		if idx == stop {
+			pend.Next = cur
+			break
+		}
+
+		cur.Next = pre
+		pre = cur
+
+		cur = next
+		idx += 1
+		if idx%k == 0 {
+			if root == nil {
+				root = pre
+				pend = end
+				pre = nil
+				end = next
+				continue
+			}
+
+			pend.Next = pre
+			pend = end
+			pre = nil
+			end = next
+		}
+	}
+
+	return root
 }
