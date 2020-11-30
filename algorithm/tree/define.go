@@ -5,27 +5,27 @@ import (
 	"strconv"
 )
 
-type Node struct {
-	Left  *Node
-	Right *Node
+type TreeNode struct {
+	Left  *TreeNode
+	Right *TreeNode
 	Val   int
 }
 
-func (node *Node) String() string {
+func (node *TreeNode) String() string {
 	return fmt.Sprintf("{val=%v,left=%v,right=%v}", node.Val, node.Left, node.Right)
 }
 
-type Stack []*Node
+type Stack []*TreeNode
 
 func (s *Stack) empty() bool {
 	return len(*s) == 0
 }
 
-func (s *Stack) push(node *Node) {
+func (s *Stack) push(node *TreeNode) {
 	*s = append(*s, node)
 }
 
-func (s *Stack) pop() *Node {
+func (s *Stack) pop() *TreeNode {
 	if s == nil || len(*s) == 0 {
 		return nil
 	}
@@ -35,17 +35,17 @@ func (s *Stack) pop() *Node {
 	return node
 }
 
-type Queue []*Node
+type Queue []*TreeNode
 
 func (q *Queue) empty() bool {
 	return len(*q) == 0
 }
 
-func (q *Queue) push(node *Node) {
+func (q *Queue) push(node *TreeNode) {
 	*q = append(*q, node)
 }
 
-func (q *Queue) pop() *Node {
+func (q *Queue) pop() *TreeNode {
 	if q == nil || len(*q) == 0 {
 		return nil
 	}
@@ -97,18 +97,18 @@ func (s *Set) set() []int {
 
 ///////////////////////////////////////
 
-func SliceToNode(strs []string) []*Node {
+func SliceToNode(strs []string) []*TreeNode {
 	if strs == nil || len(strs) == 0 {
 		return nil
 	}
 
-	nodes := make([]*Node, 0, len(strs))
+	nodes := make([]*TreeNode, 0, len(strs))
 	for _, s := range strs {
 		if s == "null" {
 			nodes = append(nodes, nil)
 		} else {
 			val, _ := strconv.ParseInt(s, 10, 64)
-			nodes = append(nodes, &Node{
+			nodes = append(nodes, &TreeNode{
 				Val: int(val),
 			})
 		}
@@ -117,7 +117,7 @@ func SliceToNode(strs []string) []*Node {
 	return nodes
 }
 
-func SliceToTree(st []*Node) (root *Node) {
+func SliceToTree(st []*TreeNode) (root *TreeNode) {
 	if len(st) == 0 {
 		return nil
 	}
@@ -155,7 +155,7 @@ func SliceToTree(st []*Node) (root *Node) {
 	return root
 }
 
-func fillTree(h *Node, st []*Node) (*Node, []*Node) {
+func fillTree(h *TreeNode, st []*TreeNode) (*TreeNode, []*TreeNode) {
 	if len(st) < 1 {
 		return h, nil
 	}
@@ -204,7 +204,7 @@ func Min(slice ...int) int {
 	return min
 }
 
-func PrintTree(node *Node) {
+func PrintTree(node *TreeNode) {
 	q := Queue{}
 	q.push(node)
 	for !q.empty() {

@@ -5,164 +5,6 @@ import (
 	"sort"
 )
 
-/**
-输入：(2 -> 4 -> 3) + (5 -> 6 -> 4)
-输出：7 -> 0 -> 8
-原因：342 + 465 = 807
-*/
-
-/**
-* Definition for singly-linked list.
-* type ListNode struct {
-*     Val int
-*     Next *ListNode
-* }
- */
-
-type ListNode struct {
-	Val  int
-	Next *ListNode
-}
-
-// 两个链表, 逆序存储数字, 求和
-func addTwoNumbers(l1 *ListNode, l2 *ListNode) *ListNode {
-	res := new(ListNode)
-	n1 := l1
-	n2 := l2
-
-	var node = res
-	var carry int
-	for n1 != nil && n2 != nil {
-		sum := n1.Val + n2.Val + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		n1 = n1.Next
-		n2 = n2.Next
-
-		// 存在n1或者n2
-		if n1 != nil || n2 != nil {
-			node.Next = new(ListNode)
-			node = node.Next
-		}
-	}
-
-	for n1 != nil {
-		sum := n1.Val + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		n1 = n1.Next
-		if n1 != nil {
-			node.Next = new(ListNode)
-			node = node.Next
-		}
-	}
-
-	for n2 != nil {
-		sum := n2.Val + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		n2 = n2.Next
-		if n2 != nil {
-			node.Next = new(ListNode)
-			node = node.Next
-		}
-	}
-
-	if carry > 0 {
-		node.Next = &ListNode{
-			Val:  carry,
-			Next: nil,
-		}
-	}
-
-	return res
-}
-
-type stack []int
-
-func (s *stack) Push(key int) {
-	*s = append([]int{key}, *s...)
-}
-
-func (s *stack) Pop() int {
-	val := (*s)[0]
-	*s = (*s)[1:]
-	return val
-}
-
-func (s *stack) Len() int {
-	return len(*s)
-}
-
-// 两个链表, 顺序存储数字, 求和 ==> (栈的先进后出, 变为逆序存储)
-func addTwoNumbersMore(l1 *ListNode, l2 *ListNode) *ListNode {
-	var s1, s2 = new(stack), new(stack)
-	n1 := l1
-	for n1 != nil {
-		s1.Push(n1.Val)
-		n1 = n1.Next
-	}
-	n2 := l2
-	for n2 != nil {
-		s2.Push(n2.Val)
-		n2 = n2.Next
-	}
-	var node = new(ListNode)
-	var carry int
-
-	for s1.Len() > 0 && s2.Len() > 0 {
-		e1 := s1.Pop()
-		e2 := s2.Pop()
-		sum := e1 + e2 + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		if s1.Len() > 0 || s2.Len() > 0 {
-			node = &ListNode{
-				Next: node,
-			}
-		}
-	}
-
-	for s1.Len() > 0 {
-		e1 := s1.Pop()
-		sum := e1 + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		if s1.Len() > 0 {
-			node = &ListNode{
-				Next: node,
-			}
-		}
-	}
-
-	for s2.Len() > 0 {
-		e2 := s2.Pop()
-		sum := e2 + carry
-		carry = sum / 10
-		node.Val = sum % 10
-
-		if s2.Len() > 0 {
-			node = &ListNode{
-				Next: node,
-			}
-		}
-	}
-
-	if carry > 0 {
-		node = &ListNode{
-			Val:  carry,
-			Next: node,
-		}
-	}
-
-	return node
-}
-
 // 三个数字的和是0的所有组合, 空间: O(N) 时间:O(N^2)
 func threeSum(nums []int) [][]int {
 	sort.SliceStable(nums, func(i, j int) bool {
@@ -214,39 +56,6 @@ func threeSum(nums []int) [][]int {
 	}
 
 	return res
-}
-
-// 判断是否存在环 ==> map
-func hasCycle(head *ListNode) bool {
-	m := make(map[*ListNode]bool)
-	for n := head; n != nil; n = n.Next {
-		if _, ok := m[n]; ok {
-			return true
-		}
-		m[n] = true
-	}
-
-	return false
-}
-
-// 判断是否存在环 ==> 双指针. next 和 next.next
-func hasCyclePointer(head *ListNode) bool {
-	if head == nil || head.Next == nil {
-		return false
-	}
-
-	slow := head
-	fast := head.Next
-	for slow != fast {
-		if fast == nil || fast.Next == nil {
-			return false
-		}
-
-		slow = slow.Next
-		fast = fast.Next.Next
-	}
-
-	return true
 }
 
 //-----------------------------------------------------------------
@@ -339,7 +148,7 @@ func ksum(nums []int, start, k, target int) [][]int {
 	n := len(nums)
 	var res [][]int
 	if k == 2 {
-		var left, right = start, n - 1
+		var left, right = start, n-1
 		for left < right {
 			sum := nums[left] + nums[right]
 			if sum == target {
@@ -399,7 +208,7 @@ func threeSumClosest(nums []int, target int) int {
 
 	res := nums[0] + nums[1] + nums[2]
 	for i := 0; i < n; i++ {
-		var left, right = i + 1, n - 1
+		var left, right = i+1, n-1
 		for left < right {
 			sum := nums[left] + nums[right] + nums[i]
 
@@ -519,7 +328,13 @@ func shipWithinDays(weights []int, D int) int {
 	return low
 }
 
-// 顺序数组在某点旋转, 搜索元素
+/*
+33. 搜索旋转排序数组
+
+该整数数组原本是按升序排列, 但输入时在预先未知的某个点上进行了旋转. (例如, 数组 [0,1,2,4,5,6,7] 可能变为
+[4,5,6,7,0,1,2] )
+
+*/
 
 func search(nums []int, target int) int {
 	binarySearch := func(left, right int) int {
@@ -761,7 +576,7 @@ func spiralMatrixIII(R int, C int, r0 int, c0 int) [][]int {
 }
 
 func findRoateIndex(nums []int) int {
-	var left, right = 0, len(nums) - 1
+	var left, right = 0, len(nums)-1
 	if nums[left] < nums[right] {
 		return 0
 	}

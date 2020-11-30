@@ -42,7 +42,7 @@ func (l *ListNode) String() string {
 
 
 环入口位置:
-假设环入口距离链表头的长度为L, 快慢指针相遇的位置是cross, 且该位置距离环入口的长度是S. R是环的长度
+假设环入口距离链表头的长度为L, 快慢指针相遇的位置是 cross, 且该位置距离环入口的长度是S. R是环的长度
 
 慢指针: L+S
 快指针: L+S+nR
@@ -61,14 +61,11 @@ func findCycleNode(root *ListNode) *ListNode {
 	quick := root
 	// 相遇
 	var exist bool
-	for slow != nil && quick.Next != nil {
+	for slow != nil && quick != nil && quick.Next != nil {
 		slow = slow.Next
 		quick = quick.Next.Next
 		if slow == quick {
 			exist = true
-			break
-		}
-		if slow == nil || quick == nil {
 			break
 		}
 	}
@@ -273,29 +270,64 @@ func removeNthFromEnd(head *ListNode, n int) *ListNode {
 	return head
 }
 
-func reverseBetween(head *ListNode, m int, n int) *ListNode {
-	var i = 0
-	var node = head
+/*
+92. 反转链表 II
 
-	var prev, start *ListNode
-	for node != nil {
-		i++
-		next := node.Next
-		if i >= m && i <= n {
-			if i == m {
-				start = node
-				prev = node
-			} else {
-				node.Next = prev
-				prev = node
-			}
+反转从位置 m 到 n 的链表. 请使用一趟扫描完成反转.
+
+记录以下的内容:
+	反转链表前缀(prev)节点, 反转链表后缀(next)节点.
+    反转链表头节点(start), 反转链表尾节点(end)
+
+链接操作:
+	prev.Next = start
+	end.Next = next
+*/
+func reverseBetween(head *ListNode, m int, n int) *ListNode {
+	if head == nil || head.Next == nil || m == n {
+		return head
+	}
+
+	idx := 0
+	cur := head
+	var start, end *ListNode // 链表的头,尾
+	var prev, next *ListNode
+
+	for cur != nil {
+		idx += 1
+
+		// 在 m-1 位置捕捉 prev, end, 在n+1 位置捕捉 next
+		if idx == m-1 {
+			prev = cur
+			end = cur.Next
 		}
-		if i == n {
-			start.Next = prev
+		if idx == n+1 {
+			next = cur
 			break
 		}
-		node = next
+
+		if idx >= m && idx <= n {
+			next := cur.Next
+
+			cur.Next = start
+			start = cur
+
+			cur = next
+			continue
+		}
+
+		cur = cur.Next
 	}
+
+	// 特殊情况: 从头节点开始反转, 此时链表只有两部分.
+	if prev == nil {
+		head.Next = next
+		return start
+	}
+
+	// 正常的逻辑, 三部分处理
+	prev.Next = start
+	end.Next = next
 
 	return head
 }
@@ -417,6 +449,29 @@ func isPalindromeII(head *ListNode) bool {
 //==================================================================================================
 /*
 25. K个一组翻转链表(主要是逻辑比较复杂而已)
+
+思路: 首先统计 head 长度, 计算结束的 index
+
+翻转过程(每 k 一个一翻转, idx % k == 0), 翻转过程记录变量:
+
+pre, end 当前翻转的链表的头和尾.
+pend 上一次翻转的尾巴.
+
+初始化: end 为 head, pend, pre 为nil
+
+第一次迭代完成:
+	root=pre // root是最终的返回结果
+
+	pend=end
+	end=next
+	pre=nil
+
+非第一次迭代完成:
+	pend.Next=pre // 链接
+
+	pend=end
+	end=next
+	pre=nil
 */
 func reverseKGroup(head *ListNode, k int) *ListNode {
 	count := 0
@@ -432,8 +487,7 @@ func reverseKGroup(head *ListNode, k int) *ListNode {
 	idx := 0
 	stop := count - count%k
 
-	cur = head
-	pend, end = head, head
+	cur, end = head, head
 	for cur != nil {
 		next := cur.Next
 
@@ -464,4 +518,137 @@ func reverseKGroup(head *ListNode, k int) *ListNode {
 	}
 
 	return root
+}
+
+//==================================================================================================
+
+// 两个链表, 逆序存储数字, 求和
+func addTwoNumbers(l1 *ListNode, l2 *ListNode) *ListNode {
+	res := new(ListNode)
+	n1 := l1
+	n2 := l2
+
+	var node = res
+	var carry int
+	for n1 != nil && n2 != nil {
+		sum := n1.Val + n2.Val + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		n1 = n1.Next
+		n2 = n2.Next
+
+		// 存在n1或者n2
+		if n1 != nil || n2 != nil {
+			node.Next = new(ListNode)
+			node = node.Next
+		}
+	}
+
+	for n1 != nil {
+		sum := n1.Val + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		n1 = n1.Next
+		if n1 != nil {
+			node.Next = new(ListNode)
+			node = node.Next
+		}
+	}
+
+	for n2 != nil {
+		sum := n2.Val + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		n2 = n2.Next
+		if n2 != nil {
+			node.Next = new(ListNode)
+			node = node.Next
+		}
+	}
+
+	if carry > 0 {
+		node.Next = &ListNode{
+			Val:  carry,
+			Next: nil,
+		}
+	}
+
+	return res
+}
+
+// 两个链表, 顺序存储数字, 求和 ==> (栈的先进后出, 变为逆序存储)
+func addTwoNumbersMore(l1 *ListNode, l2 *ListNode) *ListNode {
+	var s1, s2 []int
+	n1 := l1
+	for n1 != nil {
+		s1 = append(s1, n1.Val)
+		n1 = n1.Next
+	}
+	n2 := l2
+	for n2 != nil {
+		s2 = append(s2, n1.Val)
+		n2 = n2.Next
+	}
+	var node = new(ListNode)
+	var carry int
+
+	for len(s1) > 0 && len(s2) > 0 {
+		e1 := s1[len(s1)-1]
+		s1 = s1[:len(s1)-1]
+
+		e2 := s2[len(s2)-1]
+		s2 = s2[:len(s2)-1]
+
+		sum := e1 + e2 + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		if len(s1) > 0 || len(s2) > 0 {
+			node = &ListNode{
+				Next: node,
+			}
+		}
+	}
+
+	for len(s1) > 0 {
+		e1 := s1[len(s1)-1]
+		s1 = s1[:len(s1)-1]
+
+		sum := e1 + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		if len(s1) > 0 {
+			node = &ListNode{
+				Next: node,
+			}
+		}
+	}
+
+	for len(s2) > 0 {
+		e2 := s2[len(s2)-1]
+		s2 = s2[:len(s2)-1]
+
+		sum := e2 + carry
+		carry = sum / 10
+		node.Val = sum % 10
+
+		if len(s2) > 0 {
+			node = &ListNode{
+				Next: node,
+			}
+		}
+	}
+
+	if carry > 0 {
+		node = &ListNode{
+			Val:  carry,
+			Next: node,
+		}
+	}
+
+	return node
 }

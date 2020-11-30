@@ -10,7 +10,7 @@ import (
 // 对称二叉树
 // 性质: 1. 两个根节点具有相同的值; 2. 每个树的右子树与另一个树的左子树对称
 // 迭代: 利用队列, 两棵树同时入队, 比较 (u.Left,v.Right), (u.Right,v.Left)
-func IsSymmetric(root *Node) bool {
+func IsSymmetric(root *TreeNode) bool {
 	if root == nil {
 		return true
 	}
@@ -42,7 +42,7 @@ func IsSymmetric(root *Node) bool {
 }
 
 // 构建二叉树
-func BuildTree(inorder []int, postorder []int) *Node {
+func BuildTree(inorder []int, postorder []int) *TreeNode {
 	if len(inorder) == 0 || len(postorder) == 0 {
 		return nil
 	}
@@ -59,14 +59,14 @@ func BuildTree(inorder []int, postorder []int) *Node {
 		return -1
 	}
 
-	var build func(inorder []int, postorder []int) *Node
-	build = func(inorder []int, postorder []int) *Node {
+	var build func(inorder []int, postorder []int) *TreeNode
+	build = func(inorder []int, postorder []int) *TreeNode {
 		// 当只有一个节点或者没有节点
 		if len(inorder) == 0 {
 			return nil
 		}
 		if len(inorder) == 1 {
-			return &Node{Val: inorder[0]}
+			return &TreeNode{Val: inorder[0]}
 		}
 		// inorder: 左根右
 		// postorder: 左右根
@@ -75,7 +75,7 @@ func BuildTree(inorder []int, postorder []int) *Node {
 		// postorder 的最后一个元素就是当前的根, 以此根为划分 inorder, 划分出左右子树;
 		// 与此同时, 也需要划分 postorder, 因为是 "左右根", 左子树,[0:左子树长度) 右子树, [左子树长度:n-1)
 		n := len(postorder)
-		root := &Node{Val: postorder[n-1]}
+		root := &TreeNode{Val: postorder[n-1]}
 
 		idx := index(inorder, postorder[n-1])
 		root.Left = build(inorder[:idx], postorder[0:idx])
@@ -92,7 +92,7 @@ func BuildTree(inorder []int, postorder []int) *Node {
 // 1. 如果当前节点为 null, 则返回 null
 // 2. 如果当前节点为 p 或 q, 或者包含了 p 或者 q 则返回当前节点
 // 3. 如果当前包含了p和q, 则第一次到达的节点为最近的祖先
-func NearestAncestor(root, p, q *Node) *Node {
+func NearestAncestor(root, p, q *TreeNode) *TreeNode {
 	if root == nil {
 		return nil
 	}
@@ -116,15 +116,15 @@ func NearestAncestor(root, p, q *Node) *Node {
 }
 
 // 搜索树的第k小数, 中序遍历(左根右) -> 有序
-func KthSmallest(root *Node, k int) int {
+func KthSmallest(root *TreeNode, k int) int {
 	if root == nil {
 		return 0
 	}
 
 	var res int
 	var count int
-	var visit func(node *Node)
-	visit = func(node *Node) {
+	var visit func(node *TreeNode)
+	visit = func(node *TreeNode) {
 		if node.Left != nil {
 			visit(node.Left)
 		}
@@ -175,11 +175,11 @@ func PathInZigZagTree(label int) []int {
 // 思路1: 深度优先遍历, 获取node->parent的map关系.
 // 利用queue先进先出的特性, target为头元素, 加入其 "元素的孩子和父亲". nil为特殊元素, 遇到nil的时候就需要
 // 更新深度. 还有一个全局的已经加入的节点seen, 防止多次添加.
-func DistanceK(root, target *Node, k int) []int {
+func DistanceK(root, target *TreeNode, k int) []int {
 	// 1. 深度优先遍历, 记录node -> parent
-	var parent = make(map[*Node]*Node) // node -> parent
-	var dfs func(node, parent *Node)
-	dfs = func(node, par *Node) {
+	var parent = make(map[*TreeNode]*TreeNode) // node -> parent
+	var dfs func(node, parent *TreeNode)
+	dfs = func(node, par *TreeNode) {
 		if node != nil {
 			parent[node] = par
 			dfs(node.Left, node)
@@ -193,7 +193,7 @@ func DistanceK(root, target *Node, k int) []int {
 	var queue = Queue{}
 	queue.push(nil)
 	queue.push(target) // nil和target被加入到队列当中. 最终存放节点
-	var seen = map[*Node]bool{
+	var seen = map[*TreeNode]bool{
 		target: true,
 		nil:    true,
 	}
@@ -289,7 +289,7 @@ func VerifyPostorder(postorder []int) bool {
 }
 
 // 树的子结构 | 检查子树
-// 思路: 首先需要定义一个相同树结构比较的先序遍历函数, recur(root, cur *Node), 用来返回 root 和 cur 是否具有相同
+// 思路: 首先需要定义一个相同树结构比较的先序遍历函数, recur(root, cur *TreeNode), 用来返回 root 和 cur 是否具有相同
 // 的结构:
 // 1. 如果 cur 为 nil, 说明子树已经遍历完成, 则返回 true
 // 2. 如果 root 为 nil 或者 当前的 root 和 cur 值不一样, 则说明两者在当前节点不一样, 则返回 false
@@ -299,11 +299,11 @@ func VerifyPostorder(postorder []int) bool {
 // 1. 当前节点的 t1 和 t2 就具有相同结构
 // 2. t1.Left 当中包含 t2 子结构(注意: 是包含, 可能包含 t1.Left节点)
 // 3. t1.Right 当中包含 t2 子结构(注意: 是包含, 可能包含 t1.Right节点)
-func IsSubStructure(t1 *Node, t2 *Node) bool {
+func IsSubStructure(t1 *TreeNode, t2 *TreeNode) bool {
 	return (t1 != nil && t2 != nil) && (recur(t1, t2) || IsSubStructure(t1.Left, t2) || IsSubStructure(t1.Right, t2))
 }
 
-func recur(root *Node, cur *Node) bool {
+func recur(root *TreeNode, cur *TreeNode) bool {
 	// 检查子树
 	//if cur == nil && root == nil {
 	//	return true
@@ -449,10 +449,10 @@ func SumOfDistancesInTree(N int, edges [][]int) []int {
 // 2. left == m 或者 right == m, 无论选取哪个节点, 其他另一半和父节点都是一号玩家的, 则必输
 // 3. left + right + 1 <= m, 选取父节点, 即必赢
 // 4. left + right + 1 > m, 无论选取哪个节点, 其他另一半节点和父节点都是一号玩家的, 则必输
-func BtreeGameWinningMove(root *Node, n int, x int) bool {
+func BtreeGameWinningMove(root *TreeNode, n int, x int) bool {
 	// 查找节点
-	var search func(*Node, int) *Node
-	search = func(node *Node, val int) *Node {
+	var search func(*TreeNode, int) *TreeNode
+	search = func(node *TreeNode, val int) *TreeNode {
 		if node == nil {
 			return nil
 		}
@@ -470,8 +470,8 @@ func BtreeGameWinningMove(root *Node, n int, x int) bool {
 	}
 
 	// 统计节点子树的个数, 包括节点
-	var count func(*Node) int
-	count = func(root *Node) int {
+	var count func(*TreeNode) int
+	count = func(root *TreeNode) int {
 		if root == nil {
 			return 0
 		}
@@ -566,14 +566,14 @@ func FindMinHeightTrees(n int, edges [][]int) []int {
 //	  - 如果当前节点具有最大深度, 返回当前节点
 //	  - 如果当前节点的左右孩子具有最大深度, 返回当前节点
 //	  - 如果当前节点的左(右)孩子具有最大深度, 返回左(右)孩子
-func SubtreeWithAllDeepest(root *Node) *Node {
+func SubtreeWithAllDeepest(root *TreeNode) *TreeNode {
 	if root == nil || root.Left == nil && root.Right == nil {
 		return root
 	}
 
 	// 计算节点的深度
-	var dfsdepth func(cur *Node, dep int, depmap map[*Node]int)
-	dfsdepth = func(cur *Node, dep int, depmap map[*Node]int) {
+	var dfsdepth func(cur *TreeNode, dep int, depmap map[*TreeNode]int)
+	dfsdepth = func(cur *TreeNode, dep int, depmap map[*TreeNode]int) {
 		if cur == nil {
 			return
 		}
@@ -586,8 +586,8 @@ func SubtreeWithAllDeepest(root *Node) *Node {
 		}
 	}
 
-	var mintree func(cur *Node, max int, depmap map[*Node]int) *Node
-	mintree = func(cur *Node, max int, depmap map[*Node]int) *Node {
+	var mintree func(cur *TreeNode, max int, depmap map[*TreeNode]int) *TreeNode
+	mintree = func(cur *TreeNode, max int, depmap map[*TreeNode]int) *TreeNode {
 		if cur == nil {
 			return nil
 		}
@@ -611,7 +611,7 @@ func SubtreeWithAllDeepest(root *Node) *Node {
 	}
 
 	// 计算
-	depmap := make(map[*Node]int)
+	depmap := make(map[*TreeNode]int)
 	dfsdepth(root, 0, depmap)
 	max := -1
 	for _, v := range depmap {
@@ -635,9 +635,9 @@ func SubtreeWithAllDeepest(root *Node) *Node {
 // 计算: left, right 表示左右孩子节点到叶子节点距离数组
 // ans += left[i] * left[j]; i+j+2 <= distance, i 左孩子距离叶子节点值为 i 的个数, j 是右孩子距离叶子节点的个数
 // i+1+j+1 则表示连接当前节点的孩子的距离.
-func CountPairs(root *Node, distance int) int {
-	var dfs func(root *Node, distance int, ans *int) []int
-	dfs = func(root *Node, distance int, ans *int) []int {
+func CountPairs(root *TreeNode, distance int) int {
+	var dfs func(root *TreeNode, distance int, ans *int) []int
+	dfs = func(root *TreeNode, distance int, ans *int) []int {
 		if root == nil {
 			return make([]int, distance+1)
 		}
@@ -672,9 +672,9 @@ func CountPairs(root *Node, distance int) int {
 //
 // 打印出二叉树中节点值的和为输入整数的所有路径. 从树的 "根节点" 开始往下一直到 "叶节点" 所经过的节点形成一条路径.
 // 思路: 自顶向下, 根左右, 直到根节点
-func PathSumI(root *Node, sum int) [][]int {
-	var pathsum func(root *Node, sum int, parent []int) [][]int
-	pathsum = func(root *Node, sum int, parent []int) [][]int {
+func PathSumI(root *TreeNode, sum int) [][]int {
+	var pathsum func(root *TreeNode, sum int, parent []int) [][]int
+	pathsum = func(root *TreeNode, sum int, parent []int) [][]int {
 		if root.Left == nil && root.Right == nil {
 			if root.Val == sum {
 				parent = append(parent, root.Val)
@@ -722,9 +722,9 @@ func PathSumI(root *Node, sum int) [][]int {
 // 前缀和: 到达当前元素的路径上, 之前所有元素的和.
 //
 // 如果两个节点的前缀和是相同的, 那么这两个节点之间的元素和为零.
-func PathSumII(root *Node, sum int) int {
-	var recurPathSum func(root *Node, prefixSumCount map[int]int, target, cursum int) int
-	recurPathSum = func(root *Node, prefixSumCount map[int]int, target, cursum int) int {
+func PathSumII(root *TreeNode, sum int) int {
+	var recurPathSum func(root *TreeNode, prefixSumCount map[int]int, target, cursum int) int
+	recurPathSum = func(root *TreeNode, prefixSumCount map[int]int, target, cursum int) int {
 		if root == nil {
 			return 0
 		}
@@ -756,7 +756,7 @@ func PathSumII(root *Node, sum int) int {
 // 思路: 递归 + 动态规划
 // 需要思考两个问题, 左右分支含根+[当前根], 左右分支含根+当前根, 左(右)分支不含根
 // 左右分支含根: max(根, 左含根最大值+根, 右含根最大值+根)
-func MaxSumPath(root *Node) int {
+func MaxSumPath(root *TreeNode) int {
 	if root == nil {
 		return 0
 	}
@@ -781,7 +781,7 @@ func MaxSumPath(root *Node) int {
 	return root.Val
 }
 
-func maxSumPathRoot(root *Node) int {
+func maxSumPathRoot(root *TreeNode) int {
 	if root == nil {
 		return 0
 	}
@@ -796,10 +796,10 @@ func maxSumPathRoot(root *Node) int {
 // 一棵树, 删除一些节点, 形成林
 //
 // 思路: 深度优先遍历获取父子关系, 删除节点之后, 寻找父节点为 nil 的树则是最终的结果
-func DelNodes(root *Node, to_delete []int) []*Node {
+func DelNodes(root *TreeNode, to_delete []int) []*TreeNode {
 	// child -> parent 关系
-	var dfs func(root *Node, parents map[*Node]*Node)
-	dfs = func(root *Node, parents map[*Node]*Node) {
+	var dfs func(root *TreeNode, parents map[*TreeNode]*TreeNode)
+	dfs = func(root *TreeNode, parents map[*TreeNode]*TreeNode) {
 		if root == nil {
 			return
 		}
@@ -818,10 +818,10 @@ func DelNodes(root *Node, to_delete []int) []*Node {
 		return nil
 	}
 	if to_delete == nil {
-		return []*Node{root}
+		return []*TreeNode{root}
 	}
 
-	var parents = make(map[*Node]*Node)
+	var parents = make(map[*TreeNode]*TreeNode)
 	parents[root] = nil
 	dfs(root, parents)
 
@@ -864,7 +864,7 @@ func DelNodes(root *Node, to_delete []int) []*Node {
 
 	}
 
-	var res []*Node
+	var res []*TreeNode
 	for child, parent := range parents {
 		if parent == nil {
 			res = append(res, child)
@@ -939,14 +939,14 @@ func MinTime(n int, edges [][]int, hasApple []bool) int {
 // c), 判断当前的 curCount == maxCount, 如果是, 则 retCount++ 并将值填入到结果集合当中.
 //
 // 注意: 第一次遍历和第二次遍历之间, 需要将 curCount, retCount 重置为0, pre = nil
-func FindMode(root *Node) []int {
+func FindMode(root *TreeNode) []int {
 	var (
-		pre                          *Node
+		pre                          *TreeNode
 		curCount, maxCount, retCount int
 		ret                          []int
 	)
-	var inOrder func(cur *Node)
-	inOrder = func(cur *Node) {
+	var inOrder func(cur *TreeNode)
+	inOrder = func(cur *TreeNode) {
 		if cur == nil {
 			return
 		}
@@ -1000,14 +1000,14 @@ func FindMode(root *Node) []int {
 // 深度优先遍历: 记录当前节点是处于的方向, 左边还是右边, 同时到当前节点的路径长度.
 //             如果孩子方向与当前处于的方向一致, 则重新开启计算, 否则孩子的路径长度=当前路径长度+1
 //
-func LongestZigZag(root *Node) int {
+func LongestZigZag(root *TreeNode) int {
 	if root == nil || root.Right == nil && root.Left == nil {
 		return 0
 	}
 
 	// direct true: left  false: right
-	var dfs func(node *Node, parent int, direct bool, ans *int)
-	dfs = func(node *Node, parent int, direct bool, ans *int) {
+	var dfs func(node *TreeNode, parent int, direct bool, ans *int)
+	dfs = func(node *TreeNode, parent int, direct bool, ans *int) {
 		if node == nil {
 			return
 		}
@@ -1046,11 +1046,11 @@ func LongestZigZag(root *Node) int {
 
 // 先序遍历构建树, 分割点是路径长度
 // 特点, 第一个节点是根, 后面的元素被当前节点路径个数个"-"分割成左右子树, 然后进行地柜遍历
-func RecoverFromPreorder(s string) *Node {
+func RecoverFromPreorder(s string) *TreeNode {
 	return buildTree(s, 1)
 }
 
-func buildTree(s string, level int) *Node {
+func buildTree(s string, level int) *TreeNode {
 	if len(s) == 0 {
 		return nil
 	}
@@ -1080,11 +1080,11 @@ func buildTree(s string, level int) *Node {
 
 	// 没有找到 cut, 说明当前元素是最后一个元素
 	if idx == -1 {
-		return &Node{Val: str2int(s)}
+		return &TreeNode{Val: str2int(s)}
 	}
 
 	// 找到 cut, 说明当前节点还存在孩子
-	root := &Node{Val: str2int(s[:idx])}
+	root := &TreeNode{Val: str2int(s[:idx])}
 	newsource := s[idx+level:]
 
 	// 查找分割点, 如果找到, 说明当前节点存在左右子树, 没有找到说明当前节点只有左子树
@@ -1114,25 +1114,25 @@ func str2int(s string) int {
 // 针对 0, 1, 2, 3 这些满二叉树都是特殊的树
 // 当 N > 3 时, 除去根节点, 分别取查找 i 个节点左子树 和 j 个节点的右子树, i+j+1=N
 // 当查找到后, 也就是说存在这样的左子树和右子树. 使用笛卡尔集, 就可以获得最终的结果
-func AllPossibleFBT(N int) []*Node {
+func AllPossibleFBT(N int) []*TreeNode {
 	if N == 0 {
 		return nil
 	}
 	if N == 1 {
-		root := &Node{}
-		return []*Node{root}
+		root := &TreeNode{}
+		return []*TreeNode{root}
 	}
 	if N == 2 {
 		return nil
 	}
 	if N == 3 {
-		root := &Node{}
-		root.Left = &Node{}
-		root.Right = &Node{}
-		return []*Node{root}
+		root := &TreeNode{}
+		root.Left = &TreeNode{}
+		root.Right = &TreeNode{}
+		return []*TreeNode{root}
 	}
 
-	var res []*Node
+	var res []*TreeNode
 	for i := 1; i < N-1; i++ {
 		j := N - i - 1
 		left := AllPossibleFBT(i)
@@ -1142,7 +1142,7 @@ func AllPossibleFBT(N int) []*Node {
 		}
 		for k := 0; k < len(left); k++ {
 			for v := 0; v < len(right); v++ {
-				root := &Node{}
+				root := &TreeNode{}
 				root.Left = left[k]
 				root.Right = right[v]
 				res = append(res, root)

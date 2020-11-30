@@ -1,6 +1,11 @@
 package tree
 
-func PreOrder(root *Node) []int {
+/*
+树的遍历
+*/
+
+// 先序遍历: 根左右
+func PreOrder(root *TreeNode) []int {
 	if root == nil {
 		return nil
 	}
@@ -28,7 +33,8 @@ func PreOrder(root *Node) []int {
 	return m
 }
 
-func MidleOrder(root *Node) []int {
+// 中序遍历: 左根右
+func MidleOrder(root *TreeNode) []int {
 	if root == nil {
 		return nil
 	}
@@ -54,7 +60,8 @@ func MidleOrder(root *Node) []int {
 	return m
 }
 
-func LastOrder(root *Node) []int {
+// 后序遍历: 左右根 => 根右左
+func LastOrder(root *TreeNode) []int {
 	if root == nil {
 		return nil
 	}
@@ -62,25 +69,25 @@ func LastOrder(root *Node) []int {
 		return []int{root.Val}
 	}
 
-	help := Stack{}
-	visit := Stack{}
+	s := Stack{}
+	data := Stack{}
 	cur := root
-	for !help.empty() || cur != nil {
+	for !s.empty() || cur != nil {
 		for cur != nil {
-			help.push(cur)
-			visit.push(cur)
+			s.push(cur)
+			data.push(cur)
 			cur = cur.Right
 		}
 
-		if !help.empty() {
-			cur = help.pop()
+		if !s.empty() {
+			cur = s.pop()
 			cur = cur.Left
 		}
 	}
 
 	m := make([]int, 0)
-	for !visit.empty() {
-		cur = visit.pop()
+	for !data.empty() {
+		cur = data.pop()
 		if cur != nil {
 			m = append(m, cur.Val)
 		}
@@ -89,7 +96,8 @@ func LastOrder(root *Node) []int {
 	return m
 }
 
-func LevelOrder(root *Node) [][]int {
+// 层序遍历
+func LevelOrder(root *TreeNode) [][]int {
 	if root == nil {
 		return nil
 	}
@@ -98,7 +106,7 @@ func LevelOrder(root *Node) [][]int {
 	}
 
 	var (
-		cur    *Node
+		cur    *TreeNode
 		values [][]int
 	)
 	q := Queue{}
