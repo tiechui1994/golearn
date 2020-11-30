@@ -6,7 +6,7 @@ import (
 )
 
 func TestQuickSort(t *testing.T) {
-	sort := HeapSort
+	sort := QuickSort
 	case1 := []int{13, 2, 9, 3, 7, 6, 19, 22}
 
 	fmt.Println("Before", case1)

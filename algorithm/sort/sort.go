@@ -15,7 +15,7 @@ package sort
 一般状况下, 选择的是 left 位置的元素作为 pivot(哨兵); 那么需要先 "从 right 位置查找一个位置, 此位置的元素 < pivot",
 然后交换left, right, 接着 "从 left 位置查找一个位置, 此位置的元素 > pivot", 然后交换left, right.
 
-注意: 上述的条件都是在 left < right 的前提下进行的. 上面的顺序不能乱了(乱了就出问题了)
+注意: 上述的操作都必须在 "left < right" 的前提下进行的. 上面的顺序不能乱了(乱了就出问题了)
 */
 
 func QuickSort(arr []int) {
@@ -97,6 +97,56 @@ func MergeSort(arr []int) {
 	}
 }
 
+func MergeSortI(nums []int) {
+	if len(nums) <= 1 {
+		return
+	}
+
+	merge := func(left, mid, right int, nums []int) {
+		n1, n2 := mid-left+1, right-mid
+		arr1, arr2 := make([]int, n1), make([]int, n2)
+
+		copy(arr1, nums[left:mid+1])
+		copy(arr2, nums[mid+1:right+1])
+
+		i, j := 0, 0
+		k := left
+
+		for i < n1 && j < n2 {
+			if arr1[i] <= arr2[j] {
+				nums[k] = arr1[i]
+				i++
+			} else {
+				nums[k] = arr2[j]
+				j++
+			}
+
+			k++
+		}
+
+		for ; i < n1; i++ {
+			nums[k] = arr1[i]
+			k++
+		}
+		for ; j < n2; j++ {
+			nums[k] = arr2[j]
+			k++
+		}
+	}
+
+	var sort func(left, right int, nums []int)
+	sort = func(left, right int, nums []int) {
+		if left < right {
+			mid := (left + right) / 2
+			sort(left, mid, nums)
+			sort(mid+1, right, nums)
+			merge(left, mid, right, nums)
+		}
+	}
+
+	sort(0, len(nums)-1, nums)
+}
+
 /*
 堆排序(关键是思维和思路,一定要清晰)
 
@@ -108,6 +158,11 @@ func MergeSort(arr []int) {
 3. 排序过程, 每次拿走第一个位置的元素(最大元素)放置到对应位置后, 接下来将之前的最低层的位置的元素移动到首位, 在这之后,
 堆该怎样调整? "自顶向下", 此时的堆底层是稳定的, 但是上层不稳定, 只能从上层不稳定的位置调整, 调整的时候只会影响一个分支,
 另一个分支依旧是稳定的.
+
+关于 TOP-K 问题思路?
+
+先构造一个 K 大小的小顶堆(最小元素在堆顶), 然后开始遍历所有的元素, 如果当前元素 > 堆顶, 则加入之(堆排序过程调整: 自上
+而下), 最后得到的就是最大的 K 个元素.
 **/
 func HeapSort(arr []int) {
 	var adjust func(idx, length int, arr []int)
