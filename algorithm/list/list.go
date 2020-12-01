@@ -130,113 +130,84 @@ func hasCycleII(head *ListNode) bool {
 
 //==================================================================================================
 
-// 两个链表相交的节点
-type liststack []*ListNode
-
-func (l *liststack) push(node *ListNode) {
-	*l = append(*l, node)
-}
-func (l *liststack) pop() *ListNode {
-	node := (*l)[l.len()-1]
-	*l = (*l)[0: l.len()-1]
-	return node
-}
-func (l *liststack) len() int {
-	return len(*l)
-}
-
-// 使用栈方法
-func findTwoListIntersectionNodeI(a, b *ListNode) *ListNode {
-	if a == nil || b == nil {
-		return nil
-	}
-	var stackA, stackB liststack
-	var rA, rB = a, b
-
-	for rA != nil || rB != nil {
-		if rA != nil {
-			stackA.push(rA)
-			rA = rA.Next
-		}
-
-		if rB != nil {
-			stackB.push(rA)
-			rB = rB.Next
-		}
-	}
-
-	nA := stackA.pop()
-	nB := stackB.pop()
-	if nA != nB {
-		return nil
-	}
-
-	var res = nA
-	for stackA.len() != 0 && stackA.len() != 0 {
-		nA = stackA.pop()
-		nB = stackB.pop()
-		if nA != nB {
-			break
-		}
-		res = nA
-	}
-
-	return res
-}
-
-// 不使用栈的方法, O(N)
-func findTwoListIntersectionNodeII(a, b *ListNode) *ListNode {
+/*
+两个链表的相交位置
+*/
+// 方式一: 先计算长度, 然后根据长度差来同时走 O(N)
+func getIntersectionNodeI(a, b *ListNode) *ListNode {
 	if a == nil || b == nil {
 		return nil
 	}
 
-	var aLast, bLast *ListNode
-	var aLen, bLen int
-	var rA, rB = a, b
-
-	for rA != nil || rB != nil {
-		if rA != nil {
-			aLen++
-			if rA.Next == nil {
-				aLast = rA
-			}
-			rA = rA.Next
+	lenA, lenB := 0, 0
+	curA, curB := a, b
+	for curA != nil || curB != nil {
+		if curA != nil {
+			lenA++
+			curA = curA.Next
 		}
 
-		if rB != nil {
-			bLen++
-			if rB.Next == nil {
-				bLast = rB
-			}
-			rB = rB.Next
+		if curB != nil {
+			lenB++
+			curB = curB.Next
 		}
 	}
 
-	if aLast != bLast {
-		return nil
-	}
-
-	var long, short *ListNode
-	var diff int
-
-	if aLen > bLen {
-		long, short = a, b
-		diff = aLen - bLen
+	diff := 0
+	if lenA >= lenB {
+		curA = a
+		curB = b
+		diff = lenA - lenB
 	} else {
-		long, short = b, a
-		diff = bLen - aLen
+		curA = b
+		curB = a
+		diff = lenB - lenA
 	}
 
-	for diff > 0 {
-		long = long.Next
+	for curA != nil && curB != nil {
+		if diff > 0 {
+			curA = curA.Next // A 先走 diff 步
+			diff -= 1
+		}
+
+		if curA == curB {
+			return curA
+		}
+
+		curA = curA.Next
+		curB = curB.Next
 	}
 
-	for long != short {
-		long = long.Next
-		short = short.Next
+	return nil
+}
+
+// 方式二: 同时走, A->B, B->A, 相遇的地方必定是首个公共点
+func getIntersectionNodeII(a, b *ListNode) *ListNode {
+	if a == nil || b == nil {
+		return nil
 	}
 
-	return long
+	curA, curB := a, b
+	for curA != nil || curB != nil {
+		if curA == curB {
+			return curA
+		}
+
+		if curA == nil || curB == nil {
+			if curA == nil {
+				curA = b
+			}
+			if curB == nil {
+				curB = a
+			}
+			continue
+		}
+
+		curA = curA.Next
+		curB = curB.Next
+	}
+
+	return nil
 }
 
 //==================================================================================================

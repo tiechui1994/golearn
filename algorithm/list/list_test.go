@@ -3,7 +3,6 @@ package list
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
 func List(arr []int) *ListNode {
@@ -22,25 +21,45 @@ func List(arr []int) *ListNode {
 	return root
 }
 
-func TestReverseBetween(t *testing.T) {
-	s := time.Now()
-	head := &ListNode{
-		Next: &ListNode{
-			Next: &ListNode{
-				Next: &ListNode{
-					Next: &ListNode{
-						Val: 5,
-					},
-					Val: 4,
-				},
-				Val: 3,
-			},
-			Val: 2,
-		},
-		Val: 1,
+func Tail(head *ListNode) *ListNode {
+	if head == nil || head.Next == nil {
+		return head
 	}
-	reverseBetween(head, 2, 4)
-	fmt.Printf("%+v", time.Now().Sub(s).Nanoseconds())
+
+	cur := head
+	for cur != nil {
+		if cur.Next == nil {
+			return cur
+		}
+		cur = cur.Next
+	}
+
+	return nil
+}
+
+func Reverse(head *ListNode) *ListNode {
+	if head == nil || head.Next == nil {
+		return head
+	}
+
+	var pre *ListNode
+	cur := head
+
+	for cur != nil {
+		next := cur.Next
+
+		cur.Next = pre
+		pre = cur
+
+		cur = next
+	}
+
+	return pre
+}
+
+func TestReverseBetween(t *testing.T) {
+	case1 := List([]int{1, 2, 3, 4, 5})
+	reverseBetween(case1, 2, 4)
 }
 
 func TestIsPalindrome(t *testing.T) {
@@ -74,4 +93,16 @@ func TestReverseKGroup(t *testing.T) {
 	case1 := List([]int{1, 2, 3, 4, 5})
 	fmt.Println(reverseKGroup(case1, 2))
 
+}
+
+func TestGetIntersectionNode(t *testing.T) {
+	getIntersectionNode := getIntersectionNodeII
+	a := List([]int{1, 2, 4})
+	b := List([]int{4, 5})
+	common := List([]int{99, 22, 44, 11})
+	Tail(a).Next = common
+	Tail(b).Next = common
+
+	node := getIntersectionNode(a, b)
+	fmt.Println(node.Val)
 }
