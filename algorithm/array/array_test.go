@@ -23,7 +23,7 @@ func TestFindPeek(t *testing.T) {
 
 func TestKNumSum(t *testing.T) {
 	nums := []int{1, 0, -1, 0, -2, 2}
-	res := KNumSum(nums, 4, 0)
+	res := kSum(nums, 4, 0)
 	for i := range res {
 		fmt.Println(res[i])
 	}

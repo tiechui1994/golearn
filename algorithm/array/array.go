@@ -5,60 +5,137 @@ import (
 	"sort"
 )
 
+/*
+15. 两数之和, 三数之和, K数之和
+
+需要从两数之和开始说起, 首先进行排序, 排序的目的是可以从高低位置开始查找, 以达到扫描一次的效果.
+
+sum = nums[low]+nums[high]
+
+三种情况:
+
+sum == target, 当前的 low 和 high 是满足条件的. 接下来只能同时增大low和减小high才能找到下一对. 注意去重操作.
+sum > target, high--
+sum < target, low++
+
+三数之和, 是在两数之和的基础上增加了一个数. 先可以固定一个数(索引idx, 0<=idx<N-2), 这里要特别注意这个数必须每次不一样,
+由于idx是从0开始, 条件为 idx>0 && nums[idx] != nums[idx-1]; 然后在剩下的 [idx+1,N-1] 范围内进行查找两数之和为
+target-nums[idx].
+
+K数之和, 思路基本上三数之和是一样的, 只不过要使用递归来求解
+
+**/
 // 三个数字的和是0的所有组合, 空间: O(N) 时间:O(N^2)
 func threeSum(nums []int) [][]int {
 	sort.SliceStable(nums, func(i, j int) bool {
 		return nums[i] < nums[j]
 	})
 
-	var res [][]int
-	size := len(nums)
-	if nums[0] > 0 && nums[size-1] < 0 {
-		return res
+	var result [][]int
+	N := len(nums)
+	if nums[0] > 0 && nums[N-1] < 0 {
+		return result
 	}
 
-	for k := 0; k < size-2; k++ {
+	for k := 0; k < N-2; k++ {
 		if nums[k] > 0 {
 			break
 		}
-		// 重复
+
+		// 重复的数字(向下去重)
 		if k > 0 && nums[k] == nums[k-1] {
 			continue
 		}
 
+		// k 锁定一个数, 剩下数的范围是 [k+1, N-1], 在这个范围内可以高低指针双向查找.
 		i := k + 1
-		j := size - 1
+		j := N - 1
 		for i < j {
 			sum := nums[k] + nums[i] + nums[j]
 			if sum == 0 {
-				res = append(res, []int{nums[i], nums[j], nums[k]})
-				i++
-				for i < j && nums[i] == nums[i-1] {
+				result = append(result, []int{nums[i], nums[j], nums[k]})
+				for i < j && nums[i] == nums[i+1] {
 					i++
+				}
+				for i < j && nums[j] == nums[j-1] {
+					j--
 				}
 
+				i++
 				j--
-				for i < j && nums[j] == nums[j+1] {
-					j--
-				}
 			} else if sum < 0 {
 				i++
-				for i < j && nums[i] == nums[i-1] {
-					i++
-				}
 			} else {
 				j--
-				for i < j && nums[j] == nums[j+1] {
-					j--
-				}
 			}
 		}
 	}
 
-	return res
+	return result
 }
 
-//-----------------------------------------------------------------
+func kSum(nums []int, k, target int) [][]int {
+	sort.SliceStable(nums, func(i, j int) bool {
+		return nums[i] < nums[j]
+	})
+
+	var ksum func(nums []int, start, k, target int) [][]int
+	ksum = func(nums []int, startIndex, k, target int) [][]int {
+		N := len(nums)
+		var result [][]int
+
+		// 两数之和为特定值, 一次遍历, O(N)
+		if k == 2 {
+			var left, right = startIndex, N-1
+			for left < right {
+				sum := nums[left] + nums[right]
+				if sum == target {
+					result = append(result, []int{nums[left], nums[right]})
+					// 跳过重复的数
+					for left < right && nums[left] == nums[left+1] {
+						left++
+					}
+					for left < right && nums[right] == nums[right-1] {
+						right--
+					}
+
+					// 非重复的数字
+					left++
+					right--
+				} else if sum < target {
+					left++
+				} else {
+					right--
+				}
+			}
+
+			return result
+		}
+
+		// 多数之和.
+		end := N - (k - 1)
+		for i := startIndex; i < end; i++ {
+			// 相同的数, 跳跃之. 需要注意的事项是向前看
+			if i > startIndex && nums[i] == nums[i-1] {
+				continue
+			}
+
+			// 锁定一个数 i, 在剩下的范围内查找 [i+1,N-1] 查找剩下的 k-1 个数的和是 target-nums[i]
+			// 查找成功之后, 在每个结果当中追加当前的数字.
+			temp := ksum(nums, i+1, k-1, target-nums[i])
+			for j := range temp {
+				temp[j] = append([]int{nums[i]}, temp[j]...)
+			}
+			result = append(result, temp...)
+		}
+
+		return result
+	}
+
+	return ksum(nums, 0, k, target)
+}
+
+//==================================================================================================
 
 // 有序的数组, 去除重复的数字 ==> 双指针
 func removeDuplicates(nums []int) int {
@@ -132,104 +209,8 @@ func findPeek(nums []int) (bool, int) {
 	return false, -1
 }
 
-// ------------------------------------------------------------------------
-// 寻找数组当中k个数的和是target
-// 双指针的思想:
-//
-// k个数的和是target的算法.
-func KNumSum(nums []int, k, target int) [][]int {
-	sort.SliceStable(nums, func(i, j int) bool {
-		return nums[i] < nums[j]
-	})
-	return ksum(nums, 0, k, target)
-}
+//==================================================================================================
 
-func ksum(nums []int, start, k, target int) [][]int {
-	n := len(nums)
-	var res [][]int
-	if k == 2 {
-		var left, right = start, n-1
-		for left < right {
-			sum := nums[left] + nums[right]
-			if sum == target {
-				res = append(res, []int{nums[left], nums[right]})
-				for left < right && nums[left] == nums[left+1] {
-					left++
-				}
-				for left < right && nums[right] == nums[right-1] {
-					right--
-				}
-				left++
-				right--
-			} else if sum < target {
-				left++
-			} else {
-				right--
-			}
-		}
-
-		return res
-	}
-
-	end := n - (k - 1)
-	for i := start; i < end; i++ {
-		if i > start && nums[i] == nums[i-1] {
-			continue
-		}
-		temp := ksum(nums, i+1, k-1, target-nums[i])
-		for j := range temp {
-			temp[j] = append([]int{nums[i]}, temp[j]...)
-		}
-		res = append(res, temp...)
-	}
-
-	return res
-}
-
-func threeSumClosest(nums []int, target int) int {
-	n := len(nums)
-	if n <= 3 {
-		sum := 0
-		for i := range nums {
-			sum += nums[i]
-		}
-		return sum
-	}
-
-	sort.SliceStable(nums, func(i, j int) bool {
-		return nums[i] < nums[j]
-	})
-	abs := func(x int) int {
-		if x < 0 {
-			return -x
-		}
-		return x
-	}
-
-	res := nums[0] + nums[1] + nums[2]
-	for i := 0; i < n; i++ {
-		var left, right = i+1, n-1
-		for left < right {
-			sum := nums[left] + nums[right] + nums[i]
-
-			if abs(target-sum) < abs(target-res) {
-				res = sum
-			}
-
-			if sum > target {
-				right--
-			} else if sum < target {
-				left++
-			} else {
-				return res
-			}
-		}
-	}
-
-	return res
-}
-
-// -------------------------------------------------------------------------------------------------
 // 旋转矩阵
 func spiralOrder(matrix [][]int) []int {
 	tR := 0
@@ -280,7 +261,8 @@ func spiralOrder(matrix [][]int) []int {
 	return res
 }
 
-// -------------------------------------------------------------------------------------------------
+//==================================================================================================
+
 //原题: 传送带上的第 i 个包裹的重量为 weights[i]. 每一天, 我们都会按给出重量的顺序往传送带上装载包裹. 我们装载的重量
 //不会超过船的最大运载重量.
 //返回能在 D 天内将传送带上的所有包裹送达的船的最低运载能力.
@@ -327,6 +309,8 @@ func shipWithinDays(weights []int, D int) int {
 
 	return low
 }
+
+//==================================================================================================
 
 /*
 33. 搜索旋转排序数组
@@ -387,6 +371,8 @@ func search(nums []int, target int) int {
 
 	return binarySearch(0, index)
 }
+
+//==================================================================================================
 
 // 螺旋矩阵I
 // 给定一个包含 m * n 个元素的矩阵(m行, n列), 请按照顺时针螺旋顺序, 返回矩阵中的所有元素.
@@ -575,6 +561,8 @@ func spiralMatrixIII(R int, C int, r0 int, c0 int) [][]int {
 	return res
 }
 
+//==================================================================================================
+
 func findRoateIndex(nums []int) int {
 	var left, right = 0, len(nums)-1
 	if nums[left] < nums[right] {
@@ -596,6 +584,8 @@ func findRoateIndex(nums []int) int {
 
 	return left
 }
+
+//==================================================================================================
 
 func searchRange(nums []int, target int) []int {
 	if nums == nil {
