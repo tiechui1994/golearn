@@ -1,4 +1,4 @@
-## Go 汇编基础
+# Go 汇编基础
 
 几个概念
 
@@ -7,7 +7,14 @@
 - 调用者: caller, 比如: A函数调用了B函数, 那么 A 就是调用者
 - 被调者: callee, 比如: A函数调用了B函数, 那么 B 就是被调者
 
-Go 核心寄存器
+### Go 汇编中的伪寄存器
+
+![image](/images/develop_assembly_registers.png)
+
+> 在 AMD64 环境, 伪PC寄存器其实是IP指令计数寄存器的别名. 伪FP寄存器对应的是函数的帧指针, 一般来访问函数的参数和返回值.
+> 伪SP栈指针对应的是当前函数栈的底部(不包括参数和返回值部分), 一般用于定位局部变量. 伪SP是一个比较特殊的寄存器, 因为还存
+> 在一个同名的SP真寄存器. 真SP寄存器对应的是栈的顶部, 一般用于定位调用其他函数的参数和返回值.
+
 
 | 寄存器 | 说明 |
 | ---- | ---- | 
@@ -44,7 +51,7 @@ frame 上, 指向调用 add 函数时传递的第一个参数的位置. **经常
 
 > 注意: 要站在 callee 的角度来看.
 
-![image](/images/develop_compile_register.png)
+![image](/images/develop_assembly_regmem.png)
  
  
 汇编指令:
