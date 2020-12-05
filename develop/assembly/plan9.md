@@ -286,7 +286,6 @@ DATA symbol+offset(SB)/width, value
 含义是从 symbol+offset 偏移量开始, width宽度的内存, 用 value 变量对应的值初始化. DATA 初始化内存时, width 必须是
 1, 2, 4, 8 几个宽度之一, 因为再大的内存无法一次性无法用一个 uint64 大小的值表示.
 
-
 ### 数组类型
 
 汇编中数组是非常简单的类型.
@@ -405,4 +404,92 @@ map 和 chan 变量. 函数签名如下:
 ```
 func makemap(mapType *byte, hint int, mapbuf *any) (hmap map[any]any)
 func makechan(chanType *byte, size int) (hchan chan any)
+```
+
+## 函数
+
+### 函数声明
+
+函数标识符通过 TEXT 汇编指令定义, 表示该行开始的指令在TEXT内存段. TEXT 语句后的指令一般对应函数的实现, 但是对于TEXT
+指令本身来说并不关系后面是否有指令. 因此 TEXT 和 LABEL 定义的符号是类型的, 区别只是 LABEL 是用于跳转标号, 但是本质
+上它们都是通过标识符映射一个内存地址.
+
+```
+TEXT symbol(SB), [flags,] $framesizze[-argsize]
+```
+
+函数定义由5个部分组成: TEXT指令, 函数名(symbol), 可选的flag标记, 函数帧大小和可选的函数参数大小.
+
+其中, TEXT 用于定义函数符号, 函数名中当前包的路径可以忽略. 函数名字后面是 `(SB)`, 表示函数名符号相对于SB伪寄存器的偏
+移量, 二者组合在一起最终是绝对地址. 作为全局的标识符的全局变量和全局函数的名字一般都是基于SB伪寄存器的相对地址.
+
+标志部分, 用于指示函数的一些特殊行为, 标记在 `textflag.h` 文件中定义. 常见的 `NOSPLIT` 主要用于指示叶子函数不进行
+栈分裂. `WRAPPER` 标志则表示这个是一个包装函数, 在panic或runtime.caller等某些处理函数帧的地方不会增加函数帧计数.
+`NEEDCTXT` 表示需要一个上下文参数, 一般用于闭包函数.
+
+framesize部分, 表示函数的局部变量需要多少栈空间, 其中包含调用其他函数时准备调用参数的隐式栈空间. 
+
+最后是可以省略的参数大小, 之所以可以省略是因为编译器可以从Go语言函数声明中推导出函数参数的大小.
+
+一个简单的函数 `Swap`.
+
+```go
+package main
+
+//go:nosplit
+func Swap(a, b int) (int, int)
+```
+
+下面是汇编定义 `Swap` (两种定义)
+
+```
+TEXT ·Swap(SB), NOSPLIT, $0-32
+
+TEXT ·Swap(SB), NOSPLIT, $0
+```
+
+> 注意: 函数是没有类型, 上面定义的 Swap 函数签名可以说下面任意一种格式:
+```
+func Swap(a, b, c int) int
+func Swap(a, b, c, d int)
+func Swap()(a, b, c, d int)
+func Swap()(a []int, d int)
+...
+```
+
+### 函数参数和返回值
+
+对于函数而言, 最重要的是函数对外提供的API约定, 包含函数的名称, 参数和返回值. 当这些都确定之后, 如何精确计算参数和返回值
+大小是第一个需要解决的问题.
+
+例如, Swap函数签名如下:
+
+```
+func Swap(a, b int)(ret0, ret1 int)
+```
+
+对于这个函数, 参数和返回值大小是32字节:
+
+```
+TEXT ·Swap(SB), $0-32
+```
+
+如何在汇编中引用这4个参数呢? 为此 Go 汇编中引入了一个 FP 伪寄存器, 表示函数当前帧的地址. 也就是第一个参数的地址. 因此
+可以通过 `+0(FP)`, `+8(FP)`, `+16(FP)`, `+24(FP)` 来分别表示 a, b, ret0, ret1 四个参数.
+
+但是, 在汇编代码当中, 我们并不能直接以 `+0(FP)` 的方式来使用参数. 为了编写易于维护的汇编代码, Go 汇编语言要求, 任何通
+过 FP 伪寄存器访问的遍历必和一个临时标识符前缀组合后才能有效, **一般使用参数对应的变量名作为前缀**.
+
+![image](/images/develop_assembly_swap_mem.png)
+
+
+汇编函数实现 Swap 函数:
+
+```
+TEXT ·Swap(SB), $0-32
+    MOVQ a+0(FP), AX      // AX=a
+    MOVQ b+8(FP), BX      // BX=b
+    MOVQ BX, ret0+16(FP)  // ret0=BX
+    MOVQ AX, ret1+24(FP)  // ret1=AX
+    RET
 ```
