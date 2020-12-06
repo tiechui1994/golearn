@@ -3,6 +3,8 @@ package memory
 import (
 	"testing"
 	"time"
+	"fmt"
+	"unsafe"
 )
 
 func AllocateLargeMem(size int64) {
@@ -15,4 +17,19 @@ func TestAllocate(t *testing.T) {
 	t.Log("size", 1<<20*64)
 	AllocateLargeMem(1<<20*64 + 100)
 	t.Logf("times: %v", time.Now().Sub(s).String())
+}
+
+func TestAligh(t *testing.T) {
+	type Complex struct {
+		a bool
+		b int16
+		c []byte
+		d int64
+	}
+
+	var x Complex
+	fmt.Println("c", unsafe.Offsetof(x.c))
+	fmt.Println("d", unsafe.Offsetof(x.d))
+	fmt.Println("aligin", unsafe.Alignof(x))
+	fmt.Println("size", unsafe.Sizeof(x))
 }

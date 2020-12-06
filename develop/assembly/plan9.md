@@ -516,6 +516,54 @@ type Foo_args struct {
     b int16
     c []byte
 }
+
+type Foo_returns struct {
+    c []byte
+}
 ```
+
+使用 `Foo_args` 和 `Foo_returns` 临时结构体类型用于替代原始的参数和返回值.
+
+然后将 Foo 原来的参数替换为结构体形式, 并且只保留唯一的 FP 作为参数:
+
+```
+func Foo(FP *SomeFun_args, FP_ret *SomeFunc_returns) {
+    // a = FP+offset(&args.a)
+    _ = uintptr(FP) + unsafe.Offset(FP.a) // a
+    // b = FP+offset(&args.b)
+    _ = uintptr(FP) + unsafe.Offset(FP.b) // b
+    
+    
+    // argsize = sizeof(args)
+    argsize = unsafe.Offset(FP)
+    
+    // c = FP + argsize + offset(&return.c)
+    _ = uintptr(FP) + argsize + unsafe.Offset(&FP_ret.c) // c
+    
+    // framesize = sizeof(args) + sizeof(returns)
+    _ = unsafe.Offset(FP) + unsafe.Offset(FP_ret)
+}
+```
+
+代码完全和Foo函数参数方式类型. 唯一的差异是每个函数的偏移量. 通过 `unsafe.Offset()` 函数自动计算生成. 因为 Go 结构体
+中的每个成员已经满足了对齐的要求, 因此采用通用的方式得到每个参数的偏移量也是满足对齐要求的.
+
+Foo 函数的参数和返回值的大小和内存布局:
+
+![image](/images/develop_assembly_foo_mem.png)
+
+Foo 汇编函数参数和返回值的定位:
+
+```
+TEXT ·Foo(SB), $0
+    MOVQ a+0(FP), AX         // a
+    MOVQ b+2(FP), BX         // b
+    MOVQ c_dat+8*1(FP), CX   // c.Data
+    MOVQ c_dat+8*2(FP), DX   // c.Len
+    MOVQ c_dat+8*3(FP), DI   // c.Cap
+    RET
+```
+
+其中 a 和 b 参数之间出现了 1 个字节空洞. b 和 c 出现了 4 个字节的空洞.
 
 

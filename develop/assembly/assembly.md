@@ -68,6 +68,25 @@ frame 上, 指向调用 add 函数时传递的第一个参数的位置. **经常
 | SUBQ | 运算 | 相减并赋值 | SUBQ BX, AX // 等价 AX-=BX |
 | CMPQ | 运算 | 比较大小 | CMPQ SI CX // 比较 SI 和 CX 大小 |
 | CALL | 转移 | 调用函数 | |
-| JMP | 转移 | 无条件转移指令 | JMP 0x0185 // 无条件转至 0x0185 地址处 |
-| JLS | 转移 | 条件转移指令 | JLS 0x185 // 左边小于右边, 则跳转到 0x0185 地址处, 一般前面都有一个 CMPQ 指令 |
+| JMP | 转移 | 无条件转移指令 | JMP LOOP // 无条件转至LOOP标签处, goto语句 |
+| JE | 转移 | 等于则跳转 | JE LOOP // 等于则跳转, 跳转到 LOOP 地址处 |
+| JZ | 转移 | 为0则跳转 | JZ LOOP // 为0则跳转, 则跳转到 LOOP 地址处, 一般前面都有一个 CMPQ 指令 |
+| JL | 转移 | 有符号小于则跳转 | JE LOOP // 有符号小于则跳转, 跳转到 LOOP 地址处 |
+| JB | 转移 | 无符号小于则跳转 | JE LOOP // 无符号小于则跳转, 跳转到 LOOP 地址处 |
+
+
+> CMPQ, JMP, JL 使用案例
+
+```armasm
+
+CMPQ AX, BX // AX 和 BX 比较
+JL LOOP_FALSE // AX < BX
+JMP LOOP_TRUE // AX >= BX
+
+LOOP_TRUE:
+    CALL xxx(SB)
+
+LOOP_FALSE:
+    CALL xxx(SB)
+```
 
