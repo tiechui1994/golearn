@@ -1,5 +1,9 @@
 # Go 汇编基础
 
+> 小知识点: 在 Linux 当中 `·` 怎么输入?
+> 按下快捷键: Ctrl+Shift+U, 然后输入: 00B7 或者 B7, 回车之后 `·` 就显示在 Shell 终端了.
+> [中点号相关的文档](https://zh.wikipedia.org/zh-cn/%E9%97%B4%E9%9A%94%E5%8F%B7)
+
 几个概念
 
 - 栈: 进程, 线程, goroutine 都有字节的调用栈, 先进先出(FIFO)
@@ -109,7 +113,7 @@ TEXT ·Sum(SB), $8
 STEP:
    SUBQ $1, AX  // AX-=1
 
-   MOVQ AX, 0(SP) // AX 入函数调用栈
+   MOVQ AX, 0(SP) // AX 入函数调用栈. 局部变量
    CALL ·Sum(SB) 
    MOVQ 8(SP), BX // BX=Sum(AX-1), 获取函数返回值.
 
@@ -130,16 +134,16 @@ RETURN:
 #include "textflag.h"
 
 // func Add(a, b int) int
-TEXT ·Add(SB), $8
+TEXT ·Add(SB), $16
     MOVQ a+0(FP), AX  // a
     MOVQ b+8(FP), BX  // b
 
-    MOVQ AX, 0(SP)  // a 入函数参数栈
-    MOVQ BX, 8(SP)  // b 入函数参数栈
+    MOVQ AX, 0(SP)  // a 入函数参数栈. 局部变量
+    MOVQ BX, 8(SP)  // b 入函数参数栈. 局部变量
     CALL ·Print2(SB) // 调用 Print2(a,b) 
     MOVQ 16(SP), CX // 获取函数返回值. 
 
-    MOVQ CX, 0(SP)  // c 入函数栈
+    MOVQ CX, 0(SP)  // c 入函数栈. 局部变量
     CALL ·Print1(SB) // 调用 Printl(a)
 
     MOVQ a+0(FP), AX // AX=a, 避免AX污染
