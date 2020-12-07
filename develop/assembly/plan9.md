@@ -1,6 +1,6 @@
 # go 汇编
 
-## 变量定义
+## 变量定义(热身)
 
 ### 定义整数变量
 
@@ -94,7 +94,6 @@ func main() {
 ```
 
 > 对于 Go 包的用户来说, 用 Go 汇编语言或 Go 语言实现并无任何区别.
-
 
 ### 定义字符串变量
 
@@ -196,7 +195,6 @@ var Name string
 ```
 
 > 将 NameData 声明为长度为 8 的字节数组. 编译器可以通过类型分析处该变量不包含指针, 因此汇编代码中可以省略 NOPTR 标志.
-
 
 ### 定义 main 函数
 
@@ -566,6 +564,49 @@ TEXT ·Foo(SB), $0
 
 其中 a 和 b 参数之间出现了 1 个字节空洞. b 和 c 出现了 4 个字节的空洞.
 
+### 函数中的局部变量
+
+从 Go 语言函数角度讲, 局部变量是函数内明确定义的变量, 同时包含函数的参数和返回值变量. 但是 **从 Go 汇编角度来看, 局部变
+量是指函数运行时, 在当前函数栈所对应的内存内的变量, 不包括函数的参数和返回值(访问差异)**. 函数栈帧的空间主要由函数参数和
+返回值, 局部变量和被调用其他函数的参数和返回值空间组成.
+
+为了便于访问局部变量, Go汇编引入了 `伪SP寄存器`, 对应当前栈帧的底部(高地址). 因为当前栈帧的底部是固定不变的, 因此访问局
+部变量的相对于伪SP寄存器也就是固定的(简化局部变量维护). SP真寄存器对应当前栈帧的顶部(低地址). 
+
+
+SP真伪寄存器的区分标准是啥?, 如果使用 SP 时有一个临时标识符前缀就是伪SP寄存器, 否则就是SP真寄存器. 比如 `a(SP)`, 
+`b+8(SP)` 这是伪SP寄存器. 比如 `0(SP)`, `8(SP)`, `+16(SP)` 这是真SP寄存器. 
+
+**真SP寄存器一般用于表示调用其他函数时的参数和返回值**, 真SP寄存器对应内存低地址, 所以被访问的变量的偏移量是正数. 而伪
+SP寄存器对应内存的高地址, 对应局部变量的偏移量都是负数.
+
+```
+func Foo() {
+    var c []byte
+    var b int16
+    var a bool
+}
+```
+
+汇编实现, 并通过伪SP寄存器来定位局部变量.
+
+```
+TEXT ·Foo(SB), $32
+    MOVQ a-32(SP), AX // a
+    MOVQ b-30(SP), BX // b
+    MOVQ c_data-24(SP), CX // c.Data
+    MOVQ c_len-16(SP), DX  // c.Len
+    MOVQ c_cap-8(SP), DI   // c.Cap
+    
+    RET
+```
+
+### 控制流
+
+对于顺序执行, 这个不强调了.
+对于跳转(if/goto), 这个参考 goto_amd64.s
+对于循环, 这个参考 loop_amd64.s
+
 
 ### 函数调用规范
 
@@ -581,5 +622,133 @@ IP寄存器, 实现函数的返回.
 和 C 函数不同, Go 函数的参数和返回值完全通过栈传递. 下面是 Go 函数调用时栈的布局图:
 
 ![image](/images/develop_assembly_func_stack.png)
+
+### 方法函数
+
+Go 语言中方法函数和全局函数非常相似, 比如:
+
+```
+type Int int
+
+func (i Int) Twice() int {
+    return int(i)*2
+}
+
+func Int_Twice(i Int) int {
+    return int(i)*2
+}
+```
+
+其中 Int 类型的 Twice 方法和 Int_Twice 函数的类型是完全一样的, 只不过 Twice 的目标文件中被修饰为 `main.Int.Twice`
+名称. 可以使用汇编实现该方法:
+
+```
+TEXT ·Int·Twice(SB), NOSPLIT, $0-16
+    MOVQ a+0(FP), AX   // i
+    ADDQ AX, AX
+    MOVQ AX, ret+8(FP) // return 
+    RET
+```
+
+不过这只是接收非指针的方法函数. 现在增加一个接收参数为指针类型的 `Ptr` 方法, 函数返回指针.
+
+```
+func (i *Int) Ptr() *Int {
+    return i
+}
+```
+
+在目标文件中, Ptr 方法名被修饰为 `main.(*Int).Ptr`, 也就是对应汇编中的 `·(*Int)·Ptr`. **不过 Go 汇编语言中, 星号,
+小括号都无法用作函数名字, 也就是无法使用汇编直接实现接收参数为指针类型的方法.**
+
+### 递归函数
+
+参考代码 sum_amd64.s
+
+### 闭包函数
+
+闭包函数是最强大的函数, 因为闭包函数可以捕获外层局部作用域的局部变量, 因此闭包函数本身具有了状态.  先看一个例子:
+
+```
+func NewTwiceClosure(x int) func() int {
+    return func() int {
+        x *= 2
+        return x
+    }
+}
+
+
+func main() {
+    fn := NewTwiceClosure(10)
+    
+    fmt.Println(fn()) // 20
+    fmt.Println(fn()) // 40
+    fmt.Println(fn()) // 80
+}
+```
+
+其中 `NewTwiceClosure` 函数返回一个闭包函数对象, 返回的闭包函数对象捕获了外层的 x 参数. 返回的闭包函数对象在执行时, 
+每次将捕获的外层变量乘以2之后再返回. 在 `main` 当中, 首先以 10 作为参数调用 `NewTwiceClosure` 函数构造一个闭包函数,
+返回的闭包函数保存在 `fn` 闭包函数类型的变量中. 然后每次调用 `fn` 闭包函数将返回翻倍后的结果.
+
+Go语言层面的很容易理解. 但是闭包函数如何使用汇编实现呢? 首先构造一个 `FunTwiceClosure` 结构体类型, 用来表示闭包对象:
+
+```
+//go:noescape
+func ptrToFunc(p unsafe.Pointer) func() int
+
+//go:noescape
+func asmFunTwiceClosureAddr() uintptr
+
+//go:noescape
+func asmFunTwiceClosureBody() int
+
+type TwiceClosure struct {
+	F uintptr
+	X int
+}
+
+func NewTwiceClosure(x int) func() int {
+	var p = TwiceClosure{
+		F: asmFunTwiceClosureAddr(),
+		X: x,
+	}
+
+	return ptrToFunc(unsafe.Pointer(&p))
+}
+```
+
+`NewTwiceClosure` 当中的 F 表示闭包函数的函数指令的地址, X 表示闭包捕获的外部变量. 如果捕获多个外部变量, 那么结构体
+也是需要做相应的调整. 
+
+构造 `NewTwiceClosure` 结构体对象, 其中 `asmFunTwiceClosureAddr` 函数用于辅助获取必报函数的函数指令的地址, 采用
+汇编实现. `ptrToFunc` 辅助函数将结构体转为闭包函数对象返回.
+
+
+```
+#include "textflag.h"
+
+TEXT ·ptrToFunc(SB), NOSPLIT, $0
+    MOVQ ptr+0(FP), AX // AX = ptr
+    MOVQ AX, ret+8(FP) // return AX
+    RET
+
+TEXT ·asmFunTwiceClosureAddr(SB), NOSPLIT, $0
+    LEAQ ·asmFunTwiceClosureBody(SB), AX // AX=·asmFunTwiceClosureAddr(SB)
+    MOVQ AX, ret+0(FP)
+    RET
+
+TEXT ·asmFunTwiceClosureBody(SB), NOSPLIT|NEEDCTXT, $0
+    MOVQ 8(DX), AX     // 获取 X 的值
+    ADDQ AX, AX        // AX += AX
+    MOVQ AX, 8(DX)     // 将 X 保存到 DX 当中
+    MOVQ AX, ret+0(FP) // return
+    RET
+```
+
+其中 `·asmFunTwiceClosureAddr` 的当中 `·asmFunTwiceClosureBody(SB)` 代表了 `asmFunTwiceClosureBody` 函数
+的地址, 注意操作当中要把 `(SB)` 部分带上. 最重要的是 `·asmFunTwiceClosureBody` 函数的实现: **它带有一个 NEEDCTXT
+标志. 采用 `NEEDCTXT` 标志定义的汇编函数表示需要一个上下文环境, 在 AMD64 环境中通过 DX 寄存器来传递这个上下文环境指针,
+也就是 `TwiceClosure` 结构体指针`. 
 
 

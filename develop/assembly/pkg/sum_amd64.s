@@ -1,6 +1,7 @@
 #include "textflag.h"
 
 // func Sum(n int) int
+// 这个函数的递归调用的.
 TEXT ·Sum(SB), $8
     MOVQ n+0(FP), AX
     MOVQ ret+8(FP), BX
@@ -12,7 +13,7 @@ TEXT ·Sum(SB), $8
 STEP:
    SUBQ $1, AX  // AX-=1
 
-   MOVQ AX, 0(SP)  // AX 入参数栈
+   MOVQ AX, 0(SP)  // AX 入参数栈. 局部变量
    CALL ·Sum(SB)
    MOVQ 8(SP), BX  // BX=Sum(AX-1), 获取返回值
 
