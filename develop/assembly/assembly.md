@@ -67,12 +67,14 @@ frame 上, 指向调用 add 函数时传递的第一个参数的位置. **经常
 | ADDQ | 运算 | 相加并赋值 | ADDQ BX, AX // 等价 AX+=BX |
 | SUBQ | 运算 | 相减并赋值 | SUBQ BX, AX // 等价 AX-=BX |
 | CMPQ | 运算 | 比较大小 | CMPQ SI CX // 比较 SI 和 CX 大小 |
-| CALL | 转移 | 调用函数 | |
+| CALL | 转移 | 调用函数 | CALL ·Sum(SB) |
 | JMP | 转移 | 无条件转移指令 | JMP LOOP // 无条件转至LOOP标签处, goto语句 |
 | JE | 转移 | 等于则跳转 | JE LOOP // 等于则跳转, 跳转到 LOOP 地址处 |
 | JZ | 转移 | 为0则跳转 | JZ LOOP // 为0则跳转, 则跳转到 LOOP 地址处, 一般前面都有一个 CMPQ 指令 |
-| JL | 转移 | 有符号小于则跳转 | JE LOOP // 有符号小于则跳转, 跳转到 LOOP 地址处 |
-| JB | 转移 | 无符号小于则跳转 | JE LOOP // 无符号小于则跳转, 跳转到 LOOP 地址处 |
+| JL | 转移 | 有符号小于则跳转 | JL LOOP // 有符号小于则跳转, 跳转到 LOOP 地址处 |
+| JB | 转移 | 无符号小于则跳转 | JB LOOP // 无符号小于则跳转, 跳转到 LOOP 地址处 |
+| JG | 转移 | 有符号大于则跳转 | JG LOOP // 有符号大于则跳转, 跳转到 LOOP 地址处 |
+| JA | 转移 | 无符号大于则跳转 | JA LOOP // 无符号大于则跳转, 跳转到 LOOP 地址处 |
 
 
 > CMPQ, JMP, JL 使用案例
@@ -81,7 +83,7 @@ frame 上, 指向调用 add 函数时传递的第一个参数的位置. **经常
 
 CMPQ AX, BX // AX 和 BX 比较
 JL LOOP_FALSE // AX < BX
-JMP LOOP_TRUE // AX >= BX
+JMP LOOP_TRUE // 无调整转移, AX >= BX
 
 LOOP_TRUE:
     CALL xxx(SB)
@@ -90,3 +92,87 @@ LOOP_FALSE:
     CALL xxx(SB)
 ```
 
+> CALL 使用案例 -- 求和公式
+
+```
+#include "textflag.h"
+
+// func Sum(n int) int
+TEXT ·Sum(SB), $8
+    MOVQ n+0(FP), AX   // n
+    MOVQ ret+8(FP), BX // ret
+
+    CMPQ AX, $0
+    JG STEP
+    JMP RETURN
+
+STEP:
+   SUBQ $1, AX  // AX-=1
+
+   MOVQ AX, 0(SP) // AX 入函数调用栈
+   CALL ·Sum(SB) 
+   MOVQ 8(SP), BX // BX=Sum(AX-1), 获取函数返回值.
+
+   MOVQ n+0(FP), AX   // AX=n
+   ADDQ AX, BX        // BX+=AX
+   MOVQ BX, ret+8(FP) // return BX
+   RET
+
+
+RETURN:
+    MOVQ $0, ret+8(FP) // return 0
+    RET
+```
+
+> CALL 使用案例 -- 加法公式
+
+```
+#include "textflag.h"
+
+// func Add(a, b int) int
+TEXT ·Add(SB), $8
+    MOVQ a+0(FP), AX  // a
+    MOVQ b+8(FP), BX  // b
+
+    MOVQ AX, 0(SP)  // a 入函数参数栈
+    MOVQ BX, 8(SP)  // b 入函数参数栈
+    CALL ·Print2(SB) // 调用 Print2(a,b) 
+    MOVQ 16(SP), CX // 获取函数返回值. 
+
+    MOVQ CX, 0(SP)  // c 入函数栈
+    CALL ·Print1(SB) // 调用 Printl(a)
+
+    MOVQ a+0(FP), AX // AX=a, 避免AX污染
+    MOVQ b+8(FP), BX // BX=b, 避免BX污染
+
+    ADDQ AX, BX    // BX+=AX
+    MOVQ BX, ret+16(FP) // return BX
+
+    RET
+```
+
+函数调用小结:
+
+完整函数调用分为三个部分: 函数参数准备, 调用函数, 获取函数返回值.
+
+- 函数参数准备. **需要将准备好的参数压入到SP寄存器当中, 除非调用函数不需要参数**. 例如: 
+
+```
+MOVQ $10, 0(SP)  // 将 10 压入函数调用参数栈
+MOVQ $20, 8(SP)  // 将 20 压入函数调用参数栈
+MOVQ $30, 16(SP) // 将 30 压入函数调用参数栈
+```
+
+> 上面的案例是将 10, 20, 30 这三个数压入到函数参数调用栈.
+
+- 调用函数. 这部分最为简单, 直接就是一个 `CALL` 指令后面跟上需要调用的函数. 例如:
+
+```
+CALL ·Print3(SB) // 调用 Print3(a,b,c)
+```
+
+- 获取函数返回值. **函数的返回值和函数参数共用一个栈, 因此参数返回值的偏移量是在参数压入栈的基础上进行偏移的**. 例如:
+
+```
+MOVQ 24(SP), AX // Print3函数三个 int 参数, 那么返回值的偏移量是从 24 开始
+```
