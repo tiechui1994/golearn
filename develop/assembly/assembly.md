@@ -55,6 +55,89 @@ frame 上, 指向调用 add 函数时传递的第一个参数的位置. **经常
 
 > 注意: 要站在 callee 的角度来看.
 
+```
+高地址
+ /\ 
+/__\ 
+ ||   +-----------------+
+ ||   | other caller... |
+ ||   +-----------------+=======
+ ||   | caller parent BP|      /\
+ ||   +-----------------+      || 
+ ||   | local var1      |      ||
+ ||   +-----------------+      ||
+ ||   |     ...         |      ||
+ ||   +-----------------+      ||
+ ||   | local varN      |      ||
+ ||   +-----------------+      ||
+ ||   | callee retN     |      ||
+ ||   +-----------------+
+ ||   |     ...         | caller frame stack
+ ||   +-----------------+
+ ||   | callee ret1     |      ||
+ ||   +-----------------+      ||
+ ||   | callee argN     |      ||
+ ||   +-----------------+      ||
+ ||   |     ...         |      ||
+ ||   +-----------------+      ||
+ ||   | callee arg1     |      ||
+ ||   +-----------------+------||--------------> FP伪寄存器
+ ||   | return address  |      \/
+ ||   +-----------------+=======
+ ||   | caller BP       |      /\
+ ||   +-----------------+------||--------------> SP伪寄存器 (BP寄存器)
+ ||   | local var1      |      
+ ||   +-----------------+ callee frame stack
+ ||   |     ...         |     
+ ||   +-----------------+      ||
+ ||   | local varN      |      \/
+ ||   +-----------------+=======---------------> SP硬件寄存器
+ ||
+低地址
+```
+
+汇编代码:
+
+```
+TEXT ·add(SB), NOSPLIT, $8-24
+    MOVQ $0, r1+16(FP)
+
+    MOVQ a+0(FP), AX
+    ADDQ b+8(FP), AX
+    MOVQ AX, r1+16(FP)
+    RET
+```
+
+对应的伪汇编代码:
+
+```
+"".add STEXT nosplit size=48 args=0x18 locals=0x10
+	0x0000 00000 (pkg/add_amd64.s:66)	TEXT	"".add(SB), NOSPLIT, $16-24
+	0x0000 00000 (pkg/add_amd64.s:66)	SUBQ	$16, SP
+	0x0004 00004 (pkg/add_amd64.s:66)	MOVQ	BP, 8(SP)
+	0x0009 00009 (pkg/add_amd64.s:66)	LEAQ	8(SP), BP
+	0x000e 00014 (pkg/add_amd64.s:66)	FUNCDATA	$0, "".add.args_stackmap(SB)
+	0x000e 00014 (pkg/add_amd64.s:67)	MOVQ	$0, r1+40(FP)
+	0x0017 00023 (pkg/add_amd64.s:69)	MOVQ	a+24(FP), AX
+	0x001c 00028 (pkg/add_amd64.s:70)	ADDQ	b+32(FP), AX
+	0x0021 00033 (pkg/add_amd64.s:71)	MOVQ	AX, r1+40(FP)
+	0x0026 00038 (pkg/add_amd64.s:72)	MOVQ	8(SP), BP
+	0x002b 00043 (pkg/add_amd64.s:72)	ADDQ	$16, SP
+	0x002f 00047 (pkg/add_amd64.s:72)	RET
+```
+
+在这段代码当中可以得到的信息: (代码当中的 SP 都是硬件SP寄存器, 假设当前被调用的是 add 函数)
+
+0-8 为本地变量( add 函数当中的声明的本地变量长度是 8)
+8-16 为 caller 的 BP. (SP伪寄存器)
+16-24 return address. 伪汇编代码当中没有任何说明.
+24-40 为 callee args. 两个参数a, b
+40-48 为 callee rets. 一个返回参数.
+
+> 在汇编代码当中:
+> SP寄存器和伪SP寄存器之间的长度 = "函数局部变量长度"
+> 伪SP寄存器和FP寄存器之间的长度 = "Caller BP" + "Return Addr" = 16
+
 ![image](/images/develop_assembly_regmem.png)
  
  

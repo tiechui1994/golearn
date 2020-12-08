@@ -22,12 +22,18 @@ func NewTwiceFunClosure(x int) func() int {
 func main() {
 	//pkg.If(false, 10, 20)
 	//fmt.Println(pkg.Sum(10))
-	//pkg.Add(10, 20)
+
 	//go func() {
 	//	fmt.Println(pkg.GetGoid())
 	//}()
 	//time.Sleep(time.Millisecond)
+	//f := pkg.NewTwiceClosure(10)
+	//fmt.Println("Closure", f(), f())
 
-	f := pkg.NewTwiceClosure(10)
-	fmt.Println(f(), f())
+	pkg.AsmAdd(11, 22)
+	pkg.Add(30, 20)
+	rsp, sp, fp := pkg.GetRegister()
+	fmt.Println(" FP ", fp)
+	fmt.Println("(SP)", rsp)
+	fmt.Println(" SP ", sp)
 }

@@ -750,5 +750,3 @@ TEXT ·asmFunTwiceClosureBody(SB), NOSPLIT|NEEDCTXT, $0
 的地址, 注意操作当中要把 `(SB)` 部分带上. 最重要的是 `·asmFunTwiceClosureBody` 函数的实现: **它带有一个 NEEDCTXT
 标志. 采用 `NEEDCTXT` 标志定义的汇编函数表示需要一个上下文环境, 在 AMD64 环境中通过 DX 寄存器来传递这个上下文环境指针,
 也就是 `TwiceClosure` 结构体指针`. 
-
-
