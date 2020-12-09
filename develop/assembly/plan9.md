@@ -307,7 +307,7 @@ GLOBL ·hello(SB), $16
 
 同时可以为字符串准备真正的数据. 下面的汇编代码定义一个text当前文件内的私有变量(以 `<>` 为后缀名), 内容为 "hello world!"
 
-```cgo
+```
 #include "textflag.h"
 
 GLOBL text<>(SB), NOPTR, $16
@@ -315,15 +315,39 @@ DATA text<>+0(SB)/8, $"hello wo"
 DATA text<>+8(SB)/8, $"rld!"
 ```
 
-虽然 `text<>` 私有变量表示的字符串只有12个字符长度, 但是依然需要将变量的长度扩展为2的指数倍数, 这里也就是16个字节的长
-度.
+虽然 `text<>` 私有变量表示的字符串只有12个字符长度, 这也是一个字符串, 长度就是16.
 
-然后使用 text 私有变量对应的内存地址对应的常量来初始化字符串头结构体中的Data部分.
+接下来然后使用 text 私有变量对应的内存地址对应的常量来初始化字符串头结构体中的Data部分.
 
 ```cgo
 DATA ·hello+0(SB)/8, $text<>(SB)
 DATA ·hello+8(SB)/8, $12
 ```
+
+完整的内容是:
+
+```
+#include "textflag.h"
+
+GLOBL text<>(SB), NOPTR, $16
+DATA text<>+0(SB)/8, $"hello wo"
+DATA text<>+8(SB)/8, $"rld!"
+
+GLOBL ·hello(SB), $16
+DATA ·hello+0(SB)/8, $text<>(SB)
+DATA ·hello+8(SB)/8, $12
+```
+
+> 注意: 下面的赋值是非法的.
+
+```
+GLOBL ·hello(SB), $16
+DATA ·hello+0(SB)/8, $"1234567"
+DATA ·hello+8(SB)/8, $12
+```
+
+> 运行的时候, 会报 `unexpected fault address` 错误
+
 
 ### slice 类型变量
 

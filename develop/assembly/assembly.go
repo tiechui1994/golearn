@@ -20,6 +20,7 @@ func NewTwiceFunClosure(x int) func() int {
 }
 
 func main() {
+	fmt.Println(pkg.INT, pkg.ARRAY, pkg.STRING, pkg.SLICE)
 	//pkg.If(false, 10, 20)
 	//fmt.Println(pkg.Sum(10))
 

@@ -289,52 +289,84 @@ MOVQ 24(SP), AX // Print3函数三个 int 参数, 那么返回值的偏移量是
 - 整数变量
 
 ```
-GLOBL var_int(SB), 8  // 8 字节宽
-DATA  var_int(SB)+0/8, $0 // 赋值
+// var INT int
+GLOBL ·INT(SB), $8
+DATA ·INT+0(SB)/8, $0x10
 ```
 
 - 数组变量
 
 // 数组的方式
 ```
-GLOBL var_arr(SB), $16
-DATA  var_arr+0(SB)/8, $0
-DATA  var_arr+1(SB)/8, $0
+// var ARRAY [2]byte
+GLOBL ·ARRAY(SB), $16
+DATA ·ARRAY+0(SB)/1, $0x10
+DATA ·ARRAY+1(SB)/1, $0x20
 ```
 
 
 - 字符串
 
-// 数组的方式
-```
-GLOBL var_str(SB), NOPTR, $16
-DATA var_str(SB)/8, $"hello wo"
-DATA var_str(SB)/8, $"rld!"
-```
-
-或者 
-
 // 采用结构体的方式
 ```
-GLOBL text<>(SB), NOPTR, $16
-DATA text<>+0(SB)/8, $"hello wo"
-DATA text<>+8(SB)/8, $"rld!"
+// var STRING string
+GLOBL ·STRING(SB), NOPTR, $16
+DATA  ·STRING+0(SB)/8, $·private<>(SB)
+DATA  ·STRING+8(SB)/8, $23
 
-GLOBL var_str(SB), NOPTR, $16
-DATA var_str+0(SB)/8, $text<>(SB)
-DATA var_str+8(SB)/8, $12
+GLOBL ·private<>(SB), NOPTR, $16
+DATA ·private<>+0(SB)/8, $"12345678"      // ...string data...
+DATA ·private<>+8(SB)/8, $"12345678"      // ...string data...
+DATA ·private<>+16(SB)/8,$"12345678"      // ...string data...
 ```
+
+> 注意: 上述的 `private<>` 是一个私有变量. 当然也可以是一个全局变量(相对私有变量而言), 但是这种方式定义的全局变量是非
+> 法的. 例如, 下面的例子就无法赋值成功:
+
+```
+// var STRING string
+GLOBL ·STRING(SB), NOPTR, $16
+DATA ·STRING+0(SB)/8, $"12345678"      // ...string data...
+DATA ·STRING+8(SB)/8, $"12345678"      // ...string data...
+```
+
+> 上述定义会报 `unexpected fault address` 错误
 
 - 切片
 
-// 结构体的方式(融合了字符串)
+// 字节切片
 ```
 GLOBL ·hello(SB), $24           // var hello []byte("hello world!")
 DATA ·hello+0(SB)/8,$text<>(SB) // SliceHeader.Data
 DATA ·hello+8(SB)/8,$12         // SliceHeader.Len
 DATA ·hello+16(SB)/8,$16        // SliceHeader.Cap
 
-GLOBL text<>(SB),$16
+GLOBL text<>(SB), NOPTR, $16
 DATA text<>+0(SB)/8,$"hello wo"      // ...string data...
 DATA text<>+8(SB)/8,$"rld!"          // ...string data...
 ```
+
+// 整数切片
+```
+// var SLICE []int
+GLOBL ·SLICE(SB), $24
+DATA ·SLICE+0(SB)/8, $slice<>(SB)
+DATA ·SLICE+8(SB)/8, $4
+DATA ·SLICE+16(SB)/8, $6
+
+GLOBL slice<>(SB), NOPTR, $16
+DATA slice<>+0(SB)/8, $10
+DATA slice<>+8(SB)/8, $20
+DATA slice<>+16(SB)/8, $21
+DATA slice<>+24(SB)/8, $21
+```
+
+> 需要注意的一个细节点, 无论是字节切片(本质是一个字符串)还是整数切片, 在定义私有数据的时候, 都使用了 NOPTR 标记.这一点
+需要被铭记. 
+
+- map, chan 等内置的数据结构是在 runtime 当中实现的, 无法使用汇编创建(原因是汇编当中无法调用 runtime 的函数)
+
+- 结构体, 上述的 数组, 字符串, 切片都是使用结构体的方式进行定义的, 其他的结构体也是类似的. 这这里不在举例.
+
+> 最后, 需要铭记一点, 在汇编当中初始化的时候只是分配了一段内存, 然后为这段内存设置相应的数据, 仅此而已. 在汇编当中是没有
+数据类型概念的.
