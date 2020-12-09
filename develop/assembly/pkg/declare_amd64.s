@@ -1,19 +1,19 @@
 #include "textflag.h"
 
-GLOBL ·ID(SB), $8
-DATA ·ID+0(SB)/1,$0x37
-DATA ·ID+1(SB)/1,$0x25
-DATA ·ID+2(SB)/1,$0x00
-DATA ·ID+3(SB)/1,$0x00
-DATA ·ID+4(SB)/1,$0x00
-DATA ·ID+5(SB)/1,$0x00
-DATA ·ID+6(SB)/1,$0x00
-DATA ·ID+7(SB)/1,$0x00
+// var INT int
+GLOBL ·INT(SB), $8
+DATA ·INT+0(SB)/8,$0x3725
 
+// var ARRAY [2]byte
+GLOBL ·ARRAY(SB), $16
+DATA ·ARRAY+0(SB)/1, $0x10
+DATA ·ARRAY+1(SB)/1, $0x20
 
-GLOBL ·NameData(SB), NOPTR, $8
-DATA  ·NameData(SB)/8,$"gopher"
+// var STRING string
+GLOBL ·STRING(SB), NOPTR, $16
+DATA  ·STRING+0(SB)/8, $text<>(SB)
+DATA  ·STRING+8(SB)/8, $6
 
-GLOBL ·Name(SB),$16
-DATA  ·Name+0(SB)/8,$·NameData(SB)
-DATA  ·Name+8(SB)/8,$6
+GLOBL text<>(SB),$16
+DATA text<>+0(SB)/8,$"Hello Wo"      // ...string data...
+DATA text<>+8(SB)/8,$"rld!"          // ...string data...

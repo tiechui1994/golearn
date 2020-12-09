@@ -137,6 +137,26 @@ TEXT ·add(SB), NOSPLIT, $8-24
 > 在汇编代码当中:
 > SP寄存器和伪SP寄存器之间的长度 = "函数局部变量长度"
 > 伪SP寄存器和FP寄存器之间的长度 = "Caller BP" + "Return Addr" = 16
+>
+> 基于以上的结论, 在编写Go汇编函数细节点(案例):
+>
+> 获取函数参数和返回值(FP寄存器): 
+>   MOVQ arg1+0(FP),  AX
+>   MOVQ arg2+8(FP),  BX
+>   MOVQ ret1+16(FP), CX
+>   MOVQ ret2+24(FP), SI
+>
+> 创建局部变量(伪SP寄存器):
+>   MOVQ $0, var0-0(SP), AX
+>   MOVQ $0, var1-8(SP), BX
+>
+>
+> 函数调用的参数和返回值(SP寄存器):
+>   MOVQ AX, 0(SP)
+>   MOVQ BX, 8(SP)
+> 
+> 如果觉得不麻烦, 也是可以使用上述关系进行搞定参数.
+
 
 ![image](/images/develop_assembly_regmem.png)
  
@@ -167,7 +187,6 @@ TEXT ·add(SB), NOSPLIT, $8-24
 > CMPQ, JMP, JL 使用案例
 
 ```armasm
-
 CMPQ AX, BX // AX 和 BX 比较
 JL LOOP_FALSE // AX < BX
 JMP LOOP_TRUE // 无调整转移, AX >= BX
@@ -262,4 +281,60 @@ CALL ·Print3(SB) // 调用 Print3(a,b,c)
 
 ```
 MOVQ 24(SP), AX // Print3函数三个 int 参数, 那么返回值的偏移量是从 24 开始
+```
+
+
+变量声明小结:
+
+- 整数变量
+
+```
+GLOBL var_int(SB), 8  // 8 字节宽
+DATA  var_int(SB)+0/8, $0 // 赋值
+```
+
+- 数组变量
+
+// 数组的方式
+```
+GLOBL var_arr(SB), $16
+DATA  var_arr+0(SB)/8, $0
+DATA  var_arr+1(SB)/8, $0
+```
+
+
+- 字符串
+
+// 数组的方式
+```
+GLOBL var_str(SB), NOPTR, $16
+DATA var_str(SB)/8, $"hello wo"
+DATA var_str(SB)/8, $"rld!"
+```
+
+或者 
+
+// 采用结构体的方式
+```
+GLOBL text<>(SB), NOPTR, $16
+DATA text<>+0(SB)/8, $"hello wo"
+DATA text<>+8(SB)/8, $"rld!"
+
+GLOBL var_str(SB), NOPTR, $16
+DATA var_str+0(SB)/8, $text<>(SB)
+DATA var_str+8(SB)/8, $12
+```
+
+- 切片
+
+// 结构体的方式(融合了字符串)
+```
+GLOBL ·hello(SB), $24           // var hello []byte("hello world!")
+DATA ·hello+0(SB)/8,$text<>(SB) // SliceHeader.Data
+DATA ·hello+8(SB)/8,$12         // SliceHeader.Len
+DATA ·hello+16(SB)/8,$16        // SliceHeader.Cap
+
+GLOBL text<>(SB),$16
+DATA text<>+0(SB)/8,$"hello wo"      // ...string data...
+DATA text<>+8(SB)/8,$"rld!"          // ...string data...
 ```

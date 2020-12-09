@@ -1,5 +1,9 @@
 package pkg
 
-var ID int
+var INT int
 
-var Name string
+var STRING string
+
+var ARRAY [2]byte
+
+var SLICE []int
