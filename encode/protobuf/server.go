@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"golearn/protobuf/pb"
+	"golearn/encode/protobuf/pb"
 )
 
 type ServiceServer struct {
