@@ -1,23 +1,25 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Person interface {
 	grow()
 }
 
 type Student struct {
-	age int
-	name string
+	Age  int    `json:"age"`
+	Name string `json:"name"`
 }
 
 func (p Student) grow() {
-	p.age += 1
+	p.Age += 1
 	return
 }
 
 func main() {
-	var qcrao = Person(Student{age: 18, name:"san"})
+	var s = Person(Student{Age: 108, Name: "abcdefg"})
 
-	fmt.Println(qcrao)
+	fmt.Println(s)
 }

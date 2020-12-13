@@ -60,7 +60,7 @@ func main() {
 |     |  值接收者 | 指针接收者 |
 | --- | ---- | ---- |
 | 值类型 | 方法会使用调用者的一个副本, 类似于"传值" | 使用`值的引用`来调用方法, 上例 `val.growUp()` 实际上是 `(&val).groupUp` |
-| 指针类型 | 指针类型`被解引用`为值, 上例中的 `ptr.howOld()` 实际上是 `(*ptr).howOld()` | 实际上也是"传值", 方法里的操作会影响到调用者, 类似与指针传参, 拷贝了一份指针 "
+| 指针类型 | 指针类型`被解引用`为值, 上例中的 `ptr.howOld()` 实际上是 `(*ptr).howOld()` | 实际上也是"传值", 方法里的操作会影响到调用者, 类似与指针传参, 拷贝了一份指针 |
 
 
 ## 值接收者和指针接收者
@@ -68,14 +68,75 @@ func main() {
 结论: **实现了接收者是值类型的方法, 相当于自动实现了接收者是指针类型的方法; 而实现了接收者是指针类型的方法, 不会自动生成
 对应接收者是值类型的方法**
 
-解释: 接收者是指针类型, 很可能在方法中对接收者的属性进行更改操作, 从而影响接收者; 而对于接收者是值类型的放, 在方法中不会
-对接收者本身产生影响. 因此, 当实现了一个接收者是值类型的方法, 可以自动生成一个接收者是对应指针类型的方法, 因为两者都不影
-响接收者. 
+
+举个例子:
+
+```
+type Animal interface {
+    howOld() int
+    growUp()
+}
+
+type Person struct {
+    age int
+}
+
+func (p Person) howOld() int {
+    return p.age
+}
+
+func (p *Person) growUp() {
+    p.age += 1
+}
+```
+
+上述代码定义了一个接口 `Animal`, 接口定义了两个函数. 接着定义了一个结构体 `Person`, 它实现了两个方法, 一个值接收者,
+一个是指针接收者.
+
+下面我们看两个对上述代码的两个测试:
+
+测试一:
+
+```
+func main() {
+    var c Animal = &Person{"Go"}
+    c.howOld()
+    c.growUp()
+}
+```
+
+测试二:
+
+```
+func main() {
+    var c Animal = Person{"Go"}
+    c.howOld()
+    c.growUp()
+}
+```
+
+分别对上述两个代码进行编译运行, 会出现什么情况?
+
+测试一, 可以正常编译运行.
+
+测试二, 编译失败, 出现错误, `Person does not implement Animal (growUp method has pointer receiver)`. 错误
+的意思是 `Person没有实现Animal接口(growUp方法只有一个指针接收者)`
+
+> 分析: 上述的两个测试唯一的不同的, 测试一是将 `&Person` 赋值给 `c`, 而测试二是将 `Person` 赋值给了 `c`. 根据错误
+> 的提示来看, 说 `growUp方法只有一个指针接收者`, 也就意味着, `growUp方法没有一个值接收者` (出错的时候 c 是一个值). 
+> 进一步看方法 `howOld`, 可以推到得到 `howOld方法既拥有值接收者(Person真实定义就是值接收者), 也拥有指针接收者(编译
+> 器隐式的转换).`, 从而得出前面刚开始提到的结论. **实现了接收者是值类型的方法, 相当于自动实现了接收者是指针类型的方法; 
+> 而实现了接收者是指针类型的方法, 不会自动生成对应接收者是值类型的方法**
+
+上述现象的一个解释: 接收者是指针类型, 很可能在方法中对接收者的属性进行更改操作, 从而影响接收者; 而对于接收者是值类型的方
+法, 在方法中不会对接收者本身产生影响. 因此, 当实现了一个接收者是值类型的方法, 可以自动生成一个接收者是对应指针类型的方法, 
+因为两者都不影响接收者. 
 
 
 记住下面的结论:
 
 > 如果实现了接收者是值类型的方法, 会隐含地实现了接收者是指针类型的方法.
+
 
 ## `eface` vs `iface`
 
@@ -160,7 +221,8 @@ type _type struct {
 
 接口类型和 `nil` 做比较:
 
-接口值的零值指 `动态类型` 和 `动态值` 都为 nil. 当且仅当这两部分的值都为 `nil` 的状况下, 这个接口值才被认为 `接口值 == nil`.
+接口值的零值指 `动态类型` 和 `动态值` 都为 nil. 当且仅当这两部分的值都为 `nil` 的状况下, 这个接口值才被认为是nil, 即
+`接口值 == nil`.
 
 例子1:
 
@@ -281,6 +343,7 @@ func main() {
 
 实际上, 上述赋值语句会发生隐式转换, 在转换的过程中, 编译器会检测等号右边的类型是否实现了等号左边接口所规定的函数.
 
+
 ### 接口的构造过程
 
 先从一个例子开始:
@@ -310,78 +373,75 @@ func main() {
 使用 `go tool compile -S example.go` 打印汇编代码. go 版本是 `1.13`
 
 ```
-"".main STEXT size=219 args=0x0 locals=0x70
-	0x0000 00000 (example.go:19)	TEXT	"".main(SB), ABIInternal, $112-0
+"".main STEXT size=331 args=0x0 locals=0xa8
+	0x0000 00000 (example.go:19)	TEXT	"".main(SB), ABIInternal, $168-0
 	0x0000 00000 (example.go:19)	MOVQ	(TLS), CX
-	0x0009 00009 (example.go:19)	CMPQ	SP, 16(CX)
-	0x000d 00013 (example.go:19)	JLS	209
-	0x0013 00019 (example.go:19)	SUBQ	$112, SP
-	0x0017 00023 (example.go:19)	MOVQ	BP, 104(SP)
-	0x001c 00028 (example.go:19)	LEAQ	104(SP), BP
-	0x0021 00033 (example.go:19)	FUNCDATA	$0, gclocals·7d2d5fca80364273fb07d5820a76fef4(SB)
-	0x0021 00033 (example.go:19)	FUNCDATA	$1, gclocals·ec3d218f521c2fd49f31b3bbe678b423(SB)
-	0x0021 00033 (example.go:19)	FUNCDATA	$2, gclocals·bfec7e55b3f043d1941c093912808913(SB)
-	0x0021 00033 (example.go:19)	FUNCDATA	$3, "".main.stkobj(SB)
-	0x0021 00033 (example.go:20)	PCDATA	$0, $0
-	0x0021 00033 (example.go:20)	PCDATA	$1, $1
-	0x0021 00033 (example.go:20)	XORPS	X0, X0
-	0x0024 00036 (example.go:20)	MOVUPS	X0, ""..autotmp_7+80(SP)
-	0x0029 00041 (example.go:20)	MOVQ	$0, ""..autotmp_7+96(SP)
-	0x0032 00050 (example.go:20)	MOVQ	$18, ""..autotmp_7+80(SP)
-	0x003b 00059 (example.go:20)	PCDATA	$0, $1
-	0x003b 00059 (example.go:20)	LEAQ	go.string."san"(SB), AX
-	0x0042 00066 (example.go:20)	PCDATA	$0, $0
-	0x0042 00066 (example.go:20)	MOVQ	AX, ""..autotmp_7+88(SP)
-	0x0047 00071 (example.go:20)	MOVQ	$3, ""..autotmp_7+96(SP)
-	0x0050 00080 (example.go:20)	PCDATA	$0, $1
-	0x0050 00080 (example.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
-	0x0057 00087 (example.go:20)	PCDATA	$0, $0
-	0x0057 00087 (example.go:20)	MOVQ	AX, (SP)
-	0x005b 00091 (example.go:20)	PCDATA	$0, $1
-	0x005b 00091 (example.go:20)	PCDATA	$1, $0
-	0x005b 00091 (example.go:20)	LEAQ	""..autotmp_7+80(SP), AX
-	0x0060 00096 (example.go:20)	PCDATA	$0, $0
-	0x0060 00096 (example.go:20)	MOVQ	AX, 8(SP)
-	0x0065 00101 (example.go:20)	CALL	runtime.convT2I(SB)
-	0x006a 00106 (example.go:20)	PCDATA	$0, $1
-	0x006a 00106 (example.go:20)	MOVQ	24(SP), AX
-	0x006f 00111 (example.go:20)	PCDATA	$0, $2
-	0x006f 00111 (example.go:20)	MOVQ	16(SP), CX
-	0x0074 00116 (example.go:22)	TESTQ	CX, CX
-	0x0077 00119 (example.go:22)	JEQ	125
-	0x0079 00121 (example.go:22)	MOVQ	8(CX), CX
-	0x007d 00125 (example.go:22)	PCDATA	$1, $2
-	0x007d 00125 (example.go:22)	XORPS	X0, X0
-	0x0080 00128 (example.go:22)	MOVUPS	X0, ""..autotmp_15+64(SP)
-	0x0085 00133 (example.go:22)	PCDATA	$0, $1
-	0x0085 00133 (example.go:22)	MOVQ	CX, ""..autotmp_15+64(SP)
-	0x008a 00138 (example.go:22)	PCDATA	$0, $0
-	0x008a 00138 (example.go:22)	MOVQ	AX, ""..autotmp_15+72(SP)
-	0x008f 00143 (<unknown line number>)	NOP
-	0x008f 00143 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
-	0x008f 00143 ($GOROOT/src/fmt/print.go:274)	MOVQ	os.Stdout(SB), AX
-	0x0096 00150 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $2
-	0x0096 00150 ($GOROOT/src/fmt/print.go:274)	LEAQ	go.itab.*os.File,io.Writer(SB), CX
-	0x009d 00157 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
-	0x009d 00157 ($GOROOT/src/fmt/print.go:274)	MOVQ	CX, (SP)
-	0x00a1 00161 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $0
-	0x00a1 00161 ($GOROOT/src/fmt/print.go:274)	MOVQ	AX, 8(SP)
-	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $1
-	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	PCDATA	$1, $0
-	0x00a6 00166 ($GOROOT/src/fmt/print.go:274)	LEAQ	""..autotmp_15+64(SP), AX
-	0x00ab 00171 ($GOROOT/src/fmt/print.go:274)	PCDATA	$0, $0
-	0x00ab 00171 ($GOROOT/src/fmt/print.go:274)	MOVQ	AX, 16(SP)
-	0x00b0 00176 ($GOROOT/src/fmt/print.go:274)	MOVQ	$1, 24(SP)
-	0x00b9 00185 ($GOROOT/src/fmt/print.go:274)	MOVQ	$1, 32(SP)
-	0x00c2 00194 ($GOROOT/src/fmt/print.go:274)	CALL	fmt.Fprintln(SB)
-	0x00c7 00199 (<unknown line number>)	MOVQ	104(SP), BP
-	0x00cc 00204 (<unknown line number>)	ADDQ	$112, SP
-	0x00d0 00208 (<unknown line number>)	RET
+	0x0009 00009 (example.go:19)	LEAQ	-40(SP), AX
+	0x000e 00014 (example.go:19)	CMPQ	AX, 16(CX)
+	0x0012 00018 (example.go:19)	JLS	321
+	0x0018 00024 (example.go:19)	SUBQ	$168, SP
+	0x001f 00031 (example.go:19)	MOVQ	BP, 160(SP)
+	0x0027 00039 (example.go:19)	LEAQ	160(SP), BP
+	0x002f 00047 (example.go:20)	XORPS	X0, X0
+	0x0032 00050 (example.go:20)	MOVUPS	X0, ""..autotmp_1+136(SP)
+	0x003a 00058 (example.go:20)	MOVQ	$0, ""..autotmp_1+152(SP)
+	0x0046 00070 (example.go:20)	MOVQ	$18, ""..autotmp_1+136(SP)
+	0x0052 00082 (example.go:20)	LEAQ	go.string."san"(SB), AX
+	0x0059 00089 (example.go:20)	MOVQ	AX, ""..autotmp_1+144(SP)
+	0x0061 00097 (example.go:20)	MOVQ	$3, ""..autotmp_1+152(SP)
+	0x006d 00109 (example.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
+	0x0074 00116 (example.go:20)	MOVQ	AX, (SP)
+	0x0078 00120 (example.go:20)	LEAQ	""..autotmp_1+136(SP), AX
+	0x0080 00128 (example.go:20)	MOVQ	AX, 8(SP)
+	0x0085 00133 (example.go:20)	CALL	runtime.convT2I(SB)
+	0x008a 00138 (example.go:20)	MOVQ	24(SP), AX
+	0x008f 00143 (example.go:20)	MOVQ	16(SP), CX
+	0x0094 00148 (example.go:20)	MOVQ	CX, "".qcrao+64(SP)
+	0x0099 00153 (example.go:20)	MOVQ	AX, "".qcrao+72(SP)
+	0x009e 00158 (example.go:22)	MOVQ	"".qcrao+72(SP), AX
+	0x00a3 00163 (example.go:22)	MOVQ	"".qcrao+64(SP), CX
+	0x00a8 00168 (example.go:22)	MOVQ	CX, ""..autotmp_3+80(SP)
+	0x00ad 00173 (example.go:22)	MOVQ	AX, ""..autotmp_3+88(SP)
+	0x00b2 00178 (example.go:22)	MOVQ	CX, ""..autotmp_4+56(SP)
+	0x00b7 00183 (example.go:22)	CMPQ	""..autotmp_4+56(SP), $0
+	0x00bd 00189 (example.go:22)	JNE	193
+	0x00bf 00191 (example.go:22)	JMP	319
+	0x00c1 00193 (example.go:22)	TESTB	AL, (CX)
+	0x00c3 00195 (example.go:22)	MOVQ	8(CX), AX
+	0x00c7 00199 (example.go:22)	MOVQ	AX, ""..autotmp_4+56(SP)
+	0x00cc 00204 (example.go:22)	JMP	206
+	0x00ce 00206 (example.go:22)	PCDATA	$1, $5
+	0x00ce 00206 (example.go:22)	XORPS	X0, X0
+	0x00d1 00209 (example.go:22)	MOVUPS	X0, ""..autotmp_2+96(SP)
+	0x00d6 00214 (example.go:22)	LEAQ	""..autotmp_2+96(SP), AX
+	0x00db 00219 (example.go:22)	MOVQ	AX, ""..autotmp_6+48(SP)
+	0x00e0 00224 (example.go:22)	TESTB	AL, (AX)
+	0x00e2 00226 (example.go:22)	MOVQ	""..autotmp_4+56(SP), CX
+	0x00e7 00231 (example.go:22)	MOVQ	""..autotmp_3+88(SP), DX
+	0x00ec 00236 (example.go:22)	MOVQ	CX, ""..autotmp_2+96(SP)
+	0x00f1 00241 (example.go:22)	MOVQ	DX, ""..autotmp_2+104(SP)
+	0x00f6 00246 (example.go:22)	TESTB	AL, (AX)
+	0x00f8 00248 (example.go:22)	JMP	250
+	0x00fa 00250 (example.go:22)	MOVQ	AX, ""..autotmp_5+112(SP)
+	0x00ff 00255 (example.go:22)	MOVQ	$1, ""..autotmp_5+120(SP)
+	0x0108 00264 (example.go:22)	MOVQ	$1, ""..autotmp_5+128(SP)
+	0x0114 00276 (example.go:22)	MOVQ	AX, (SP)
+	0x0118 00280 (example.go:22)	MOVQ	$1, 8(SP)
+	0x0121 00289 (example.go:22)	MOVQ	$1, 16(SP)
+	0x012a 00298 (example.go:22)	CALL	fmt.Println(SB)
+	0x012f 00303 (example.go:23)	MOVQ	160(SP), BP
+	0x0137 00311 (example.go:23)	ADDQ	$168, SP
+	0x013e 00318 (example.go:23)	RET
+	0x013f 00319 (example.go:22)	JMP	206
+	0x0141 00321 (example.go:22)	NOP
+	0x0141 00321 (example.go:19)	CALL	runtime.morestack_noctxt(SB)
+	0x0146 00326 (example.go:19)	JMP	0
 ```
 
-从第15行开始看, 前面的对当前的分析不重要. 可以忽略.
+最重要核心的代码是 `runtime.convT2I(SB)`, 该函数位于 `src/runtime/iface.go` 当中. `convT2I()` 函数是将一个 
+`struct` 对象转换为 `iface`. 类似的方法还有, `convT64()`, `convTstring()` 等.这些方法都涉及到了接口的动态值.
 
-
+下面看一下其中几个代表性的函数源码:
 
 ```cgo
 // 源码位置 src/runtime/iface.go
@@ -437,8 +497,158 @@ func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
 	i.data = x
 	return
 }
+```
 
+> func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer
+>
+> 分配一个 size 大小字节的 object.
+> 从per-P缓存的空闲列表中分配小对象; 从堆直接分配大对象( >32 kB)
+> 
+> 参数 needzero 描述分配的对象是否是指针
+> 参数 typ 描述当前分配对象的数据类型
+
+上述的代码逻辑都比较简单, 这里就不再解释了.
+
+
+
+[参考文档](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
+
+
+## 类型转换与断言的区别
+
+Go 当中不允许饮食类型转换, 也就是说在 `=` 两边, 变量的类型必须相同.
+
+`类型转换`, `类型断言` 本质都是把一个类型转换为另外一个类型. 不同之处在于, 类型断言是`接口变量`进行的操作.
+
+类型转换(任何类型变量):
+
+`<结果类型值> := <目标类型>(<表达式>)`
+
+```
+var x = 15.21
+y = int(x)
+```
+
+
+类型断言(必须是接口变量):
+
+`<目标类型值>, <布尔参数> := <表达式>.(目标类型)`
+
+`<目标类型值> := <表达式>.(目标类型)`
+
+```
+var x interface{} = &bytes.Buffer{}
+y, ok := x.(Writer)
+
+var x Reader = &bytes.Buffer{}
+y, ok := x.(Writer)
+```
+
+
+### 类型转换
+
+对于类型转换而言, 需要转换前后的两个类型是兼容的才可以.
+
+### 断言
+
+引申1: `fmt.Println` 函数的参数是 `interface`. 对于内置类型, 函数内部会用穷举法, 得出它的真实类型, 然后转换为字符
+串打印. 而对于自定义类型, 首先确定该类型是否实现了 `String()` 方法, 如果实现了, 则直接打印输出 `String()` 方法的结
+果; 否则, 会通过反射来遍历对象的成员进行打印.
+
+```
+type Student struct{
+    Name string
+    Age int
+}
+
+func main() {
+    var s = Student{Name:"www", Age:18}
+    fmt.Println(s)
+}
+```
+
+输出结果为 `{www 18}`.
+
+由于 `Student` 没有实现 `String()` 方法, 所以 `fmt.Println` 会利用反射获取成员变量.
+
+如果增加一个 `String()` 方法:
+
+```
+func (s String) String() string {
+    return fmt.Sprintf("[Name:%s], [Age:%d]", s.Name, s.Age)
+}
+```
+
+输出结果为 `[Name:www], [Age:18]`
+
+
+如果 `String()` 方法是下面这样的:
+
+```
+func (s *String) String() string {
+    return fmt.Sprintf("[Name:%s], [Age:%d]", s.Name, s.Age)
+}
+```
+
+输出结果为 `{www 18}`. 是不是有点意外? 其实仔细思考一下, 因为 `String()` 方法是指针接收者, 不会隐式生成值类型接收者
+的 `String()` 方法, 那么在断言的时候, 会将 `Student{}` 判断为没有实现 `String()` 方法的接口. 因此按照一般的反射
+方法进行打印喽了.
+
+> 一般情况下, 实现 `String()` 方法最好是值接收者, 这样无论是值还是指针在打印的时候都会用到此方法.
+
+
+## 接口间转换原理
+
+原理:
+
+`<interface类型, 实体类型> -> itab`
+
+当判断一种类型是否满足某个接口时, Go 使用类型的方法集和接口所需要的方法集进行匹配. 如果类型的方法集完全包含接口的方法集,
+则认为该类型实现可该接口.
+
+例如某类型有 `m` 个方法, 某接口有 `n` 个方法, 则很容易知道这种判定的时间复杂度为 `O(mn)`, Go会对方法集的函数按照函数
+名的字典序进行排序, 所以实际的时间复杂度为 `O(m+n)`.
+
+接口转换另外一个背后的原理: 类型兼容. 
+
+一个例子:
+
+```
+type coder interface {
+    code()
+    run()
+}
+
+type runner interface {
+    run()
+}
+
+type Language string
+
+func (l Language) code() {
+}
+
+func (l Language) run() {
+}
+
+func main() {
+    var c coder = Language{}
+    
+    var r runner
+    r = c
+    fmt.Println(c, r)
+}
+```
+
+代码定义了两个接口, `coder` 和 `runner`. 定义了一个实体类 `Language`. 类型  `Language` 实现了两个方法 `code()` 
+和 `run()`. main 函数里定义了一个接口变量 `c`, 绑定了一个 `Language` 对象, 之后将 `c` 赋值给另一个接口变量 `r`.
+赋值成功的原因在于 `c` 中包含了 `run()` 方法. 这样这两个接口变量完成了转换.
+
+通过汇编可以得到, 上述的 `r=c` 背后实际上是调用了 `runtime.convI2I(SB)`, 也就是 `convI2I` 函数. 
+
+```cgo
 // iface -> iface
+// inter 是目标的接口类型, i 是源 iface, r 是最终转换的 iface
 func convI2I(inter *interfacetype, i iface) (r iface) {
 	tab := i.tab
 	if tab == nil {
@@ -455,14 +665,63 @@ func convI2I(inter *interfacetype, i iface) (r iface) {
 }
 ```
 
-> func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer
->
-> 分配一个 size 大小字节的 object.
-> 从per-P缓存的空闲列表中分配小对象; 从堆直接分配大对象( >32 kB)
-> 
-> 参数 needzero 描述分配的对象是否是指针
-> 参数 typ 描述当前分配对象的数据类型
+代码非常简单. 最重要的代码是 `getitab` 函数, 根据 `interfacetype`(接口类型) 和 `_type`(动态值的类型) 获取到 r 的
+`itab` 值.
 
+```cgo
+func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
+	if len(inter.mhdr) == 0 {
+		throw("internal error - misuse of itab")
+	}
 
+	// easy case, 
+	// tflagUncommon=1
+	if typ.tflag&tflagUncommon == 0 {
+		if canfail {
+			return nil
+		}
+		name := inter.typ.nameOff(inter.mhdr[0].name)
+		panic(&TypeAssertionError{nil, typ, &inter.typ, name.name()})
+	}
 
-[参考文档](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
+	var m *itab
+
+	// First, look in the existing table to see if we can find the itab we need.
+	// This is by far the most common case, so do it without locks.
+	// Use atomic to ensure we see any previous writes done by the thread
+	// that updates the itabTable field (with atomic.Storep in itabAdd).
+	t := (*itabTableType)(atomic.Loadp(unsafe.Pointer(&itabTable)))
+	if m = t.find(inter, typ); m != nil {
+		goto finish
+	}
+
+	// Not found.  Grab the lock and try again.
+	lock(&itabLock)
+	if m = itabTable.find(inter, typ); m != nil {
+		unlock(&itabLock)
+		goto finish
+	}
+
+	// Entry doesn't exist yet. Make a new entry & add it.
+	m = (*itab)(persistentalloc(unsafe.Sizeof(itab{})+uintptr(len(inter.mhdr)-1)*sys.PtrSize, 0, &memstats.other_sys))
+	m.inter = inter
+	m._type = typ
+	m.init()
+	itabAdd(m)
+	unlock(&itabLock)
+finish:
+	if m.fun[0] != 0 {
+		return m
+	}
+	if canfail {
+		return nil
+	}
+	// this can only happen if the conversion
+	// was already done once using the , ok form
+	// and we have a cached negative result.
+	// The cached result doesn't record which
+	// interface function was missing, so initialize
+	// the itab again to get the missing function name.
+	panic(&TypeAssertionError{concrete: typ, asserted: &inter.typ, missingMethod: m.init()})
+}
+``` 
