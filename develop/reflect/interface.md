@@ -669,12 +669,14 @@ func convI2I(inter *interfacetype, i iface) (r iface) {
 `itab` 值.
 
 ```cgo
+// inter是接口的类型, typ是值的类型, canfail表示转换是否可接受失败.
+// 如果不接受失败, 也就是canfail为false, 在转换失败的状况下会 panic
 func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	if len(inter.mhdr) == 0 {
 		throw("internal error - misuse of itab")
 	}
-
-	// easy case, 
+    
+    // 也就是 typ 的最低位是 0 状况下, 直接快速失败. 至于为什么, 不太清楚.
 	// tflagUncommon=1
 	if typ.tflag&tflagUncommon == 0 {
 		if canfail {
@@ -686,28 +688,33 @@ func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 
 	var m *itab
 
-	// First, look in the existing table to see if we can find the itab we need.
-	// This is by far the most common case, so do it without locks.
-	// Use atomic to ensure we see any previous writes done by the thread
-	// that updates the itabTable field (with atomic.Storep in itabAdd).
-	t := (*itabTableType)(atomic.Loadp(unsafe.Pointer(&itabTable)))
+    // 首先, 查看现有表(itabTable, 一个保存了 itab 的全局未导出的变量) 以查看是否可以找到所需的itab.
+    // 在这种状况下, 不要使用锁.(常识)
+    // 
+    // 使用 atomic 确保我们看到该线程完成的所有先前写操作. (下面使用 atomic 的原因解释)
+    // 如果未找到所要的 itab, 则只能创建一个, 然后更新itabTable字段(在itabAdd中使用atomic.Storep)
+    t := (*itabTableType)(atomic.Loadp(unsafe.Pointer(&itabTable)))
 	if m = t.find(inter, typ); m != nil {
 		goto finish
 	}
 
-	// Not found.  Grab the lock and try again.
+	// 没有找到所需的 itab, 这种状况下, 在加锁的状况下再次查找. 这就是所谓的 dobule-checking
 	lock(&itabLock)
 	if m = itabTable.find(inter, typ); m != nil {
 		unlock(&itabLock)
 		goto finish
 	}
 
-	// Entry doesn't exist yet. Make a new entry & add it.
+	// 没有查找到. 只能先 create 一个 itab, 然后 update itabTable
+	// 这个是在当前的线程栈上去操作分配内存
 	m = (*itab)(persistentalloc(unsafe.Sizeof(itab{})+uintptr(len(inter.mhdr)-1)*sys.PtrSize, 0, &memstats.other_sys))
 	m.inter = inter
 	m._type = typ
-	m.init()
-	itabAdd(m)
+	m.init() // itab 初始化
+	
+	// 将 itab 添加到 itabTable 当中. 
+	// 这当中可能发生 itabTable 的扩容(默认存储512个, 长度超过 75% 就会发生扩容.
+	itabAdd(m) 
 	unlock(&itabLock)
 finish:
 	if m.fun[0] != 0 {
@@ -716,6 +723,9 @@ finish:
 	if canfail {
 		return nil
 	}
+	
+	// 仅当使用 ok 
+	// 缓存的结果不会记录缺少的 interface function, 因此请再次初始化 itab 以获取缺少的 function name.
 	// this can only happen if the conversion
 	// was already done once using the , ok form
 	// and we have a cached negative result.
