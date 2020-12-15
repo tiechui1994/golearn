@@ -14,10 +14,6 @@ import (
 	"time"
 )
 
-func TestUploadFlow(t *testing.T) {
-	tmpfile, err := Flow("/home/user/Downloads/china.mp3")
-	t.Log("err", err, tmpfile)
-}
 
 func TestPoll(t *testing.T) {
 	s := Socket{}
@@ -28,13 +24,13 @@ func TestPoll(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		musics := []string{"11.mp3", "22.mp3", "33.mp3", "44.mp3", "55.mp3"}
+		musics := []string{"11.mp3", "22.mp3"}
 		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 		for {
 			select {
 			case <-timer.C:
-				url, _ := s.PollJob("./data/"+musics[int(rnd.Int31n(5))], "amr")
+				url, _ := s.PollJob("./data/"+musics[int(rnd.Int31n(2))], "amr")
 				log.Println("success,", url)
 				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 			case <-done:
@@ -59,7 +55,7 @@ func TestSocket(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		musics := []string{"11.mp3", "22.mp3", "33.mp3", "44.mp3", "55.mp3"}
+		musics := []string{"11.mp3", "22.mp3"}
 		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 		var count int64
@@ -82,21 +78,6 @@ func TestSocket(t *testing.T) {
 	<-done
 }
 
-func TestZip(t *testing.T) {
-	files := []string{"s112pfWR989w_amr_7RRRt6Bm.wav",
-		"s112A9L9bowG_amr_rC92G4s7.wav",
-		"s112rdXJSUDR_amr_i7w3uB5B.wav",
-		"s112WItIrACq_amr_4HvtB3cy.wav",
-		"s112bk0l1cM7_amr_9705KVc0.wav",
-		"s1121GuQTxu6_amr_YadZucs0.wav",
-		"s112mZ1BOK42_amr_w08VK131.wav",
-		"s112yCrkzWD6_amr_xONnCUpk.wav",
-		"s112xMTUX8XU_amr_w4p4w5XG.wav",
-		"s1128ZYzbyPW_amr_6Ln0kidb.wav",
-		"s112wJ1b2g7o_amr_sjX4XYrG.wav"}
-	uri, err := Zip(files)
-	t.Log(uri, err)
-}
 
 func TestConfig(t *testing.T) {
 	config := New()
@@ -141,18 +122,6 @@ func TestSpeech(t *testing.T) {
 	text = `刚才是哪个小姐姐来市场部借三脚架来着,现在可以了`
 	err = speech.Speech(text, "./data/22.mp3")
 	t.Log("err", err)
-
-	text = `等下16:00系统升级,需要重启任务系统, 请大家做好准备, 以免影响任务的提交和处理. 感谢大家的支持. `
-	err = speech.Speech(text, "./data/33.mp3")
-	t.Log("err", err)
-
-	text = `f084的日志不会自动关的？每天日志大量上报还占用数据上报的带宽`
-	err = speech.Speech(text, "./data/44.mp3")
-	t.Log("err", err)
-
-	text = `四号线浦沿地铁口新浦苑小区顶层单间出租,带独卫`
-	err = speech.Speech(text, "./data/55.mp3")
-	t.Log("err", err)
 }
 
 func TestSpeechToText(t *testing.T) {
@@ -171,7 +140,7 @@ func TestSpeechToText(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		musics := []string{"11.wav", "22.wav", "33.wav", "44.wav", "55.wav", "66.wav"}
+		musics := []string{"11.wav", "22.wav"}
 		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(5*time.Second))) + time.Second)
 		var count int64
