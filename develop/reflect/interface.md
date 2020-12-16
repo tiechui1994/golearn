@@ -706,7 +706,7 @@ func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	}
 
 	// 没有查找到. 只能先 create 一个 itab, 然后 update itabTable
-	// 这个是在当前的线程栈上去操作分配内存
+	// 这个是在当前的线程栈上去操作分配内存.
 	m = (*itab)(persistentalloc(unsafe.Sizeof(itab{})+uintptr(len(inter.mhdr)-1)*sys.PtrSize, 0, &memstats.other_sys))
 	m.inter = inter
 	m._type = typ
@@ -724,14 +724,183 @@ finish:
 		return nil
 	}
 	
-	// 仅当使用 ok 
-	// 缓存的结果不会记录缺少的 interface function, 因此请再次初始化 itab 以获取缺少的 function name.
-	// this can only happen if the conversion
-	// was already done once using the , ok form
-	// and we have a cached negative result.
-	// The cached result doesn't record which
-	// interface function was missing, so initialize
-	// the itab again to get the missing function name.
+	// 如果是断言, 当没有使用 _, ok := x.(X) 的状况下, 转换失败就 panic
+	// 如果是转换, 在 T -> I, 则允许失败; 如果是 I -> I, 则不允许失败
 	panic(&TypeAssertionError{concrete: typ, asserted: &inter.typ, missingMethod: m.init()})
 }
-``` 
+```
+
+接下来看一下, itabTable 是怎么缓存 itab 的.
+
+首先, 全局变量 `itabTable` 的结构是长啥样子的?
+
+```cgo
+type itabTableType struct {
+	size    uintptr             // entries 的长度. 大小必须是 2 的指数
+	count   uintptr             // 当前已经填充了的 entries 的长度
+	entries [itabInitSize]*itab // 真实的长度是 size, itabInitSize=512
+}
+```
+
+数据结构比较简单, 但需要注意的点是:
+
+1. `itabTableType` 的 entries 真实长度是 size, 不是 entries 数组的大小. 这个数组会在适当的状况下进行扩容的.
+
+2. `itabTableType` 的 entries 使用的内存是连续的, 它类似一个 "切片" ("切片"只是整体结构上类似, 但并不是真的切片),
+可以使用内存偏移的方法来获取 `entries` 当中存储的值. 也正式因为这一点, 它又特别像一个 table, 我猜测这也是称为 `itabTable`
+的原因吧.
+
+在 itabTableType 当中是怎样去查找 itab 的呢? 思路的使用了类似 hashtable 的技术. 接下来看看它是怎样去实现的.
+
+> 这里 `哈希函数` 使用的是 `二次探测` 实现的. h(i) = (h0 + i*(i+1)/2) mod 2^k.
+
+> 哈希函数冲突的解决方法:
+>
+> - 线性探测法: h(i) = (h0 + i) mod k
+> - 二次探测法: h(i) = (h0 + i*(i+1)/2) mod k
+> - 链地址法: 数组 + 链表
+
+```cgo
+func (t *itabTableType) find(inter *interfacetype, typ *_type) *itab {
+    // 使用二次探测实现.
+    // 探测顺序为 h(i) = (h0 + i*(i+1)/2) mod 2^k. i 表示第i次探测
+    //          h(i) = ( h(i-1) + 1 ) mod 2^k. i 表示第i次探测 
+    // 我们保证使用此探测序列击中所有表条目.
+	mask := t.size - 1
+	
+	// itabHashFunc => inter.typ.hash ^ typ.hash
+	// h 是初始化的 h0 的值, 也可以认为它是 itabTableType 当中 entries 的 index
+	h := itabHashFunc(inter, typ) & mask
+	for i := uintptr(1); ; i++ {
+		p := (**itab)(add(unsafe.Pointer(&t.entries), h*sys.PtrSize))
+		
+		// 在这里使用atomic read, 因此如果我们看到m != nil, 我们还将看到m字段的初始化.
+		// m := *p
+		m := (*itab)(atomic.Loadp(unsafe.Pointer(p)))
+		if m == nil {
+			return nil
+		}
+		if m.inter == inter && m._type == typ {
+			return m
+		}
+		h += i
+		h &= mask
+	}
+}
+```
+
+主要的逻辑就是进行二次探测, 看是否能找到合适的 itab. 你可能存在这样疑问, 当 entries 全部填满的话, 如果没有合适的itab,
+上述的代码就会陷入死循环?  从逻辑角度考虑, 确实是这样的, 但是, entries 是永远不会被填满的, 最多在填充 75% 之后, 就会
+发生扩容. 那么扩容发生在哪里呢, 前面的 `getitab` 函数当中的 `itabAdd` 就会导致扩容.
+
+```cgo
+func itabAdd(m *itab) {
+	t := itabTable
+	
+	// 75% load factor, 发生扩容
+	if t.count >= 3*(t.size/4) { 
+	    // itabTable进行扩容.
+        // t2的内存大小 = (2+2*t.size)*sys.PtrSize, sys.PtrSize是指针大小, 多出来的2表示的是size, count字段
+        // 我们撒谎并告诉 malloc 我们想要无指针的内存, 因为所有指向的值都不在堆中.
+		t2 := (*itabTableType)(mallocgc((2+2*t.size)*sys.PtrSize, nil, true))
+		t2.size = t.size * 2
+
+		// copy
+        // 注意: 在复制时, 其他线程可能会寻找itab并找不到它. 没关系, 然后他们将尝试获取 itab 锁, 结果请等到复制完成.
+		iterate_itabs(t2.add)
+		if t2.count != t.count {
+			throw("mismatched count during itab table copy")
+		}
+		// 发布新的哈希表. 使用atomic write
+		atomicstorep(unsafe.Pointer(&itabTable), unsafe.Pointer(t2))
+		// Adopt the new table as our own.
+		t = itabTable
+		// Note: the old table can be GC'ed here.
+	}
+	t.add(m)
+}
+```
+
+`iterate_itabs` 就是一个迭代拷贝. `add`的逻辑和`find`的逻辑是十分类似的, 有兴趣的可以区看下代码, 这里不再过多的介绍
+了.
+
+
+还有一个函数, 就是 `itab` 的初始化函数 `init`, 稍微有点复杂, 下面看看吧.
+
+```cgo
+// init用 m.inter/m._type 对的所有代码指针填充 m.fun数组. 
+// 如果该类型未实现该接口, 将 m.fun[0]设置为0, 并返回缺少的接口函数的名称.
+// 可以在同一 m 上多次调用此函数, 甚至可以同时调用.
+func (m *itab) init() string {
+	inter := m.inter
+	typ := m._type
+	x := typ.uncommon()
+
+	// both inter and typ have method sorted by name,
+	// and interface names are unique,
+	// so can iterate over both in lock step;
+	// the loop is O(ni+nt) not O(ni*nt).
+	ni := len(inter.mhdr)
+	nt := int(x.mcount)
+	
+	methods := (*[1 << 16]unsafe.Pointer)(unsafe.Pointer(&m.fun[0]))[:ni:ni] // 接口方法(用于绑定对应于值当中方法)
+	xmhdr := (*[1 << 16]method)(add(unsafe.Pointer(x), uintptr(x.moff)))[:nt:nt] // 值当中的方法
+	var fun0 unsafe.Pointer
+	j := 0
+	
+imethods:
+	for k := 0; k < ni; k++ {
+	    // 获取接口当中方法 i, itype, iname, ipkg
+		i := &inter.mhdr[k]
+		itype := inter.typ.typeOff(i.ityp)
+		name := inter.typ.nameOff(i.name)
+		iname := name.name()
+		ipkg := name.pkgPath()
+		if ipkg == "" {
+			ipkg = inter.pkgpath.name()
+		}
+		for ; j < nt; j++ {
+		    // 获取值当中的方法 t, ttype, tname, tpkg
+			t := &xmhdr[j]
+			tname := typ.nameOff(t.name)
+			if typ.typeOff(t.mtyp) == itype && tname.name() == iname {
+				pkgPath := tname.pkgPath()
+				if pkgPath == "" {
+					pkgPath = typ.nameOff(x.pkgpath).name()
+				}
+				
+				if tname.isExported() || pkgPath == ipkg {
+					if m != nil {
+						ifn := typ.textOff(t.ifn)
+						if k == 0 {
+							fun0 = ifn // we'll set m.fun[0] at the end
+						} else {
+							methods[k] = ifn
+						}
+					}
+					continue imethods
+				}
+			}
+			
+		}
+		
+		// 只要有一个方法不匹配, 则都会走到这里. 最终会失败的. 正常的跳出循环才是匹配成功的.
+		m.fun[0] = 0
+		return iname
+	}
+	m.fun[0] = uintptr(fun0)
+	m.hash = typ.hash
+	return ""
+}
+```
+
+
+总结:
+
+getitab 函数的目的在缓存的 `itabTable` 当中查找一个合适的 `itab`, 如果没有查找到, 则向 `itabTable` 当中添加一个新
+的 itab. `itabTable` 就是一个哈希表, 采用的是 `二次探测法` 来解决哈希冲突的, 并且哈希表的装载因子是 75%, 超过这个值
+就会发生扩容.
+
+还有就是 getitab 的参数 `canfail`, 在带参数的断言(`runtime.assertI2I2` 和 `runtime.assertE2I2`) 传入的值是 true,
+在不带参数的断言 (`runtime.assertI2I` 和 `runtime.assertE2I`), 接口转换(`runtime.convI2I`) 传入的值是 false
+
