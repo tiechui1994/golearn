@@ -374,68 +374,68 @@ func main() {
 
 ```
 "".main STEXT size=331 args=0x0 locals=0xa8
-	0x0000 00000 (example.go:19)	TEXT	"".main(SB), ABIInternal, $168-0
-	0x0000 00000 (example.go:19)	MOVQ	(TLS), CX
-	0x0009 00009 (example.go:19)	LEAQ	-40(SP), AX
-	0x000e 00014 (example.go:19)	CMPQ	AX, 16(CX)
-	0x0012 00018 (example.go:19)	JLS	321
-	0x0018 00024 (example.go:19)	SUBQ	$168, SP
-	0x001f 00031 (example.go:19)	MOVQ	BP, 160(SP)
-	0x0027 00039 (example.go:19)	LEAQ	160(SP), BP
-	0x002f 00047 (example.go:20)	XORPS	X0, X0
-	0x0032 00050 (example.go:20)	MOVUPS	X0, ""..autotmp_1+136(SP)
-	0x003a 00058 (example.go:20)	MOVQ	$0, ""..autotmp_1+152(SP)
-	0x0046 00070 (example.go:20)	MOVQ	$18, ""..autotmp_1+136(SP)
-	0x0052 00082 (example.go:20)	LEAQ	go.string."san"(SB), AX
-	0x0059 00089 (example.go:20)	MOVQ	AX, ""..autotmp_1+144(SP)
-	0x0061 00097 (example.go:20)	MOVQ	$3, ""..autotmp_1+152(SP)
-	0x006d 00109 (example.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
-	0x0074 00116 (example.go:20)	MOVQ	AX, (SP)
-	0x0078 00120 (example.go:20)	LEAQ	""..autotmp_1+136(SP), AX
-	0x0080 00128 (example.go:20)	MOVQ	AX, 8(SP)
-	0x0085 00133 (example.go:20)	CALL	runtime.convT2I(SB)
-	0x008a 00138 (example.go:20)	MOVQ	24(SP), AX
-	0x008f 00143 (example.go:20)	MOVQ	16(SP), CX
-	0x0094 00148 (example.go:20)	MOVQ	CX, "".qcrao+64(SP)
-	0x0099 00153 (example.go:20)	MOVQ	AX, "".qcrao+72(SP)
-	0x009e 00158 (example.go:22)	MOVQ	"".qcrao+72(SP), AX
-	0x00a3 00163 (example.go:22)	MOVQ	"".qcrao+64(SP), CX
-	0x00a8 00168 (example.go:22)	MOVQ	CX, ""..autotmp_3+80(SP)
-	0x00ad 00173 (example.go:22)	MOVQ	AX, ""..autotmp_3+88(SP)
-	0x00b2 00178 (example.go:22)	MOVQ	CX, ""..autotmp_4+56(SP)
-	0x00b7 00183 (example.go:22)	CMPQ	""..autotmp_4+56(SP), $0
-	0x00bd 00189 (example.go:22)	JNE	193
-	0x00bf 00191 (example.go:22)	JMP	319
-	0x00c1 00193 (example.go:22)	TESTB	AL, (CX)
-	0x00c3 00195 (example.go:22)	MOVQ	8(CX), AX
-	0x00c7 00199 (example.go:22)	MOVQ	AX, ""..autotmp_4+56(SP)
-	0x00cc 00204 (example.go:22)	JMP	206
-	0x00ce 00206 (example.go:22)	PCDATA	$1, $5
-	0x00ce 00206 (example.go:22)	XORPS	X0, X0
-	0x00d1 00209 (example.go:22)	MOVUPS	X0, ""..autotmp_2+96(SP)
-	0x00d6 00214 (example.go:22)	LEAQ	""..autotmp_2+96(SP), AX
-	0x00db 00219 (example.go:22)	MOVQ	AX, ""..autotmp_6+48(SP)
-	0x00e0 00224 (example.go:22)	TESTB	AL, (AX)
-	0x00e2 00226 (example.go:22)	MOVQ	""..autotmp_4+56(SP), CX
-	0x00e7 00231 (example.go:22)	MOVQ	""..autotmp_3+88(SP), DX
-	0x00ec 00236 (example.go:22)	MOVQ	CX, ""..autotmp_2+96(SP)
-	0x00f1 00241 (example.go:22)	MOVQ	DX, ""..autotmp_2+104(SP)
-	0x00f6 00246 (example.go:22)	TESTB	AL, (AX)
-	0x00f8 00248 (example.go:22)	JMP	250
-	0x00fa 00250 (example.go:22)	MOVQ	AX, ""..autotmp_5+112(SP)
-	0x00ff 00255 (example.go:22)	MOVQ	$1, ""..autotmp_5+120(SP)
-	0x0108 00264 (example.go:22)	MOVQ	$1, ""..autotmp_5+128(SP)
-	0x0114 00276 (example.go:22)	MOVQ	AX, (SP)
-	0x0118 00280 (example.go:22)	MOVQ	$1, 8(SP)
-	0x0121 00289 (example.go:22)	MOVQ	$1, 16(SP)
-	0x012a 00298 (example.go:22)	CALL	fmt.Println(SB)
-	0x012f 00303 (example.go:23)	MOVQ	160(SP), BP
-	0x0137 00311 (example.go:23)	ADDQ	$168, SP
-	0x013e 00318 (example.go:23)	RET
-	0x013f 00319 (example.go:22)	JMP	206
-	0x0141 00321 (example.go:22)	NOP
-	0x0141 00321 (example.go:19)	CALL	runtime.morestack_noctxt(SB)
-	0x0146 00326 (example.go:19)	JMP	0
+    00000 (main.go:19)	TEXT	"".main(SB), ABIInternal, $168-0
+    00000 (main.go:19)	MOVQ	(TLS), CX
+    00009 (main.go:19)	LEAQ	-40(SP), AX
+    00014 (main.go:19)	CMPQ	AX, 16(CX)
+    00018 (main.go:19)	JLS	321
+    00024 (main.go:19)	SUBQ	$168, SP
+    00031 (main.go:19)	MOVQ	BP, 160(SP)
+    00039 (main.go:19)	LEAQ	160(SP), BP
+    00047 (main.go:20)	XORPS	X0, X0
+    00050 (main.go:20)	MOVUPS	X0, ""..autotmp_1+136(SP)
+    00058 (main.go:20)	MOVQ	$0, ""..autotmp_1+152(SP)
+    00070 (main.go:20)	MOVQ	$18, ""..autotmp_1+136(SP)
+    00082 (main.go:20)	LEAQ	go.string."san"(SB), AX
+    00089 (main.go:20)	MOVQ	AX, ""..autotmp_1+144(SP)
+    00097 (main.go:20)	MOVQ	$3, ""..autotmp_1+152(SP)
+    00109 (main.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
+    00116 (main.go:20)	MOVQ	AX, (SP)
+    00120 (main.go:20)	LEAQ	""..autotmp_1+136(SP), AX
+    00128 (main.go:20)	MOVQ	AX, 8(SP)
+    00133 (main.go:20)	CALL	runtime.convT2I(SB)
+    00138 (main.go:20)	MOVQ	24(SP), AX
+    00143 (main.go:20)	MOVQ	16(SP), CX
+    00148 (main.go:20)	MOVQ	CX, "".qcrao+64(SP)
+    00153 (main.go:20)	MOVQ	AX, "".qcrao+72(SP)
+    00158 (main.go:22)	MOVQ	"".qcrao+72(SP), AX
+    00163 (main.go:22)	MOVQ	"".qcrao+64(SP), CX
+    00168 (main.go:22)	MOVQ	CX, ""..autotmp_3+80(SP)
+    00173 (main.go:22)	MOVQ	AX, ""..autotmp_3+88(SP)
+    00178 (main.go:22)	MOVQ	CX, ""..autotmp_4+56(SP)
+    00183 (main.go:22)	CMPQ	""..autotmp_4+56(SP), $0
+    00189 (main.go:22)	JNE	193
+    00191 (main.go:22)	JMP	319
+    00193 (main.go:22)	TESTB	AL, (CX)
+    00195 (main.go:22)	MOVQ	8(CX), AX
+    00199 (main.go:22)	MOVQ	AX, ""..autotmp_4+56(SP)
+    00204 (main.go:22)	JMP	206
+    00206 (main.go:22)	PCDATA	$1, $5
+    00206 (main.go:22)	XORPS	X0, X0
+    00209 (main.go:22)	MOVUPS	X0, ""..autotmp_2+96(SP)
+    00214 (main.go:22)	LEAQ	""..autotmp_2+96(SP), AX
+    00219 (main.go:22)	MOVQ	AX, ""..autotmp_6+48(SP)
+    00224 (main.go:22)	TESTB	AL, (AX)
+    00226 (main.go:22)	MOVQ	""..autotmp_4+56(SP), CX
+    00231 (main.go:22)	MOVQ	""..autotmp_3+88(SP), DX
+    00236 (main.go:22)	MOVQ	CX, ""..autotmp_2+96(SP)
+    00241 (main.go:22)	MOVQ	DX, ""..autotmp_2+104(SP)
+    00246 (main.go:22)	TESTB	AL, (AX)
+    00248 (main.go:22)	JMP	250
+    00250 (main.go:22)	MOVQ	AX, ""..autotmp_5+112(SP)
+    00255 (main.go:22)	MOVQ	$1, ""..autotmp_5+120(SP)
+    00264 (main.go:22)	MOVQ	$1, ""..autotmp_5+128(SP)
+    00276 (main.go:22)	MOVQ	AX, (SP)
+    00280 (main.go:22)	MOVQ	$1, 8(SP)
+    00289 (main.go:22)	MOVQ	$1, 16(SP)
+    00298 (main.go:22)	CALL	fmt.Println(SB)
+    00303 (main.go:23)	MOVQ	160(SP), BP
+    00311 (main.go:23)	ADDQ	$168, SP
+    00318 (main.go:23)	RET
+    00319 (main.go:22)	JMP	206
+    00321 (main.go:22)	NOP
+    00321 (main.go:19)	CALL	runtime.morestack_noctxt(SB)
+    00326 (main.go:19)	JMP	0
 ```
 
 最重要核心的代码是 `runtime.convT2I(SB)`, 该函数位于 `src/runtime/iface.go` 当中. `convT2I()` 函数是将一个 
@@ -508,10 +508,6 @@ func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
 > 参数 typ 描述当前分配对象的数据类型
 
 上述的代码逻辑都比较简单, 这里就不再解释了.
-
-
-
-[参考文档](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
 
 
 ## 类型转换与断言的区别
@@ -901,6 +897,15 @@ getitab 函数的目的在缓存的 `itabTable` 当中查找一个合适的 `ita
 的 itab. `itabTable` 就是一个哈希表, 采用的是 `二次探测法` 来解决哈希冲突的, 并且哈希表的装载因子是 75%, 超过这个值
 就会发生扩容.
 
-还有就是 getitab 的参数 `canfail`, 在带参数的断言(`runtime.assertI2I2` 和 `runtime.assertE2I2`) 传入的值是 true,
-在不带参数的断言 (`runtime.assertI2I` 和 `runtime.assertE2I`), 接口转换(`runtime.convI2I`) 传入的值是 false
+还有就是 getitab 的参数 `canfail`, 在不同状况(断言, 接口转换)下 canfail 的参数是固定: 
 
+- 带参数的断言(`runtime.assertI2I2` 和 `runtime.assertE2I2`) 值是 true
+- 不带参数的断言 (`runtime.assertI2I` 和 `runtime.assertE2I`), 值是 false 
+- 接口转换(`runtime.convI2I`) 值是 false
+
+也就意味着, 当不带参数断言和接口转换失败之后, 程序会 panic 的. 这个在开发过程中一定要慎重使用.
+
+
+参考:
+
+[interface 10 问](https://mp.weixin.qq.com/s/EbxkBokYBajkCR-MazL0ZA)
