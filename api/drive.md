@@ -1,4 +1,4 @@
-# Google drive
+# Google Drive
 
 [Google Drive API](https://developers.google.com/drive/api/v3/reference/?apix=true)
 
@@ -6,36 +6,44 @@
 
 ## google 大文件下载
 
-### 1. Get the file ID:
+### 1. 获取要下载的文件ID:
 
-- go to your [**Google Drive**](https://drive.google.com/drive/my-drive)
+- 先登录到谷歌云盘[**Google Drive**](https://drive.google.com/drive/my-drive)
 
-- right-click the file you want to download
+- 鼠标移动到要下载的文件, 然后右击, 然后点击 **获取链接**, 如下图所示:
 
-- click on **Get shareable link**
+![image](/images/develop_api_google_getlink.png)
 
-- link looks like this: `https://drive.google.com/open?id=xxx` where `xxx` is the ID you will need 
-after few more steps
+然后, 获得了文件的分享链接:
 
-### 2. Get an OAuth token:
+![image](/images/develop_api_google_link.png)
 
-- go to [**OAuth 2.0 Playground**](https://developers.google.com/oauthplayground/)
+- 链接: `https://drive.google.com/file/d/xxx/view?usp=sharing`, 其中 `xxx` 就是需要获取的文件ID, 复制出来,
+以供后面使用.
 
-- under **Select the Scope box**, scroll down to **Drive API v3**
+### 2.获取 OAuth 的 token:
 
-- expand it and select `https://www.googleapis.com/auth/drive.readonly`
+- 进入谷歌开发官网, [**OAuth 2.0 Playground**](https://developers.google.com/oauthplayground/)
 
-- click on the blue `Authorize APIs` button
+- 在 `Step 1 Select & authorize APIs` 当中选择向下滚动, 选择 **Drive API v3** 选项, 并展开, 然后选择 
+`https://www.googleapis.com/auth/drive.readonly` 选项.
 
-- login if you are prompted and then click on `Exchange authorization code for tokens` to get a token
+- 点击下方蓝色的 `Authorize APIs` 按钮, 跳转到Google的授权页面, 登录Google账号并同意授权.
 
-- copy the `Access token` for further use
+- 授权完成后, 会再次跳回到谷歌开发官网, 点击 `Step 2 Exchange authorization code for tokens` 当中蓝色按钮,
+`Exchange authorization code for tokens`, 发起 code 换 token 的请求.
 
-### Download the file
+- 复制出 `Access token` 当中的内容, 后面会使用到的.
 
-- on Linx Or OS X
+### 3.下载文件
+
+- 在 Linx 或者 OS X 当中输入如下命令
 
 ```
-curl -C - -H "Authorization: Bearer ttt" https://www.googleapis.com/drive/v3/files/xxx?alt=media 
-     -o zzz
+curl -C - -H "Authorization: Bearer {TOKEN}" https://www.googleapis.com/drive/v3/files/{ID}?alt=media 
+     -o {FILE}
 ```
+
+> `{ID}` 是第1步获取到的文件ID, `{TOKEN}` 是第2步获取的授权Token. `{FILE}` 是对下载的文件的命名.
+> 注: 如果文件特别大, 1个小时下载不完, 只需要根据第2步获取一个 `{TOKEN}`, 然后继续按照上述的命令继续下载文件, 直到文件
+> 下载完成.
