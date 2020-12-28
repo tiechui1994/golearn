@@ -41,6 +41,8 @@ openssl rsa -in server.key -out server.key.text
 openssl req -new -key server.key -out server.csr
 ```
 
+> 注: 这里的服务器的名称要认真填写.
+
 4. CA 签发服务器证书
 
 ```bash
@@ -66,8 +68,93 @@ openssl req -new -key client.key -out client.csr
 openssl x509 -req -days 365 -in client.csr -CA ca.crt -CAkey ca.key -set_serial 01 -out client.crt
 ```
 
+### 双向认证实践, 这里主要介绍 TLSConfig 的配置
 
-### tls 流程 (ECDHE为例)
+// 客户端
+
+```
+caCert, _ := ioutil.ReadFile("./ca.crt")
+caCertPool := x509.NewCertPool()
+caCertPool.AppendCertsFromPEM(caCert)
+	
+cliCert, _ := tls.LoadX509KeyPair("./client.crt","./client.key")
+
+config := &tls.Config{
+    Certificates:       []tls.Certificate{cliCert}, // 客户端证书, 双向认证必须携带
+    RootCAs:            caCertPool,                 // 校验服务端证书 [CA证书]
+    InsecureSkipVerify: false,                      // 不用校验服务器证书
+}
+
+config.BuildNameToCertificate()
+```
+
+> ca.crt 是CA的证书, 自定义的CA签发
+> client.crt 是客户端的证书, 自定义的CA签发
+> client.key 是客户端的私钥
+> 
+> 注: 实际的开发当中, ca.crt 是第三方CA的证书, 已经内置在系统, 已经不需要. client.crt 是自定义CA签发的证书, client.key
+> 是客户端的私钥
+
+// 服务端
+
+```
+// 加载CA, 添加进 caCertPool
+caCert, _ := ioutil.ReadFile("./ca.crt")
+	
+caCertPool := x509.NewCertPool()
+caCertPool.AppendCertsFromPEM(caCert)
+
+// 加载服务端证书
+srvCert, _ := tls.LoadX509KeyPair("./server.crt", "./server.key")
+
+config := &tls.Config{
+    Certificates:       []tls.Certificate{srvCert},     // 服务器证书
+    ClientCAs:          caCertPool,                     // 校验客户端的证书 [CA证书]
+    ClientAuth:         tls.RequireAndVerifyClientCert, // 校验客户端证书
+    InsecureSkipVerify: false,                          // 必须校验 tls
+
+    CipherSuites: []uint16{
+        tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+    },
+}
+
+config.BuildNameToCertificate()
+```
+
+> ca.crt 是CA的证书, 自定义的CA签发
+> server.crt 是服务端的证书, 自定义的CA签发
+> server.key 是服务端的私钥, 服务器自己生成的.
+> 
+> 注: 实际生产环境当中, server.crt 是由第三方 CA 进行签名的. ca.crt 还是自定义CA签发的CA证书. server.key 是服务
+> 器的私钥.
+
+如果使用 nginx 进行做代理, 配置应该是这样的:
+
+```
+server {
+  server_name localhost;
+  listen 443 ssl http2;
+  
+  # CERT, 源自第三方签名
+  ssl_certificate ./server.crt;
+  ssl_certificate_key ./server.key;
+  
+  # CA, 自定义
+  ssl_client_certificate ./ca.crt;
+  ssl_verify_client on;
+  
+  # ssl ciphers
+  ssl_protocols TLSv1.1 TLSv1.2;
+  ssl_prefer_server_ciphers on;
+}
+```
+
+对于上 `server.crt`, `server.key` 和 `ca.crt` 的含义与上面的Server的是一致的, 并且相关的配置也是类似的.
+
+更为详细的案例, 参考代码 `client.go` 和 `server.go`.
+
+### tls 流程(单向) (ECDHE为例)
 
 整体流程:
 

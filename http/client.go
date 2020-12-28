@@ -25,22 +25,21 @@ func InitClient() *http.Client {
 
 	dir, _ := filepath.Abs("./http/certs")
 
+	// 加载CA证书(生产环境不需要这一步)
+	caCrt, err := ioutil.ReadFile(dir + "/ca/ca.crt")
+	if err != nil {
+		panic("try to load ca err, " + err.Error())
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCrt)
+
 	// 加载客户端证书
 	cliCert, err := tls.LoadX509KeyPair(dir+"/client/client.crt", dir+"/client/client.key.text")
 	if err != nil {
 		panic("try to load key & key err, " + err.Error())
 	}
 
-	// 加载CA证书
-	caCrt, err := ioutil.ReadFile(dir + "/ca/ca.crt")
-	if err != nil {
-		panic("try to load ca err, " + err.Error())
-	}
-
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCrt)
-
-	config := tls.Config{
+	config := &tls.Config{
 		Certificates:       []tls.Certificate{cliCert}, // 客户端证书, 双向认证必须携带
 		RootCAs:            caCertPool,                 // 校验服务端证书 [CA证书]
 		InsecureSkipVerify: false,                      // 不用校验服务器证书
@@ -49,7 +48,7 @@ func InitClient() *http.Client {
 
 	client = &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &config,
+			TLSClientConfig: config,
 		},
 		Timeout: 10 * time.Second,
 	}
@@ -64,8 +63,7 @@ func InitClient() *http.Client {
 curl -X GET \
 	 --cert certs/client/client.crt --key certs/client/client.key.text \
 	 --cacert certs/ca/ca.crt \
-	 'https://localhost/'
-
+	 'https://localhost:1443/'
 
 *   Trying 127.0.0.1...
 * Connected to localhost (127.0.0.1) port 443 (#0)
@@ -101,7 +99,7 @@ curl -X GET \
 **/
 
 func ClientRequest() {
-	request, _ := http.NewRequest("GET", "https://localhost/", nil)
+	request, _ := http.NewRequest("GET", "https://localhost:1443/", nil)
 	// 这里必须是 localhost, 因为证书当中的 `Common Name(服务器的名称)` 是 localhost
 	response, err := client.Do(request)
 	if err != nil {
