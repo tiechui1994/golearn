@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+./gitee -cookie gitee-session-n=${COOKIE} \
+-project ${PROJECT}

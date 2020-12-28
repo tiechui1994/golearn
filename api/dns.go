@@ -30,20 +30,33 @@ const (
 	DNS_TXT   = "TXT"
 )
 
+type privateDNS struct {
+	host    string
+	dnstype string
+
+	_token string
+}
+
 // ping.cn
 func DNS(host, dnstype string) (ips []string, err error) {
 	if host == "" {
 		return ips, fmt.Errorf("invalid host")
 	}
-	token, err := token(host)
+
+	private := privateDNS{
+		host:    host,
+		dnstype: dnstype,
+	}
+
+	err = private.token()
 	if err != nil {
 		return ips, err
 	}
 
 	var taskid string
-	_, taskid, err = check(host, token, "", dnstype, true)
+	_, taskid, err = private.check("", true)
 	for err != nil {
-		_, taskid, err = check(host, token, "", dnstype, true)
+		_, taskid, err = private.check("", true)
 	}
 
 	stop := false
@@ -56,7 +69,7 @@ func DNS(host, dnstype string) (ips []string, err error) {
 		case <-timer.C:
 			stop = true
 		default:
-			ips, _, err = check(host, token, taskid, DNS_MX, false)
+			ips, _, err = private.check(taskid, false)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
@@ -64,11 +77,11 @@ func DNS(host, dnstype string) (ips []string, err error) {
 	return ips, err
 }
 
-func token(host string) (string, error) {
-	u := "https://www.ping.cn/dns/" + host
+func (p *privateDNS) token() (error) {
+	u := "https://www.ping.cn/dns/" + p.host
 	response, err := dns.Get(u)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer response.Body.Close()
 
@@ -76,15 +89,16 @@ func token(host string) (string, error) {
 	regex := regexp.MustCompile(`<input\s+value="([0-9a-zA-Z]+)".*name="_token">`)
 	tokens := regex.FindStringSubmatch(string(data))
 	if len(tokens) >= 2 {
-		return tokens[1], nil
+		p._token = tokens[1]
+		return nil
 	}
-	return "", fmt.Errorf("invalid token")
+	return fmt.Errorf("invalid token")
 }
 
-func check(host, token, taskid, dnstype string, isCreate bool) (ips []string, task string, err error) {
+func (p *privateDNS) check(taskid string, isCreate bool) (ips []string, task string, err error) {
 	value := url.Values{}
-	value.Set("host", host)
-	value.Set("_token", token)
+	value.Set("host", p.host)
+	value.Set("_token", p._token)
 	value.Set("type", "dns")
 
 	if isCreate {
@@ -93,7 +107,7 @@ func check(host, token, taskid, dnstype string, isCreate bool) (ips []string, ta
 		value.Set("node_ids", "")
 		value.Set("isp", "1,2,3,9,10,11")
 		value.Set("dns_server", "")
-		value.Set("dns_type", dnstype)
+		value.Set("dns_type", p.dnstype)
 	} else {
 		value.Set("create_task", "0")
 		value.Set("task_id", taskid)
