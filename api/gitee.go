@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"net/http"
@@ -134,7 +134,7 @@ func forceSync() (err error) {
 	return nil
 }
 
-func main() {
+func Execute() {
 	c := flag.String("cookie", "", "cookie value")
 	p := flag.String("project", "", "project name")
 	flag.Parse()
