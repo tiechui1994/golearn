@@ -4,11 +4,14 @@ import (
 	"net/http"
 	"net/url"
 	"fmt"
-	"io/ioutil"
-	"regexp"
 	"bytes"
 	"encoding/json"
 	"flag"
+	"time"
+	"net"
+	"net/http/cookiejar"
+	"io/ioutil"
+	"regexp"
 )
 
 const (
@@ -18,38 +21,58 @@ const (
 
 var (
 	cookie    string
+	token     string
 	project   string
 	grouppath string
 )
 
-// 获取token
-func getToken() (token string, err error) {
+var gitee *http.Client
+
+func init() {
+	jar, _ := cookiejar.New(nil)
+	gitee = &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			Dial: func(network, addr string) (net.Conn, error) {
+				return net.DialTimeout(network, addr, time.Minute)
+			},
+		},
+		Jar:     jar,
+		Timeout: time.Minute,
+	}
+}
+
+// CSRF-Token
+func csrfToken() (err error) {
 	u := endpoint
 	request, _ := http.NewRequest("GET", u, nil)
 	request.Header.Set("Cookie", cookie)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := http.Get(u)
+	response, err := gitee.Do(request)
 	if err != nil {
-		return token, err
+		return err
 	}
 
 	data, _ := ioutil.ReadAll(response.Body)
-
-	re := regexp.MustCompile(`<meta content="(.*?)" name="csrf-token"`)
+	re := regexp.MustCompile(`meta content="(.*?)" name="csrf-token"`)
 	tokens := re.FindStringSubmatch(string(data))
-	return tokens[0], nil
+	if len(tokens) == 2 {
+		token = tokens[1]
+		return nil
+	}
+
+	return fmt.Errorf("invalid cookie")
 }
 
 // groupath
-func resources(token string) (err error) {
+func resources() (err error) {
 	u := endpoint + "/api/v3/internal/my_resources"
 	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("Cookie", cookie)
 	request.Header.Set("X-CSRF-Token", token)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := http.DefaultClient.Do(request)
+	response, err := gitee.Do(request)
 	if err != nil {
 		return err
 	}
@@ -67,7 +90,8 @@ func resources(token string) (err error) {
 	return nil
 }
 
-func forceSync(token string) (err error) {
+// sync
+func forceSync() (err error) {
 	values := make(url.Values)
 	values.Set("user_sync_code", "")
 	values.Set("password_sync_code", "")
@@ -76,56 +100,71 @@ func forceSync(token string) (err error) {
 
 	u := endpoint + "/" + grouppath + "/" + project + "/force_sync_project"
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
-	request.Header.Set("Cookie", cookie)
 	request.Header.Set("X-CSRF-Token", token)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := http.DefaultClient.Do(request)
+	response, err := gitee.Do(request)
 	if err != nil {
 		return err
 	}
 
-	if response.StatusCode >= http.StatusOK {
-		return nil
+	data, _ := ioutil.ReadAll(response.Body)
+	if len(data) == 0 {
+		fmt.Printf("sync [%v] .... \n", project)
+		time.Sleep(5 * time.Second)
+		return forceSync()
 	}
 
-	return fmt.Errorf("code:%v", response.StatusCode)
+	var result struct {
+		Status  int    `json:"status"`
+		Message string `json:"message"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return err
+	}
+
+	if result.Status == 1 {
+		fmt.Printf("[%v] 同步成功\n", project)
+	} else {
+		fmt.Printf("[%v] 同步失败\n", project)
+	}
+
+	return nil
 }
 
 func main() {
 	c := flag.String("cookie", "", "cookie value")
 	p := flag.String("project", "", "project name")
-
 	flag.Parse()
 
 	if *c == "" {
-		fmt.Println("不合法的cookie")
+		fmt.Println("未设置cookie")
 		return
 	}
 	if *p == "" {
-		fmt.Println("不合法的project")
+		fmt.Println("未设置的project")
 		return
 	}
 
 	cookie, project = *c, *p
 
-	token, err := getToken()
-	if err != nil {
-		fmt.Println("网络存在问题")
-		return
-	}
-
-	err = resources(token)
+	err := csrfToken()
 	if err != nil {
 		fmt.Println("cookie内容不合法")
 		return
 	}
 
-	err = forceSync(token)
+	err = resources()
+	if err != nil {
+		fmt.Println("cookie内容不合法")
+		return
+	}
+
+	err = forceSync()
 	if err != nil {
 		fmt.Printf("[%v] 同步失败\n", project)
 		return
 	}
-
-	fmt.Printf("[%v] 同步成功", project)
 }
