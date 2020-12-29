@@ -1,6 +1,5 @@
 ## go 命令
 
-
 ### go build
 
 常用的参数:
@@ -65,5 +64,17 @@
 -w debug type checking
 
 -asmhdr file 将汇编的header写入到文件file
+```
+
+## 编译压缩
+
+- 编译使用 `-ldflags='-w -s'` 压缩编译内容
+
+- 编译完成后, 可以使用 upx 进行压缩(`upx EXEC`).
+
+upx 安装:
+
+```
+sudo apt-get install upx
 ```
 
