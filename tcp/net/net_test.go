@@ -58,6 +58,7 @@ func TestPollDesc(t *testing.T) {
 	}
 
 	t.Log("pollDesc Size", unsafe.Sizeof(pollDesc{}))
+	t.Log(4096 / unsafe.Sizeof(pollDesc{}))
 
 	t.Log("timer Size", unsafe.Sizeof(timer{}))
 	t.Log("timer Size", unsafe.Sizeof(timer{}.arg))
