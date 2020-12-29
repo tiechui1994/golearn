@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"io/ioutil"
 	"regexp"
+	"sync"
 )
 
 const (
@@ -22,7 +23,6 @@ const (
 var (
 	cookie    string
 	token     string
-	project   string
 	grouppath string
 )
 
@@ -87,11 +87,15 @@ func resources() (err error) {
 	}
 
 	grouppath = result.GroupPath
+	if grouppath == "" {
+		return fmt.Errorf("invalid groupath")
+	}
+
 	return nil
 }
 
 // sync
-func forceSync() (err error) {
+func forceSync(project string) (err error) {
 	values := make(url.Values)
 	values.Set("user_sync_code", "")
 	values.Set("password_sync_code", "")
@@ -111,8 +115,8 @@ func forceSync() (err error) {
 	data, _ := ioutil.ReadAll(response.Body)
 	if len(data) == 0 {
 		fmt.Printf("sync [%v] .... \n", project)
-		time.Sleep(5 * time.Second)
-		return forceSync()
+		time.Sleep(3 * time.Second)
+		return forceSync(project)
 	}
 
 	var result struct {
@@ -134,21 +138,33 @@ func forceSync() (err error) {
 	return nil
 }
 
-func Execute() {
+type sliceflag []string
+
+func (s *sliceflag) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+func (s *sliceflag) Set(val string) error {
+	*s = append(*s, val)
+	return nil
+}
+
+func main() {
+	var p sliceflag
+	flag.Var(&p, "project", "project name")
 	c := flag.String("cookie", "", "cookie value")
-	p := flag.String("project", "", "project name")
 	flag.Parse()
 
 	if *c == "" {
 		fmt.Println("未设置cookie")
 		return
 	}
-	if *p == "" {
+	if len(p) == 0 {
 		fmt.Println("未设置的project")
 		return
 	}
 
-	cookie, project = *c, *p
+	cookie = *c
 
 	err := csrfToken()
 	if err != nil {
@@ -162,9 +178,17 @@ func Execute() {
 		return
 	}
 
-	err = forceSync()
-	if err != nil {
-		fmt.Printf("[%v] 同步失败\n", project)
-		return
+	var wg sync.WaitGroup
+	wg.Add(len(p))
+	for _, project := range p {
+		go func(project string) {
+			defer wg.Done()
+			err = forceSync(project)
+			if err != nil {
+				fmt.Printf("[%v] 同步失败\n", project)
+				return
+			}
+		}(project)
 	}
+	wg.Wait()
 }

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
 ./gitee -cookie gitee-session-n=${COOKIE} \
--project ${PROJECT}
+-project ${PROJECT1} -project ${PROJECT2}
