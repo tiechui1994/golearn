@@ -22,17 +22,21 @@ func IsNil(h interface{}) bool {
 	return h == nil
 }
 
-// golang当中 == 比较, 前提是 _type 是一致的, 可以比较的类型
-// 数组(大小,类型), 结构体[同一类型结构体(结构体名,结构体内容), 匿名结构体(结构体内容)],
-// map, channel, pointer, interface, func
+// 可以进行比较的
+// array, struct, pointer, string, int, interface, 匿名结构体, channel
+//
+// struct, interface, channel, 类型相同("type Y=X" , "type Z X", X,Y的类型相同, X,Z类型不一样), 且值相等, 才相等.
+// 注: interface 的类型是指的是静态类型.
+//
+// 匿名结构体, 内存布局一样, 且值相同, 才相等.
+//
+// interface == nil, 当且仅当动态类型为 nil, 且动态值为nil
 
-// interface相等的条件,(_type,itab一样 + 字面值一样)
-
-// golang == nil
-// interface, iface(itab为nil + data为nil) eface(_type为nil + data为nil)
-// pointer, channel, slice, map, func 只是声明未初始化
+// 不可以比较的
+// slice, map
 
 func NilTestCase() {
+
 	var a1 [10]int
 	var b1 [10]int
 	fmt.Println(a1 == b1)
@@ -40,7 +44,11 @@ func NilTestCase() {
 	type X struct {
 		A string
 	}
-	type Y X
+	type Y = X
+
+	var xx X
+	var yy Y
+	fmt.Println(xx == yy)
 
 	var x *int
 	var y *int
@@ -52,40 +60,37 @@ func NilTestCase() {
 	var bb struct {
 		A string
 	}
-
 	fmt.Println(aa == bb)
+
+	var x1 chan int
+	var x2 chan int
+	fmt.Println(x1 == x2)
 
 	var a interface{}
 	var b *Man
 	var c *Man
 	var d Human
 	var e interface{}
-	a = b
-	e = a
+	a = b // eface (*Man, nil)
+	e = a // eface (*Man, nil)
 
-	// a eface+*Man
-	// b *Man
-	// c *Man        --> h: eface+*Man
-	// d iface+nil   --> h: eface+nil
-	// e eface+*Man
-	fmt.Println(b == c, a == e, a == b)
 	fmt.Println("a==nil", a == nil)
 	// (1) false
-	// a是eface类型，_type指向的是*Man类型，
+	// a是eface类型, _type指向的是*Man类型，
 	// data指向的是nil，所以此题为false
 
 	fmt.Println("e==nil", e == nil)
 	// (2) false
-	// 同理，e为eface类型，_type也是指向的*Man类型
+	// 同理，e为eface类型,_type也是指向的*Man类型
 
 	fmt.Println("a==c", a == c)
 	// (3) true
-	// a的_type是*Man类型，data是nil
+	// a的_type是*Man类型, data是nil
 	// c的data也是nil
 
 	fmt.Println("a==d", a == d)
 	// (4) false
-	// a为eface类型，d为iface类型，而且d的itab指向的是nil，data也是nil
+	// a为eface类型, d为iface类型，而且d的itab指向的是nil, data也是nil
 	// 因为d没有具体到哪种数据类型
 
 	fmt.Println("c==d", c == d)

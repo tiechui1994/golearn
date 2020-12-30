@@ -62,16 +62,17 @@ int getsockopt(int s, int level, int optname, const void* optval, socklen_t optl
 > 参数 optname 代表设置的选项, 有以下几种值:
 >
 > - SO_DEBUG, 打开或关闭debug模式
-> - SO_REUSEADDR, 允许在 bind() 过程中本地地址可重复使用
+> - SO_REUSEADDR, 打开或关闭地址复用功能. 允许在 bind() 过程中本地地址可重复使用
+> - SO_DONTROUTE, 打开或关闭路由查询功能. 发送的数据包不要使用路由设备来传输.
+> - SO_BROADCAST, 允许或禁止发送广播数据
 > - SO_TYPE, 返回 socket 的类型
 > - SO_ERROR, 返回 socket 已发生的错误
-> - SO_DONTROUTE, 发送的数据包不要使用路由设备来传输.
-> - SO_BROADCAST, 使用广播方式发送
-> - SO_SNDBUF, 设置发送缓存区大小
-> - SO_RCVBUF, 设置接收缓存区大小
+> - SO_SNDBUF, 设置发送缓存区大小.
+> - SO_RCVBUF, 设置接收缓存区大小.
 > - SO_KEEPALIVE, 定期确定连接是否已经终止
 > - SO_OOBINLINE, 当收到 OOB 数据时, 马上送至输入设备
-> - SO_LINGER, 确保数据安全且可靠的发生出去
+> - SO_LINGER, 如果设置此选项, close或shutdown将等到所有套接字里排队的消息成功发送或到达延迟时间后才返回, 否则立即返回.
+> - SO_NO_CHECK, 打开或关闭校验和
 >
 > optval 代表设置的值, optlen 是 optval 的长度.
 >
@@ -179,3 +180,43 @@ int accpet(int sockfd, struct sockaddr* addr, int addrlen);
 > 5. EPERM 防火墙拒绝此连接
 > 6. ENOBUFS 系统缓存内存不足
 > 7. ENOMEM 内存不足
+
+
+- fcntl
+
+头文件: `#include <sys/unistd.h>`, `#include <sys/fcntl.h>`
+
+定义函数:
+
+```cgo
+int fcntl(int fd, int cmd);
+int fcntl(int fd, int cmd, long arg); // Golang使用
+```
+
+> 函数说明: fcntl() 针对(文件)描述符提供控制. 参数 fd 是文件描述符, 针对参数 cmd 的值, fcntl 能够接受第三个参数
+> (arg).
+
+fcntl 有5种功能:
+
+1) 复制一个现有的文件描述符 (cmd=F_DUPFD)
+2) 获取/设置文件描述符 "标记" (cmd=F_GETFD, F_SETFD)
+3) 获取/设置文件 "状态标记" (cmd=F_GETFL, F_SETFL)
+4) 获取/设置 "异步I/O所有权" (cmd=F_GETOWN, F_SETOWN)
+5) 获取/设置记录锁 (cmd=F_GETLK, F_SETLK)
+
+> Go 当中设置网络 socket 为非阻塞, 使用的是第3种方式
+
+cmd 与 arg 参数:
+
+F_GETFD 获取与文件描述符 fd 的 close-on-exec 标志. 如果返回值与 FD_CLOEXEC 进行与运算结果是 0, 文件保持交叉式访问
+exec(), 否则如果通过 exec 运行的话, 文件将被关闭. arg参数被忽略.
+
+F_SETFD 设置 close-on-exec 标志. 该标志以参数 arg 的 FD_CLOEXEC 位决定.
+
+F_GETFL 获取文件状态标记, arg参数被忽略.
+
+F_SETFL 设置文件状态标记, arg是状态标记, 可以更改的几个标志是: O_APPEND, O_NONBLOCK, O_SYNC, O_ASYNC.
+
+F_GETOWN 获取当前正在接收SIGIO 或 SIGURG 信号进程的id或者进程组id, 进程组id返回负值. arg参数被忽略.
+
+F_SETOWN 设置将接收SIGIO和SIGURG 信号的进程id或进程组id. arg是进程id或进程组id(负值)

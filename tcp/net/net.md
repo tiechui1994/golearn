@@ -55,6 +55,10 @@ for {
 
 ## Listen
 
+`Listen()` 方法的调用链路.
+
+`Listen()` -> `ListenConfig.listenTCP()` -> `internetSocket()` -> `socket()` -> `FD.listenStream()`
+
 ```cgo
 // network 的值是 "tcp", "tcp4", "tcp6", "unix" or "unixpacket" 之一.
 // 
@@ -92,134 +96,63 @@ func (lc *ListenConfig) Listen(ctx context.Context, network, address string) (Li
 	case *UnixAddr:
 		l, err = sl.listenUnix(ctx, la)
 	default:
-		return nil, &OpError{Op: "listen", Net: sl.network, Source: nil, Addr: la, Err: &AddrError{Err: "unexpected address type", Addr: address}}
+		return nil, &OpError{
+		    Op: "listen", Net: sl.network, 
+		    Source: nil, Addr: la, 
+		    Err: &AddrError{
+		        Err: "unexpected address type", 
+		        Addr: address,
+		    },
+		}
 	}
 	if err != nil {
-		return nil, &OpError{Op: "listen", Net: sl.network, Source: nil, Addr: la, Err: err} // l is non-nil interface containing nil pointer
+		return nil, &OpError{
+		    Op: "listen", Net: sl.network, 
+		    Source: nil, Addr: la, 
+		    Err: err,
+	    } // l is non-nil interface containing nil pointer
 	}
 	return l, nil
 }
 ```
-
-
-- resolveAddrList, 解析 IP 列表, 返回结果至少包含一个可用的 IP 地址列表
-
-```cgo
-func (r *Resolver) resolveAddrList(ctx context.Context, op, network, addr string, hint Addr) (addrList, error) {
-    // 根据 network 获取 afnet(协议), proto(协议编号[私有协议编号和公有协议编号], 公有协议编号: ip是0, ipv6是41, udp是17, tcp是6)
-	afnet, _, err := parseNetwork(ctx, network, true)
-	if err != nil {
-		return nil, err
-	}
-	if op == "dial" && addr == "" {
-		return nil, errMissingAddress
-	}
-	
-	// 解析 "类unix域协议" 的地址列表.
-	// Unix域协议使用套接字API, 支持同一台主机的不同进程之间进行通信. (本地)
-	switch afnet {
-	case "unix", "unixgram", "unixpacket":
-		addr, err := ResolveUnixAddr(afnet, addr) // 解析协议的地址
-		if err != nil {
-			return nil, err
-		}
-		if op == "dial" && hint != nil && addr.Network() != hint.Network() {
-			return nil, &AddrError{Err: "mismatched local address type", Addr: hint.String()}
-		}
-		return addrList{addr}, nil // unix的地址
-	}
-	
-	// 解析 "网络协议", 两大类:
-	// 一种是 tcp, udp, 传输层协议. 地址格式: "IP:PORT"
-	// 另一种是 ip, 网络层协议. 地址格式: "IP"
-	// 涉及到的逻辑是: 端口号检查, DNS解析主机名
-	addrs, err := r.internetAddrList(ctx, afnet, addr)
-	if err != nil || op != "dial" || hint == nil {
-		return addrs, err // 针对 op = "listen" 到此处就结束了. 
-	}
-	
-	// 针对 op = "dial" 的解析, 通配符解析 
-	var (
-		tcp      *TCPAddr
-		udp      *UDPAddr
-		ip       *IPAddr
-		wildcard bool
-	)
-	switch hint := hint.(type) {
-	case *TCPAddr:
-		tcp = hint
-		wildcard = tcp.isWildcard()
-	case *UDPAddr:
-		udp = hint
-		wildcard = udp.isWildcard()
-	case *IPAddr:
-		ip = hint
-		wildcard = ip.isWildcard()
-	}
-	naddrs := addrs[:0]
-	for _, addr := range addrs {
-		if addr.Network() != hint.Network() {
-			return nil, &AddrError{Err: "mismatched local address type", Addr: hint.String()}
-		}
-		switch addr := addr.(type) {
-		case *TCPAddr:
-			if !wildcard && !addr.isWildcard() && !addr.IP.matchAddrFamily(tcp.IP) {
-				continue
-			}
-			naddrs = append(naddrs, addr)
-		case *UDPAddr:
-			if !wildcard && !addr.isWildcard() && !addr.IP.matchAddrFamily(udp.IP) {
-				continue
-			}
-			naddrs = append(naddrs, addr)
-		case *IPAddr:
-			if !wildcard && !addr.isWildcard() && !addr.IP.matchAddrFamily(ip.IP) {
-				continue
-			}
-			naddrs = append(naddrs, addr)
-		}
-	}
-	if len(naddrs) == 0 {
-		return nil, &AddrError{Err: errNoSuitableAddress.Error(), Addr: hint.String()}
-	}
-	return naddrs, nil
-}
-
-```
-
 
 - listenTCP, 监听 TCP 协议的端口
 
 ```cgo
 func (sl *sysListener) listenTCP(ctx context.Context, laddr *TCPAddr) (*TCPListener, error) {
 	// 创建 socket
-	fd, err := internetSocket(ctx, sl.network, laddr, nil, syscall.SOCK_STREAM, 0, "listen", sl.ListenConfig.Control)
+	fd, err := internetSocket(ctx, sl.network, laddr, nil, syscall.SOCK_STREAM, 0, "listen", 
+	    sl.ListenConfig.Control)
 	if err != nil {
 		return nil, err
 	}
 	return &TCPListener{fd: fd, lc: sl.ListenConfig}, nil
 }
 
-
-func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, sotype, proto int, mode string, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
-	// favoriteAddrFamily 返回给定net, laddr, raddr 和 mode的适配的地址族.
+func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, sotype, proto int, 
+    mode string, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
+	// favoriteAddrFamily 返回给定 net, laddr, raddr 和 mode 的适配的地址族.
 	// listenTCP 的 mode 是 "listen"
 	//
-    // 如果mode表示 "listen", 而laddr是通配符, 则假设用户希望使用通配符地址族(AF_INET和AF_INET6)建立被动开放连接, 通配符地址如下:
+    // 如果mode是 "listen", 而laddr是通配符, 则假设用户希望使用通配符地址族(AF_INET和AF_INET6)建立被动开放连接, 
+    // 通配符地址如下:
     //
-    // - 使用通配符地址监听通配符通信域 "tcp"或 "udp": 如果平台同时支持IPv6 和 "IPv4映射的IPv6" 通信功能, 或者不支持IPv4, 则我们使用
-    // 双栈(dual stack), AF_INET6和IPV6_V6ONLY=0, 通配符地址侦听. 双栈通配符地址侦听可能会退回到 "仅IPv6", AF_INET6 和 IPV6_V6ONLY=1,
-    // 通配符地址侦听. 否则, 我们更喜欢仅使用IPv4的AF_INET通配符地址侦听.
+    // - 使用通配符地址监听通配符通信域 "tcp" 或 "udp": 如果平台同时支持 "IPv6" 和 "IPv4-mapped IPv6" 通信功能, 
+    // 或者不支持IPv4, 则使用双栈(dual stack), AF_INET6和IPV6_V6ONLY=0, 通配符地址侦听. 双栈通配符地址侦听
+    // 可能会退回到 "IPv6-only", AF_INET6 和 IPV6_V6ONLY=1, 通配符地址侦听. 否则, 使用 "IPv4-only" 和 AF_INET
+    // 通配符地址侦听.
     //
     // - 使用IPv4通配符地址侦听通配符通信域 "tcp" 或 "udp": 与上述相同.
     //
     // - 使用IPv6通配符地址侦听通配符通信域 "tcp" 或 "udp": 与上面相同.
     //
-    //- 使用IPv4通配符地址监听IPv4通信域 "tcp4" 或 "udp4": 我们使用仅IPv4的AF_INET通配符地址监听.
+    // - 使用IPv4通配符地址监听IPv4通信域 "tcp4" 或 "udp4": 使用 "IPv4-only" 的AF_INET通配符地址监听.
     //
-    //- 使用IPv6通配符地址监听IPv6通信域 "tcp6" 或 "udp6": 我们使用仅IPv6的AF_INET6和IPV6_V6ONLY=1 通配符地址监听.
+    // - 使用IPv6通配符地址监听IPv6通信域 "tcp6" 或 "udp6": 使用 AF_INET6和IPV6_V6ONLY=1 通配符地址监听.
     //
-    // 其他状况: 如果地址为IPv4, 则返回AF_INET, 否则返回AF_INET6. 它还返回一个布尔值, 该布尔值指定IPV6_V6ONLY选项.
+    // 其他状况: 如果地址为IPv4, 则返回AF_INET, 否则返回AF_INET6. 
+    // 
+    // 函数还返回一个布尔值, 该布尔值指定IPV6_V6ONLY选项.
     //
 	family, ipv6only := favoriteAddrFamily(net, laddr, raddr, mode)
 	
@@ -236,20 +169,21 @@ socket() 创建 socket, 并设置 socket 的属性.
 
 ```cgo
 // socket() 返回一个网络文件描述符, 该描述符已准备好使用网络轮询器进行异步I/O. 
-func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only bool, laddr, raddr sockaddr, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
+func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only bool, 
+    laddr, raddr sockaddr, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
 	// 创建 socket
 	s, err := sysSocket(family, sotype, proto)
 	if err != nil {
 		return nil, err
 	}
 	
-	// 设置 socket 的选项
+	// 设置 socket 的选项, 系统调用 setsockopt
 	if err = setDefaultSockopts(s, family, sotype, ipv6only); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
 	}
 	
-	// 创建文件描述符, 并且绑定 socket 
+	// 创建文件描述符 FD (通用), 并且绑定 socket 
 	if fd, err = newFD(s, family, sotype, net); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
@@ -298,17 +232,17 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 ```
 
 
-sysSocket() 进行系统调用创建 socket, 并且设置socket的属性 FD_CLOEXEC, O_NONBLOCK
+`sysSocket()` 进行系统调用创建 socket, 设置 socket 为非阻塞.
 
 ```cgo
 func sysSocket(family, sotype, proto int) (int, error) {
-    // 系统调用, 测试系统的  socket 否支持 syscall.SOCK_NONBLOCK, syscall.SOCK_CLOEXEC 属性
+    // 创建 socket. 系统调用 socket
 	s, err := socketFunc(family, sotype|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, proto)
 	// On Linux the SOCK_NONBLOCK and SOCK_CLOEXEC flags were
 	// introduced in 2.6.27 kernel and on FreeBSD both flags were
-	// introduced in 10 kernel. If we get an EINVAL error on Linux
-	// or EPROTONOSUPPORT error on FreeBSD, fall back to using
-	// socket without them.
+	// introduced in 10 kernel. 
+	// If we get an EINVAL error on Linux or EPROTONOSUPPORT error on FreeBSD, 
+	// fall back to using socket without them.
 	switch err {
 	case nil:
 		return s, nil
@@ -317,7 +251,7 @@ func sysSocket(family, sotype, proto int) (int, error) {
 	case syscall.EPROTONOSUPPORT, syscall.EINVAL:
 	}
 
-	// 系统调用创建 socket
+	// 不支持 SOCK_NONBLOCK, SOCK_CLOEXEC 选项的的 socket, 年代久远的 Linux 内核
 	syscall.ForkLock.RLock()
 	s, err = socketFunc(family, sotype, proto)
 	if err == nil {
@@ -328,7 +262,7 @@ func sysSocket(family, sotype, proto int) (int, error) {
 		return -1, os.NewSyscallError("socket", err)
 	}
 	
-	// socket 属性设置为 O_NONBLOCK
+	// 设置 socket 为 O_NONBLOCK, 系统调用 fcntl
 	if err = syscall.SetNonblock(s, true); err != nil {
 		poll.CloseFunc(s)
 		return -1, os.NewSyscallError("setnonblock", err)
@@ -337,14 +271,13 @@ func sysSocket(family, sotype, proto int) (int, error) {
 }
 ```
 
-
-listenStream() 设置 socket 的属性 SO_REUSEADDR. 
+`listenStream()` 设置 socket 的属性 SO_REUSEADDR. 
 
 > 系统调用 bind() 和 listen() 函数
 
 ```cgo
 func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, string, syscall.RawConn) error) error {
-	// 设置 socket 的 SO_REUSEADDR 属性
+	// 设置 socket 的 SO_REUSEADDR 属性. setsockopt
 	var err error
 	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {
 		return err
