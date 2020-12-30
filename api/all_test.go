@@ -15,69 +15,6 @@ import (
 	"time"
 )
 
-func TestPoll(t *testing.T) {
-	s := Socket{}
-	go func() {
-		s.Poll()
-	}()
-
-	done := make(chan struct{})
-
-	go func() {
-		musics := []string{"11.mp3", "22.mp3"}
-		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
-		for {
-			select {
-			case <-timer.C:
-				url, _ := s.PollJob("./data/"+musics[int(rnd.Int31n(2))], "amr")
-				log.Println("success,", url)
-				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	time.Sleep(5 * time.Minute)
-	close(done)
-}
-
-func TestSocket(t *testing.T) {
-	s := Socket{}
-
-	go func() {
-		err := s.Socket()
-		if err != nil {
-			t.Logf("socket:%v", err)
-		}
-	}()
-
-	done := make(chan struct{})
-	go func() {
-		musics := []string{"11.mp3", "22.mp3"}
-		rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-		timer := time.NewTimer(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
-		var count int64
-		for {
-			if count > 200 {
-				close(done)
-				break
-			}
-
-			select {
-			case <-timer.C:
-				count++
-				uri, _ := s.SocketJob("./data/"+musics[int(rnd.Int31n(5))], "amr")
-				log.Println("download", uri)
-				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
-			}
-		}
-	}()
-
-	<-done
-}
-
 func TestConfig(t *testing.T) {
 	config := New()
 	u := config.GetGoogleCode()
