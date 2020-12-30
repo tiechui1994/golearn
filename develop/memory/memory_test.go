@@ -1,9 +1,9 @@
 package memory
 
 import (
+	"fmt"
 	"testing"
 	"time"
-	"fmt"
 	"unsafe"
 )
 

@@ -1,5 +1,31 @@
+## TCP 相关的数据结构
 
-// netFD 是一个网络描述符, 类似于Linux的文件描述符的概念
+> 注: 这里只是以TCP为例, UDP在实现上是类似的.
+
+// TCPListener 是一个 TCP 网络监听器. 
+// 通常在处理请求的时候使用 Listener 类型的变量, 而不是 TCPListener 类型.
+
+```cgo
+type TCPListener struct {
+	fd *netFD
+	lc ListenConfig
+}
+```
+
+// TCPConn, 用于TCP网络连接的Conn接口的实现.
+
+```cgo
+type TCPConn struct {
+	conn
+}
+
+type conn struct {
+	fd *netFD
+}
+```
+
+
+// netFD 是一个网络描述符, 类似于Linux的文件描述符的概念. 
 
 ```cgo
 type netFD struct {
@@ -16,6 +42,7 @@ type netFD struct {
 ```
 
 
+// FD 是文件描述符. net 和 os 包将此类型用作表示 "网络连接" 或 "OS文件" 的较大类型的字段.
 // FD 包含了两个重要的数据结构 Sysfd 和 pollDesc, 前者是真正的系统文件描述符, 后者是对底层事件驱动的封装.
 
 ```cgo
@@ -54,11 +81,10 @@ type FD struct {
 // pollDesc, 底层事件驱动
 
 ```cgo
+// runtimeCtx 对应的底层指针指向的是 src/runtime/netpoll.go 当中的 pollDesc 实例.
 type pollDesc struct {
   runtimeCtx uintptr
 }
-
-// runtimeCtx 对应的底层指针是 src/runtime/netpoll.go 当中的 pollDesc
 
 // pollDesc 网络poller描述符
 //go:notinheap
@@ -86,3 +112,4 @@ type pollDesc struct {
 	wd      int64   // write deadline
 }
 ```
+

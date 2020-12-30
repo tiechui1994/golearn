@@ -54,10 +54,10 @@ func Server() {
 	config.BuildNameToCertificate()
 
 	server := &http.Server{
-		Addr:      ":1443",
-		Handler:   mux,
+		Addr:    ":1443",
+		Handler: mux,
 		//TLSConfig: config,
-		ErrorLog:  log.New(os.Stdout, "", log.Lshortfile|log.Ldate|log.Ltime),
+		ErrorLog: log.New(os.Stdout, "", log.Lshortfile|log.Ldate|log.Ltime),
 	}
 
 	err = server.ListenAndServe()

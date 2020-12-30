@@ -1,19 +1,23 @@
 package api
 
 import (
-	"net/http"
-	"net/url"
-	"fmt"
 	"bytes"
 	"encoding/json"
 	"flag"
-	"time"
-	"net"
-	"net/http/cookiejar"
+	"fmt"
 	"io/ioutil"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"regexp"
 	"sync"
+	"time"
 )
+
+/*
+gitee 同步 git 项目
+*/
 
 const (
 	endpoint = "https://gitee.com"
@@ -21,6 +25,7 @@ const (
 )
 
 var (
+	sleep     time.Duration
 	cookie    string
 	token     string
 	grouppath string
@@ -115,7 +120,7 @@ func forceSync(project string) (err error) {
 	data, _ := ioutil.ReadAll(response.Body)
 	if len(data) == 0 {
 		fmt.Printf("sync [%v] .... \n", project)
-		time.Sleep(3 * time.Second)
+		time.Sleep(sleep * time.Second)
 		return forceSync(project)
 	}
 
@@ -153,6 +158,7 @@ func main() {
 	var p sliceflag
 	flag.Var(&p, "project", "project name")
 	c := flag.String("cookie", "", "cookie value")
+	t := flag.Int("sleep", 3, "sync wait seconds")
 	flag.Parse()
 
 	if *c == "" {
@@ -164,7 +170,11 @@ func main() {
 		return
 	}
 
-	cookie = *c
+	if *t < 0 || *t > 10 {
+		*t = 3
+	}
+
+	cookie, sleep = *c, time.Duration(*t)
 
 	err := csrfToken()
 	if err != nil {

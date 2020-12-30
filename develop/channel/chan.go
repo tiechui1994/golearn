@@ -1,10 +1,10 @@
 package main
 
 import (
-	"time"
-	"strconv"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"time"
 )
 
 // 通用的 senders 和 recvers 之间关闭通道的方法

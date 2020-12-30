@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+/*
+dns查询
+网站:
+*/
+
 var dns = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
@@ -77,7 +82,7 @@ func DNS(host, dnstype string) (ips []string, err error) {
 	return ips, err
 }
 
-func (p *privateDNS) token() (error) {
+func (p *privateDNS) token() error {
 	u := "https://www.ping.cn/dns/" + p.host
 	response, err := dns.Get(u)
 	if err != nil {

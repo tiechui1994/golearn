@@ -86,7 +86,7 @@ func kSum(nums []int, k, target int) [][]int {
 
 		// 两数之和为特定值, 一次遍历, O(N)
 		if k == 2 {
-			var left, right = startIndex, N-1
+			var left, right = startIndex, N - 1
 			for left < right {
 				sum := nums[left] + nums[right]
 				if sum == target {
@@ -564,7 +564,7 @@ func spiralMatrixIII(R int, C int, r0 int, c0 int) [][]int {
 //==================================================================================================
 
 func findRoateIndex(nums []int) int {
-	var left, right = 0, len(nums)-1
+	var left, right = 0, len(nums) - 1
 	if nums[left] < nums[right] {
 		return 0
 	}

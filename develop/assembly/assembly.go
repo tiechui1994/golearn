@@ -1,8 +1,8 @@
 package main
 
 import (
-	"golearn/develop/assembly/pkg"
 	"fmt"
+	"golearn/develop/assembly/pkg"
 )
 
 func NewTwiceFunClosure(x int) func() int {

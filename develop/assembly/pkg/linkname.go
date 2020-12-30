@@ -1,10 +1,10 @@
 package pkg
 
 import (
-	_ "unsafe"
+	"fmt"
 	"sync"
 	"time"
-	"fmt"
+	_ "unsafe"
 )
 
 func AddWithoutLock() {

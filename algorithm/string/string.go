@@ -1,8 +1,8 @@
 package string
 
 import (
-	"strconv"
 	"fmt"
+	"strconv"
 )
 
 // 求string组成的ip可能值
@@ -80,7 +80,7 @@ func longPalindromeI(str string) string {
 		}
 	}
 
-	return str[start: end+1]
+	return str[start : end+1]
 }
 
 // 784 letter-case-permutation
@@ -161,7 +161,7 @@ func findSubstring(s string, words []string) []int {
 		return nil
 	}
 
-	isExist := func(word string, words []string) (bool) {
+	isExist := func(word string, words []string) bool {
 		for _, v := range words {
 			if v == word {
 				return true
@@ -182,10 +182,10 @@ func findSubstring(s string, words []string) []int {
 	start, end := 0, 0
 
 	for start < len(s) && end < len(s) {
-		word := s[end:end+step]
+		word := s[end : end+step]
 		exist := isExist(word, words)
 
-		if  ok := isExist(word, words); ok && val < start {
+		if ok := isExist(word, words); ok && val < start {
 			letters[word] = end
 
 			if isAll(letters, start, end) {

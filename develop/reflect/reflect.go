@@ -1,13 +1,13 @@
 package main
 
 import (
-	"unsafe"
-	"io"
 	"fmt"
-	"os"
-	"runtime"
-	"reflect"
+	"io"
 	"log"
+	"os"
+	"reflect"
+	"runtime"
+	"unsafe"
 )
 
 type iface struct {

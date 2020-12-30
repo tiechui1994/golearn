@@ -11,8 +11,18 @@ import (
 	"sync"
 	"time"
 
+	"context"
+	"crypto/tls"
+	"net"
+	"regexp"
+
 	"github.com/gorilla/websocket"
 )
+
+/*
+语音转文本, 微软
+网站: https://azure.microsoft.com/en-us/services/cognitive-services/speech-to-text
+*/
 
 const (
 	lang_zh_hk = "zh-HK" // Chinese (Cantonese Traditional)
@@ -33,6 +43,17 @@ const (
 	lang_ko_kr = "ko-KR" // Korean (Korea)
 )
 
+const (
+	phrase_conn_listen = "conn.listen"
+	phrase_conn_start  = "conn.start"
+	phrase_conn_end    = "conn.end"
+
+	phrase_turn_start         = "turn.start"
+	phrase_turn_end           = "turn.end"
+	phrase_speech_enddetected = "speech.endDetected"
+	phrase_speech_phrase      = "speech.phrase"
+)
+
 type speechtotext struct {
 	*websocket.Conn
 	writeLock sync.Mutex
@@ -46,18 +67,52 @@ type speechtotext struct {
 	JobID  string
 }
 
-const (
-	phrase_conn_listen = "conn.listen"
-	phrase_conn_start  = "conn.start"
-	phrase_conn_end    = "conn.end"
+var azure = &http.Client{
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+		Dial: func(network, addr string) (net.Conn, error) {
+			return net.DialTimeout(network, addr, time.Minute)
+		},
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: false,
+		},
+	},
+	Timeout: time.Minute,
+}
 
-	phrase_turn_start         = "turn.start"
-	phrase_turn_end           = "turn.end"
-	phrase_speech_enddetected = "speech.endDetected"
-	phrase_speech_phrase      = "speech.phrase"
-)
+func (s *speechtotext) authorization(ctx context.Context, language string) (auth, region string, err error) {
+	u := "https://azure.microsoft.com/" + strings.ToLower(language) + "/services/cognitive-services/speech-to-text/?cdn=enable"
+	request, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return auth, region, err
+	}
+	request.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
+	response, err := azure.Do(request)
+	if err != nil {
+		return auth, region, err
+	}
 
-func (s *speechtotext) Socket(region, language, format, authorization string) error {
+	data, _ := ioutil.ReadAll(response.Body)
+	html := strings.ReplaceAll(string(data), "\n", "")
+
+	retoken := regexp.MustCompile(`token:\s*"(.*?)"`)
+	reregion := regexp.MustCompile(`region:\s*"(.*?)"`)
+
+	tokens := retoken.FindStringSubmatch(html)
+	regions := reregion.FindStringSubmatch(html)
+	if len(tokens) != 2 || len(regions) != 2 {
+		return auth, region, fmt.Errorf("web page error")
+	}
+
+	return tokens[1], regions[1], nil
+}
+
+func (s *speechtotext) Socket(ctx context.Context, language, format string) error {
+	authorization, region, err := s.authorization(ctx, language)
+	if err != nil {
+		return err
+	}
+
 	timeoutMs := 5000
 	xConnectionId := strings.ToUpper(MD5(time.Now().String()))
 	u := "wss://" + region + ".stt.speech.microsoft.com/speech/recognition/dictation/cognitiveservices/v1"
@@ -66,6 +121,7 @@ func (s *speechtotext) Socket(region, language, format, authorization string) er
 
 	dailer := websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
+		NetDialContext:   (&net.Dialer{}).DialContext,
 		HandshakeTimeout: 45 * time.Second,
 	}
 
@@ -80,7 +136,7 @@ func (s *speechtotext) Socket(region, language, format, authorization string) er
 again:
 	header := make(http.Header)
 	s.phrase[phrase_conn_start] = time.Now()
-	conn, response, err := dailer.Dial(u, header)
+	conn, response, err := dailer.DialContext(ctx, u, header)
 	if err != nil && retryTimeout < 64*time.Second {
 		log.Println("dailer.Dial", err)
 		errmsg, _ := ioutil.ReadAll(response.Body)
@@ -115,6 +171,10 @@ again:
 		if text.RecognitionStatus == "Success" {
 			select {
 			case <-s.done:
+				s.Close()
+				return nil
+			case <-ctx.Done():
+				s.Close()
 				return nil
 			case s.text <- text.DisplayText:
 			}
@@ -126,6 +186,10 @@ again:
 		} else {
 			select {
 			case <-s.done:
+				s.Close()
+				return nil
+			case <-ctx.Done():
+				s.Close()
 				return nil
 			default:
 				s.phrase[text.Phrase] = time.Now()
@@ -182,6 +246,11 @@ const (
 )
 
 func (s *speechtotext) SendSpeech(src string) (msg string, err error) {
+	if s.Conn == nil {
+		time.Sleep(time.Millisecond * 500)
+		return msg, fmt.Errorf("Waiting....")
+	}
+
 	data, err := ioutil.ReadFile(src)
 	if err != nil {
 		log.Println("err", err)

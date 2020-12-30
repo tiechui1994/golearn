@@ -15,6 +15,7 @@ import (
 
 /**
 百度语音转换测试API, 支持中文,英文
+网站: https://developer.baidu.com/vcast
 **/
 
 var bclient = &http.Client{

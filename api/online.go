@@ -23,6 +23,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+/*
+语音文件格式转换
+网站: https://online-audio-converter.com
+*/
+
 var oclient = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
@@ -148,7 +153,6 @@ func Flow(filename string) (tmpfile string, err error) {
 
 	return tmpfile, nil
 }
-
 func flow(vals url.Values, data []byte) (tmpfile string, err error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -281,7 +285,7 @@ const (
 	mode_socket  = "socket"
 )
 
-type audio struct {
+type audioConfig struct {
 	BitrateType     string
 	ConstantBitrate string
 	VariableBitrate string
@@ -292,7 +296,7 @@ type audio struct {
 	Reverse         bool
 }
 
-var config = map[string]audio{
+var config = map[string]audioConfig{
 	"mp3": {
 		BitrateType:     "constant",
 		ConstantBitrate: "128",
@@ -385,7 +389,7 @@ func (s *Socket) Close() {
 // transport=polling&
 // t=Nlbxcde
 func (s *Socket) polling() error {
-	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v", tencode())
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v", tsencode())
 	request, _ := http.NewRequest("GET", u, nil)
 	resonse, err := oclient.Do(request)
 	if err != nil {
@@ -423,7 +427,7 @@ func (s *Socket) polling() error {
 }
 
 func (s *Socket) polling1() (result string, err error) {
-	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tsencode(), s.sid)
 	request, _ := http.NewRequest("GET", u, nil)
 	request.Header.Set("cookie", fmt.Sprintf("io=%v", s.sid))
 	request.Header.Set("origin", "https://online-audio-converter.com")
@@ -457,7 +461,7 @@ func (s *Socket) polling1() (result string, err error) {
 }
 
 func (s *Socket) polling2(body string) error {
-	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tencode(), s.sid)
+	u := fmt.Sprintf("https://"+host+"/socket.io/?EIO=3&transport=polling&t=%v&sid=%v", tsencode(), s.sid)
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
 	request.Header.Set("cookie", "io="+s.sid)
 	resonse, err := oclient.Do(request)
@@ -872,9 +876,9 @@ func (s *Socket) cmdDecode(origin string) {
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
+//==================================================================================================
 
-func tencode() string {
+func tsencode() string {
 	var (
 		s, u = 64, 0
 	)
@@ -899,7 +903,7 @@ func tencode() string {
 	return n(int(time.Now().UnixNano() / 1e6))
 }
 
-func tdecode(t string) int {
+func tsdecode(t string) int {
 	var (
 		s, u = 64, 0
 	)

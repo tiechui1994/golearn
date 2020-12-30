@@ -9,9 +9,8 @@ func Print1(a int) int {
 
 func Print2(a, b int) int {
 	fmt.Println(a, b)
-	return a+b
+	return a + b
 }
-
 
 func Print3(a, b, c int) int {
 	fmt.Println(a, b, c)

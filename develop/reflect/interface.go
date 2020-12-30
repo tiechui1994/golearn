@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"bytes"
-	"time"
 	"math/rand"
+	"time"
 )
 
 type Human interface {

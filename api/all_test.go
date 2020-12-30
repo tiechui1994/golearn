@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"flag"
 	"io/ioutil"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"time"
 )
-
 
 func TestPoll(t *testing.T) {
 	s := Socket{}
@@ -78,7 +78,6 @@ func TestSocket(t *testing.T) {
 	<-done
 }
 
-
 func TestConfig(t *testing.T) {
 	config := New()
 	u := config.GetGoogleCode()
@@ -98,7 +97,7 @@ func TestOCR(t *testing.T) {
 	t.Log("err", err)
 }
 
-func TestSpeech(t *testing.T) {
+func TestSpeechify(t *testing.T) {
 	speech := Speech{Region: "us-west-2"}
 	fd, err := os.Open("./data/speech.data")
 	if err != nil || time.Now().Unix() > int64(speech.Expiration) {
@@ -125,14 +124,11 @@ func TestSpeech(t *testing.T) {
 }
 
 func TestSpeechToText(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := speechtotext{}
-	// token 来源
-	// https://azure.microsoft.com/en-us/services/cognitive-services/speech-to-text/
 	go func() {
-		region := "eastus"
 		format := "simple"
-		authorization := "eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTI1NiIsInR5cCI6IkpXVCJ9.eyJyZWdpb24iOiJlYXN0dXMiLCJzdWJzY3JpcHRpb24taWQiOiIwOWIyNTQwZTg3Yjk0ZDgwYmUyMzAyYTc5OTcyNTIyOSIsInByb2R1Y3QtaWQiOiJTcGVlY2hTZXJ2aWNlcy5TMCIsImNvZ25pdGl2ZS1zZXJ2aWNlcy1lbmRwb2ludCI6Imh0dHBzOi8vYXBpLmNvZ25pdGl2ZS5taWNyb3NvZnQuY29tL2ludGVybmFsL3YxLjAvIiwiYXp1cmUtcmVzb3VyY2UtaWQiOiIvc3Vic2NyaXB0aW9ucy81NmI4ZjEwYS04M2NiLTQwYzYtYTU3ZS00OGQ2MWRlNjEzZjUvcmVzb3VyY2VHcm91cHMvY29nbml0aXZlLXNlcnZpY2VzLXByb2QvcHJvdmlkZXJzL01pY3Jvc29mdC5Db2duaXRpdmVTZXJ2aWNlcy9hY2NvdW50cy9hY29tLXByb2Qtc3BlZWNoLWVhc3R1cyIsInNjb3BlIjoic3BlZWNoc2VydmljZXMiLCJhdWQiOiJ1cm46bXMuc3BlZWNoc2VydmljZXMuZWFzdHVzIiwiZXhwIjoxNTkzNDM5NTA4LCJpc3MiOiJ1cm46bXMuY29nbml0aXZlc2VydmljZXMifQ.AeRaTLycanPaUAtBizcggHR8deerGtXGgISQlp4wcL4"
-		err := s.Socket(region, lang_zh_cn, format, authorization)
+		err := s.Socket(ctx, lang_zh_cn, format)
 		if err != nil {
 			t.Logf("socket:%v", err)
 		}
@@ -146,6 +142,7 @@ func TestSpeechToText(t *testing.T) {
 		var count int64
 		for {
 			if count > 20 {
+				cancel()
 				close(done)
 				break
 			}
@@ -153,7 +150,7 @@ func TestSpeechToText(t *testing.T) {
 			select {
 			case <-timer.C:
 				count++
-				msg, _ := s.SendSpeech("./data/" + musics[int(rnd.Int31n(5))])
+				msg, _ := s.SendSpeech("./data/" + musics[int(rnd.Int31n(int32(len(musics))))])
 				log.Println("msg", msg)
 				timer.Reset(time.Duration(rnd.Int63n(int64(time.Minute))) + time.Second)
 			}
@@ -163,13 +160,12 @@ func TestSpeechToText(t *testing.T) {
 	<-done
 }
 
-func TestLongSpeech(t *testing.T) {
+func TestLongSpeechOnce(t *testing.T) {
 	s := speechtotext{}
+	ctx := context.Background()
 	go func() {
-		region := "eastus"
 		format := "simple"
-		authorization := "eyJhbGciOiJodHRwOi8vd3d3LnczLm9yZy8yMDAxLzA0L3htbGRzaWctbW9yZSNobWFjLXNoYTI1NiIsInR5cCI6IkpXVCJ9.eyJyZWdpb24iOiJlYXN0dXMiLCJzdWJzY3JpcHRpb24taWQiOiIwOWIyNTQwZTg3Yjk0ZDgwYmUyMzAyYTc5OTcyNTIyOSIsInByb2R1Y3QtaWQiOiJTcGVlY2hTZXJ2aWNlcy5TMCIsImNvZ25pdGl2ZS1zZXJ2aWNlcy1lbmRwb2ludCI6Imh0dHBzOi8vYXBpLmNvZ25pdGl2ZS5taWNyb3NvZnQuY29tL2ludGVybmFsL3YxLjAvIiwiYXp1cmUtcmVzb3VyY2UtaWQiOiIvc3Vic2NyaXB0aW9ucy81NmI4ZjEwYS04M2NiLTQwYzYtYTU3ZS00OGQ2MWRlNjEzZjUvcmVzb3VyY2VHcm91cHMvY29nbml0aXZlLXNlcnZpY2VzLXByb2QvcHJvdmlkZXJzL01pY3Jvc29mdC5Db2duaXRpdmVTZXJ2aWNlcy9hY2NvdW50cy9hY29tLXByb2Qtc3BlZWNoLWVhc3R1cyIsInNjb3BlIjoic3BlZWNoc2VydmljZXMiLCJhdWQiOiJ1cm46bXMuc3BlZWNoc2VydmljZXMuZWFzdHVzIiwiZXhwIjoxNTkzNDQ1NjExLCJpc3MiOiJ1cm46bXMuY29nbml0aXZlc2VydmljZXMifQ.ecMRtMzXn0NJg5K-FEYqexDXB3_eRAOKWX8-WkSvYAM"
-		err := s.Socket(region, lang_zh_cn, format, authorization)
+		err := s.Socket(ctx, lang_zh_cn, format)
 		if err != nil {
 			t.Logf("socket:%v", err)
 		}
@@ -179,54 +175,10 @@ func TestLongSpeech(t *testing.T) {
 	go func() {
 		defer close(done)
 		time.Sleep(3 * time.Second)
-		msg, _ := s.SendSpeech("./data/66.wav")
+		msg, _ := s.SendSpeech("./data/11.wav")
 		log.Println("msg", msg)
 	}()
 	<-done
-}
-
-const (
-	dir  = "/home/user/Downloads/speaker/mp3/"
-	data = `
-Alexa,open the door; 10039_rmmin3_Alexa_001_OpenDoor_en.amr
-Alexa,close the door; 10039_rmmin3_Alexa_002_CloseDoor_en.amr
-Alexa,lock the door; 10039_rmmin3_Alexa_001_LockDoor_en.amr
-Alexa,unlock the door; 10039_rmmin3_Alexa_002_UnlockDoor_en.amr
-`
-)
-
-func TestSpeechs(t *testing.T) {
-	speech := Speech{Region: "us-west-2"}
-	fd, err := os.Open("./data/speech.data")
-	if err != nil || time.Now().Unix() > int64(speech.Expiration) {
-		err := speech.Identity()
-		if err != nil {
-			t.Fatal("err", err)
-		}
-		fd, _ = os.Create("./data/speech.data")
-		gob.NewEncoder(fd).Encode(&speech)
-	} else {
-		gob.NewDecoder(fd).Decode(&speech)
-	}
-
-	tokens := strings.Split(data, "\n")
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		token = strings.TrimSuffix(token, ";")
-		if len(token) == 0 {
-			continue
-		}
-
-		ts := strings.Split(token, ";")
-		if len(ts) == 2 {
-			text := strings.TrimSpace(ts[0])
-			filename := strings.Replace(strings.TrimSpace(ts[1]), ".amr", ".mp3", 1)
-			err = speech.Speech(text, dir+filename)
-			t.Log("err", err)
-			time.Sleep(200 * time.Millisecond)
-		}
-
-	}
 }
 
 func TestBaiduAudio(t *testing.T) {

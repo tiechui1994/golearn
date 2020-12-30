@@ -36,7 +36,6 @@ func (pipe *pipe) getPipe(isResolved bool) (Task, *Promise) {
 
 //--------------------------------------------------------------------------------------------------
 
-
 type Canceller interface {
 	IsCancelled() bool
 	Cancel()

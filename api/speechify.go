@@ -22,6 +22,10 @@ import (
 	"time"
 )
 
+/*
+文本/图片转语音
+*/
+
 var scleint = &http.Client{
 	Transport: &http.Transport{
 		DisableKeepAlives: true,
