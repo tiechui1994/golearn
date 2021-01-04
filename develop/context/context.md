@@ -275,7 +275,7 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 是需要相同的参数, 相同的查找方式, 这样才能得到相同的元素. 
 
 
-###
+#### timerCtx
 
 `timerCtx`, 与时间相关的 Context, **可以设置deadline, 可以被cancel, 没有存储值**.
 
@@ -310,19 +310,22 @@ func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
 		deadline:  d,
 	}
 	
-	// "挂靠" 和 "取消", 这两个作用 
+	// "挂靠"
 	propagateCancel(parent, c) 
 	
 	// 准备 cancel 函数
 	dur := time.Until(d)
 	if dur <= 0 {
-		c.cancel(true, DeadlineExceeded) // deadline has already passed
+	    // deadline has already passed
+	    // 取消, 删除当前的节点
+		c.cancel(true, DeadlineExceeded) 
 		return c, func() { c.cancel(false, Canceled) }
 	}
+	
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.err == nil {
-	    // time.AfterFunc 是一个异步的任务操作.
+	    // deadline 导致的取消操作. time.AfterFunc 是一个异步的任务操作.
 		c.timer = time.AfterFunc(dur, func() {
 			c.cancel(true, DeadlineExceeded)
 		})
@@ -341,10 +344,12 @@ func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
 前面提到了, `timerCtx` 重写了 `cancel()` 方法.
 
 ```cgo
+// removeFromParent 表示是否从可取消的父节点当中删除当前的节点
 func (c *timerCtx) cancel(removeFromParent bool, err error) {
-	c.cancelCtx.cancel(false, err)
+	c.cancelCtx.cancel(false, err) // 注意, 这里的值是 false
 	if removeFromParent {
-		// Remove this timerCtx from its parent cancelCtx's children.
+		// 在进行添加的时候, parent 实际上就是 c.cancelCtx.Context,
+		// 因此这里的移除的操作的 parent 才是 c.cancelCtx.Context
 		removeChild(c.cancelCtx.Context, c)
 	}
 	
@@ -360,4 +365,50 @@ func (c *timerCtx) cancel(removeFromParent bool, err error) {
 
 本质上就是 `cancelCtx` 的一些封装操作. 增加了额外的 `timer` 清除操作. 
 
-这里存在一个疑问, `cancelCtx` 在 `cancel` 当中已经移除了 `child`, 为什么这里还有移除的操作?
+注: 在调用 `cancelCtx` 的 `cancel()` 方法的时候,  removeFromParent 参数是 false, 也就是说, 并没有从可取消的父
+节点当中移除当前节点, 而是在当前的方法当前去移除当前节点. 这一点十分巧妙.
+
+
+#### valueCtx
+
+`valueCtx`, 与存储相关的 Context, **只能存储值**.
+
+```cgo
+type valueCtx struct {
+    Context
+    key, val interface{}
+}
+```
+
+`valueCtx` 继承了 Context, 本身只实现了 `Value()` 方法.
+
+由 valueCtx 派生的函数:
+
+```cgo
+func WithValue(parent Context, key, val interface{}) Context {
+	if key == nil {
+		panic("nil key")
+	}
+	if !reflectlite.TypeOf(key).Comparable() {
+		panic("key is not comparable")
+	}
+	return &valueCtx{parent, key, val}
+}
+```
+
+非常的简单. 这里不做过多的解释.
+
+`Value()` 方法, 则是递归向上查找 key 对应的 value 值. 
+
+和链表有点像, 只是它的方向相反: Context 指向它的父节点, 链表则指向下一个节点. 通过 `WithValue()` 函数, 可以创建层层
+的 valueCtx, 存储 goroutine 间共享的变量.
+
+```cgo
+func (c *valueCtx) Value(key interface{}) interface{} {
+	if c.key == key {
+		return c.val
+	}
+	return c.Context.Value(key)
+}
+```
+
