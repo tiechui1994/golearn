@@ -76,7 +76,7 @@ type canceler interface {
 }
 ```
 
-实现了 `canceler` 接口的 Context, 就表面该 Context 是可取消的(需要同时实现Context接口和canceler接口). 在 go 的
+实现了 `canceler` 接口的 Context, 就表明该 Context 是可取消的(即同时实现Context接口和canceler接口). 在 go 的
 `context` 包当中 `cancelCtx` 和 `timerCtx` 就是可取消的 Context.
 
 Context 接口这样设计的原因:
@@ -87,3 +87,277 @@ Context 接口这样设计的原因:
 - "取消" 操作应该可传递. "取消" 某个函数时, 和它相关联的其他函数也应该 "取消". 因此 `Done()` 方法返回一个只读的 chan,
 所有相关函数监听此 chan. 一旦 chan 关闭, 通过 chan 的 "广播机制", 所有监听者都能收到.
 
+
+### 实现 Context 接口的类型
+
+在 context 包当中提供了一些实现 `Context` 接口的类型. 它们分别是 `emptyCtx`, `cancelCtx`, `timerCtx`, `valueCtx`.
+
+#### emptyCtx
+
+`emptyCtx` 顾名思义, 就是一个空的 context, **永远不会被 cancel, 没有存储值, 也没有deadline**. 
+
+它被包装成:
+
+```cgo
+var (
+    background = new(emptyCtx)
+    todo       = new(emptyCtx)
+)
+
+func Background() Context {
+    return background
+}
+
+func TODO() Context {
+    return todo
+}
+```
+
+background 通常用在 main 函数当中, 作为所有 context 的根节点.
+
+todo 通常用在并不知道传递什么 context 的情形. 例如, 调用一个需要传递 context 参数的函数, 但是并没有其他 context 可
+以传递, 这时可以传递 todo. 这常常发生在重构进行中, 给一些函数添加一个 context 参数, 但不知道要传什么, 就用 todo "占
+个位子", 最终要换成其他 context.
+
+
+#### cancelCtx
+
+`cancelCtx`, 顾名思义, 可以取消的 context, **可以被cancel, 没有存储值, 也没有deadline**
+
+```cgo
+type cancelCtx struct {
+    Context
+
+    // 保护之后的字段
+    mu       sync.Mutex
+    done     chan struct{}
+    children map[canceler]struct{}
+    err      error
+}
+```
+
+`cancelCtx` 相比 `emptyCtx`, 它可以被 cancel(实现了 canceler 接口). 
+
+注: `cancelCtx` 继承了 Context, 它本身只实现了 `Done()`, `Err()` 两个方法. 因此在创建 `cancelCtx` 的时必须要
+有一个 `Context` 实例, 这样在调用 `Deadline()` 和 `Value()` 方法的时候, 直接调用 `Context` 实例的方法.
+
+
+由 `cancelCtx` 产生的函数:
+
+```cgo
+func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
+	c := newCancelCtx(parent)
+	propagateCancel(parent, &c)
+	return &c, func() { c.cancel(true, Canceled) }
+}
+```
+
+`propagateCancel()` 在 parent 被取消的时候, 取消 child. 主要的作用有两个:
+
+1) 将当前的 child "挂靠" 的 "可取消" 的 context(向上). 
+
+2) 在 parent 取消的时候, 取消 child.
+
+```cgo
+func propagateCancel(parent Context, child canceler) {
+	if parent.Done() == nil {
+		return // parent is never canceled
+	}
+	
+	// 找到可以取消的父 context
+	if p, ok := parentCancelCtx(parent); ok {
+		p.mu.Lock()
+		if p.err != nil {
+		    // 父节点已经取消, 子节点也需要取消
+			child.cancel(false, p.err)
+		} else {
+		    // 父节点未取消, 将子节点加入到父节点当中.
+			if p.children == nil {
+				p.children = make(map[canceler]struct{})
+			}
+			p.children[child] = struct{}{}
+		}
+		p.mu.Unlock()
+	} else {
+	    // 没有找到可取消的父 context, 新启动协程监控父节点/子节点取消信号
+		go func() {
+			select {
+			case <-parent.Done():
+				child.cancel(false, parent.Err())
+			case <-child.Done():
+			}
+		}()
+	}
+}
+```
+
+上面函数的作用就是向上寻找可以 "挂靠" 的 "可取消" 的 context, 并 "挂靠" 上去. 这样, 在上层调用 cancel 方法的时候,
+就可以层层传递, 将那些挂靠的子 context 一并 "取消".
+
+函数当中的 `else`, 它是指当前节点context没有向上可以取消的父节点, 那么只能启动一个协程来监控父节点或子节点的取消动作.
+
+> 这里存在一个疑问, 那就是在 `else` 当中, 既然没有找到可以取消的父节点, 那么 `case <-parent.Done()` 这个 case 将
+> 永远不会发生, 所以可以忽略这个 case; 而 `case <-child.Done()` 这个 case 又啥事不干. 那这个 `else` 不就是多余的
+> 吗?
+
+`else` 的逻辑代码是必须的, 下面的 `parentCancelCtx()` 函数的代码:
+
+`parentCancelCtx()` 递归查找 ctx 最近的可以取消父节点
+
+```cgo
+func parentCancelCtx(parent Context) (*cancelCtx, bool) {
+	for {
+		switch c := parent.(type) {
+		case *cancelCtx:
+			return c, true
+		case *timerCtx:
+			return &c.cancelCtx, true
+		case *valueCtx:
+			parent = c.Context
+		default:
+			return nil, false
+		}
+	}
+}
+```
+
+`parentCancelCtx()` 函数很明确, 只会识别三种类型: `cancelCtx`, `timerCtx`, `valueCtx`. 若是自定义的类型(比如
+把Context内嵌到一个类型里), 这里就无法识别了. 但是, 自定义的类型可能就是 "可取消" 的 context. 那么前面的代码当中没有
+`else`, 则会导致程序出现 bug.
+
+再回过头来看 `else` 的协程代码:
+
+第一个case (`<-parent.Done()`) 说明当 parent 节点取消, 则取消子节点. 如果去掉这个case, 那么父节点(自定义的可取消
+的context)取消的信号就无法传递到子节点.
+
+第二个case (`<-child.Done()`) 说明如果子节点自己取消了, 那么就退出当前的 select, 父节点的取消信号就不用管了. 如果
+去掉这个 case, 那么很可能父节点一直不取消, 这个 goroutine 就泄露了.
+
+
+接下来, 看一下取消操作:
+
+```cgo
+// removeFromParent 是否从 parent 移除的标记
+func (c *cancelCtx) cancel(removeFromParent bool, err error) {
+	if err == nil {
+		panic("context: internal error: missing cancel error")
+	}
+	c.mu.Lock()
+	if c.err != nil {
+		c.mu.Unlock()
+		return // already canceled
+	}
+	c.err = err
+	if c.done == nil {
+		c.done = closedchan // 已经关闭的 chan
+	} else {
+		close(c.done)
+	}
+	
+	// 取消子节点, 递归调用
+	for child := range c.children {
+		child.cancel(false, err)
+	}
+	c.children = nil
+	c.mu.Unlock()
+
+	if removeFromParent {
+	    // 移除 c. 先使用 parentCancelCtx() 方法获取到 c.Context 的可取消的父节点 parent, 
+	    // 然后在 parent 加锁的状况下删除 c.
+	    // 如果 parent 是自定义的 context, 那么 child 将不会保存到 parent 当中. 
+		removeChild(c.Context, c)
+	}
+}
+```
+
+这里的 `removeChild()` 函数的代码需要仔细阅读, 要不然会觉得奇怪. 将 child 节点添加到 child 可取消的父节点的位置是在
+函数 `propagateCancel()` 当中, 里面的 parent 就是 `c.Context`, child 是 `c`. 因此在 `removeChild()` 函数也
+是需要相同的参数, 相同的查找方式, 这样才能得到相同的元素. 
+
+
+###
+
+`timerCtx`, 与时间相关的 Context, **可以设置deadline, 可以被cancel, 没有存储值**.
+
+timerCtx 直接继承了 cancelCtx, 因此, 它可以被cancel.
+
+```cgo
+type timerCtx struct {
+	cancelCtx
+	timer *time.Timer // Under cancelCtx.mu.
+
+	deadline time.Time
+}
+```
+
+注: `timerCtx` 继承了 `cancelCtx`, 间接的继承了 `Context` 接口. 本身只实现了 `Deadline()` 方法, 继承了 `cancelCtx`
+实现的  `Done()`, `Err()` 两个方法. 但是, 它重写了 `cancel()` 方法.
+
+由 timerCtx 派生的函数:
+
+```cgo
+func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
+    // 检查 parent 的 deadline
+    // 如果有 deadline, 并且 deadline < d, 这说明当前即将创建的节点不可能到达 deadline, 
+    // 那么当前即将创建的节点只能以取消的方式退出.
+	if cur, ok := parent.Deadline(); ok && cur.Before(d) {
+		return WithCancel(parent)
+	}
+	
+	
+	c := &timerCtx{
+		cancelCtx: newCancelCtx(parent),
+		deadline:  d,
+	}
+	
+	// "挂靠" 和 "取消", 这两个作用 
+	propagateCancel(parent, c) 
+	
+	// 准备 cancel 函数
+	dur := time.Until(d)
+	if dur <= 0 {
+		c.cancel(true, DeadlineExceeded) // deadline has already passed
+		return c, func() { c.cancel(false, Canceled) }
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err == nil {
+	    // time.AfterFunc 是一个异步的任务操作.
+		c.timer = time.AfterFunc(dur, func() {
+			c.cancel(true, DeadlineExceeded)
+		})
+	}
+	return c, func() { c.cancel(true, Canceled) }
+}
+
+func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
+	return WithDeadline(parent, time.Now().Add(timeout))
+}
+```
+
+虽然说是两个函数, 本质上就是一个函数 `WithDeadline()`.
+
+
+前面提到了, `timerCtx` 重写了 `cancel()` 方法.
+
+```cgo
+func (c *timerCtx) cancel(removeFromParent bool, err error) {
+	c.cancelCtx.cancel(false, err)
+	if removeFromParent {
+		// Remove this timerCtx from its parent cancelCtx's children.
+		removeChild(c.cancelCtx.Context, c)
+	}
+	
+	// 停止掉 timer 的操作
+	c.mu.Lock()
+	if c.timer != nil {
+		c.timer.Stop()
+		c.timer = nil
+	}
+	c.mu.Unlock()
+}
+```
+
+本质上就是 `cancelCtx` 的一些封装操作. 增加了额外的 `timer` 清除操作. 
+
+这里存在一个疑问, `cancelCtx` 在 `cancel` 当中已经移除了 `child`, 为什么这里还有移除的操作?
