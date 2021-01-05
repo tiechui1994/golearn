@@ -154,7 +154,7 @@ func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
 
 `propagateCancel()` 在 parent 被取消的时候, 取消 child. 主要的作用有两个:
 
-1) 将当前的 child "挂靠" 的 "可取消" 的 context(向上). 
+1) 将当前的 child "挂载" 的 "可取消" 的 context(向上). 
 
 2) 在 parent 取消的时候, 取消 child.
 
@@ -191,7 +191,7 @@ func propagateCancel(parent Context, child canceler) {
 }
 ```
 
-上面函数的作用就是向上寻找可以 "挂靠" 的 "可取消" 的 context, 并 "挂靠" 上去. 这样, 在上层调用 cancel 方法的时候,
+上面函数的作用就是向上寻找可以 "挂载" 的 "可取消" 的 context, 并 "挂载" 上去. 这样, 在上层调用 cancel 方法的时候,
 就可以层层传递, 将那些挂靠的子 context 一并 "取消".
 
 函数当中的 `else`, 它是指当前节点context没有向上可以取消的父节点, 那么只能启动一个协程来监控父节点或子节点的取消动作.
@@ -310,7 +310,7 @@ func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
 		deadline:  d,
 	}
 	
-	// "挂靠"
+	// "挂载"
 	propagateCancel(parent, c) 
 	
 	// 准备 cancel 函数
@@ -412,3 +412,25 @@ func (c *valueCtx) Value(key interface{}) interface{} {
 }
 ```
 
+它会顺着链路一直往上找, 比较当前节点的key是否是要找的 key, 如果是, 则直接返回 value. 否则, 一直沿着 context 往前, 
+最终找到根节点(一般是emptyCtx), 直接返回一个 nil. 因此在使用 Value 方法的时候要判断结果是否为 nil.
+
+注: 因为查找方向是往上走的, 所以, 父节点无法获取子节点存储的值, 子节点却可以获取父节点的值.
+
+`WithValue()` 函数创建 context 节点的过程实际上就是创建链表节点的过程. 两个节点的 key 值是可以相等的, 但它们是两个
+不同的 context 节点. 查找的时候, 会向上查找到最后一个挂载的 context 节点, 也就是离得比较近的一个父节点 context.
+
+查找效率低效, 同时存在值被覆盖的可能, 这是 `context.Vlaue` 最受争议的地方.
+
+### 如何使用 context
+
+官方的建议:
+
+1. 不要将 Context 塞到结构体里(前面提到了, 这样会创建更多的协程来处理取消操作). 直接将 Context 类型作为第一个参数, 而
+且一般命名为 ctx. 
+
+2. 不要向一个函数传入一个 nil 的 context, 如果实在不知道传什么, 就传 todo
+
+3. 不要把本应该作为参数的类型塞到 context 中, context 存储的应该是一些共同的数据. 例如: 登录session, cookie等
+
+4. 同一个 context 可能会被传递到多个协程, 别担心, context是并发安全的
