@@ -25,7 +25,7 @@ type conn struct {
 ```
 
 
-// netFD 是一个网络描述符, 类似于Linux的文件描述符的概念. 
+// netFD 是一个网络描述符, 类似于Linux当中的 socket. 
 
 ```cgo
 type netFD struct {
@@ -42,6 +42,7 @@ type netFD struct {
 ```
 
 
+// FD 是一个文件描述符, 类型于Linux当中的文件描述符
 // FD 是文件描述符. net 和 os 包将此类型用作表示 "网络连接" 或 "OS文件" 的较大类型的字段.
 // FD 包含了两个重要的数据结构 Sysfd 和 pollDesc, 前者是真正的系统文件描述符, 后者是对底层事件驱动的封装.
 
@@ -50,10 +51,10 @@ type FD struct {
  // Lock sysfd and serialize access to Read and Write methods.
  fdmu fdMutex
 
- // System file descriptor. Immutable until Close.
+ // 系统文件描述符. Immutable until Close.
  Sysfd int
 
- // I/O poller.
+ // I/O 事件.
  pd pollDesc
 
  // Writev cache.
