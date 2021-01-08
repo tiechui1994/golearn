@@ -272,6 +272,29 @@ func dec(val *int32) int32 {
 	return res
 }
 
+func maybe(msg string) int {
+	fmt.Println()
+	for {
+		fmt.Printf("%s (y/n) ", msg)
+
+		var read string
+		fmt.Scanln(&read)
+		switch read {
+		case "Y", "y":
+			return 1
+		case "N", "n":
+			return 0
+		}
+	}
+}
+
+func ask(msg string) string {
+	fmt.Printf("%s ", msg)
+	var read string
+	fmt.Scanln(&read)
+	return read
+}
+
 func getParams() {
 	optstring := "+hcCtdDfl:i:r:R:us:S:w:We:"
 
@@ -350,9 +373,9 @@ func getParams() {
 	success := func() {
 		os.Exit(0)
 	}
-	failed := func() {
-		fmt.Println("Failed to parse command line")
-		os.Exit(-1)
+	failed := func(msg string) {
+		fmt.Println(msg)
+		os.Exit(1)
 	}
 	dump_err := func(args ...string) {
 		switch len(args) {
@@ -404,7 +427,7 @@ func getParams() {
 			// --help
 			usage()
 			if idx < -1 {
-				failed()
+				failed("Failed to parse command line")
 			}
 			success()
 		} else if dec(&idx) == 0 {
@@ -568,6 +591,44 @@ func getParams() {
 	}
 
 	_, _, _ = confirm, force, label
+
+	optind := *(*int)(unsafe.Pointer(&C.optind))
+	if optind != len(os.Args) {
+		usage()
+		if idx < -1 {
+			failed("Failed to parse command line")
+		}
+		success()
+	}
+
+	if reuse != ASK_REUSE && mode != TOTP_MODE {
+		failed("Must select time-based mode, when using -d or -D")
+	}
+
+	if (r_time != 0 && r_limit == 0) || (r_time == 0 && r_limit != 0) {
+		failed("Must set -r when setting -R, and vice versa")
+	}
+
+	if emergency_codes < 0 {
+		emergency_codes = SCRATCHCODES
+	}
+
+	if label == "" {
+		label = getLabel()
+	}
+	if issuer == "" {
+		issuer = hostname()
+	}
+
+	use_totp := 0
+	if mode == ASK_MODE {
+
+	} else {
+		use_totp, mode = TOTP_MODE, TOTP_MODE
+	}
+
+	_ = use_totp
+
 }
 
 func main() {
@@ -614,5 +675,7 @@ func main() {
 	code := GenerateCode(secret[:n], int(tm))
 	log.Println("code", code)
 
-	getParams()
+	//getParams()
+
+	maybe("Do you want authentication tokens to be time-based")
 }

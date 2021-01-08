@@ -2,15 +2,19 @@
 
 [相关文章](https://colobu.com/2018/06/13/cgo-articles/)
 
-[文档](https://chai2010.cn/advanced-go-programming-book/ch2-cgo/ch2-02-basic.html)
+[CGO编程](https://chai2010.cn/advanced-go-programming-book/ch2-cgo/ch2-02-basic.html)
 
 ## cgo语句
+
+- cgo 编译参数与链接参数 
 
 在 `import "C"`语句前的注释可以通过 `#cgo` 语句设置 `编译阶段` 和 `链接阶段` 的相关参数.
 
 **编译阶段**的参数主要用于 `定义相关的宏` 和 `指定头文件检索路径`.
 
 **链接阶段**的参数主要是 `指定库文件检索路径` 和 `要链接的库文件`.
+
+编译与链接参数案例:
 
 ```cgo
 // #cgo CFLAGS: -D PNG_DEBUG=1 -I ./include
@@ -26,26 +30,24 @@ import "C"
 `LDFLAGS` 部分, `-L` 指定了链接时文件检索目录, `-l` 指定了链接时需要链接 `png` 库.  
 
 因为 C/C++ 遗留的问题, C 头文件检索目录可以是相对目录, 但是 `库文件检索目录` 则需要是绝对路径.
+
 在库文件的检索目录中可以通过 `${SRCDIR}` 变量表示当前包含目录的绝对路径:
 
-```
+```cgo
 // #cgo LDFLAGS: -L ${SRCDIR}/libs -l foo
 ```
 
 上面的代码在链接时将被展开为:
 
-```
+```cgo
 // #cgo LDFLAGS: -L /go/src/foo/libs -l foo
 ```
 
----
-
-
 `#cgo` 语句主要影响 **`CFLAGS`, `CPPFLAGS`, `CXXFLAGS`, `FFLAGS`, `LDFLAGS`** 这几个编译器环境变量. 
 
-`LDFLAGS` 用于设置链接阶段的参数.
+① `LDFLAGS` 用于设置链接阶段的参数.
 
-`CFLAGS`, `CXXFLAGS`,`CPPFLAGS`, `FFLAGS` 这几个变量用于改变编译阶段的构建参数.
+② `CFLAGS`, `CXXFLAGS`,`CPPFLAGS`, `FFLAGS` 这几个变量用于改变编译阶段的构建参数.
 
 
 对于在cgo环境混合使用C和C++的用户来说, 可能有三种不同的编译选项: 其中 `CFLAGS` 对应 C 语言特有的编译选项, 
@@ -55,8 +57,7 @@ import "C"
 但是在链接阶段, C 和 C++的链接选项是通用的, 因此这个时候已经不再有C和C++语言的区别, 它们的目标文件的类型是相同的.
 
 
----
-
+- cgo 条件选择
 
 `#cgo` 指令还支持条件选择, 当满足某个操作系统或某个CPU架构类型时类型时后面的编译或链接选项生效. 
 
@@ -66,7 +67,6 @@ import "C"
 // #cgo windows CFLAGS: -D X86=1
 // #cgo !windows LDFLAGS: -l math
 ```
-
 
 宏定义案例:
 
@@ -97,11 +97,11 @@ func main() {
 
 > 注意: 
 >
-> 1.在链接C库的使用, 不支持条件选择. 并且CGO参数有严格的格式 `#cgo CFLAGS:...` 或者 
-> `#cgo LDFLAGS: ... `, 即 `#cgo` 和 参数(`CFLAGS`, `LDFLAGS`) 
+> 1.在链接C库的使用, 不支持条件选择. 并且CGO参数有严格的格式 `#cgo CFLAGS:...` 或者 `#cgo LDFLAGS: ... `, 
+> 即 `#cgo` 和 参数(`CFLAGS`, `LDFLAGS`) 
 > 
-> 2.对于C语言库(`.h` 文件定义内容 和 `.c` 文件实现 `.h` 的定义), 在CGO当中引用 `.h` 文件, 必须采用
-> `动态库/静态库` 链接的方式, 否则可能无法编译通过.  
+> 2.对于C语言库(`.h` 文件定义内容 和 `.c` 文件实现 `.h` 的定义), 在CGO当中引用 `.h` 文件, 必须采用 `动态库/静态库` 
+> 链接的方式, 否则可能无法编译通过.  
 
 
 ## 常用的cgo类型
@@ -122,56 +122,94 @@ func main() {
 | double | C.double | float64 |
 | size_t | C.size_t | uint | 
 
+数值类型使用案例:
+
+
+```cgo
+/*
+#include <stdio.h>
+
+int call(int arg1, int* arg2, const char* arg3) {
+    printf("arg1: %d\n", arg1);
+    printf("arg2: %d\n", *arg2);
+    printf("arg3: %s\n", arg3);
+
+	*arg2 = 13579;
+    return 0;
+}
+*/
+import "C"
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+	p1, p2, p3 := 1, 10, "Hello World"
+
+	arg1 := C.int(p1)
+	arg2 := (*C.int)(unsafe.Pointer(&p2))
+	arg3 := C.CString(p3)
+
+	var res C.int
+	res = C.call(arg1, arg2, arg3)
+
+	fmt.Println(*arg2, *(*int)(unsafe.Pointer(arg2)), res)
+}
+```
+
+`call()` 函数有三个参数, 类型分别是 `int`, `int*`, `const char*`. 都是 C 语言类型. 
+
+在 Go 当中要调用 `call()` 函数, 那么参数必须也是 C 类型的. `int` 类型使用 `C.int(p1)`, `int*` 类型使用 unsafe
+包直接转换成 `*C.int`, `const char*` 使用 `C.CString(p3)` 直接将 string 转换成 `char*`.
+
+在 Go 获取 `call()` 函数返回值(一般状况下, C语言返回值都是数值类型的), 那么返回值也必须是 C 类型的. 这里的返回值类型
+是 `int`, 先声明一个变量为 `C.int`, 然后接收. 对于整数类型, 使用 `int(res)` 进行转换成 Go 类型, 但是对于 `指针`类
+型, 必须要使用 unsafe 包转换成 Go 类型, 之后才能使用转换后的值, 否则会出现类型不匹配的问题. 
+
+> 注: 在 C 语言当中 const char* ptr(指向字符常量的指针), char const* ptr(指向字符常量的指针), char* const ptr
+> (指向字符的指针常数, 即const指针), 在 cgo 调用的时候, 全部都转换成 `*C.char`.
+
 
 ### 结构体, 联合, 枚举类型
 
 #### 结构体
 
-在 Go 当中, 可以通过 `C.struct_xxx` 来访问C语言中定义的 `struct xxx` 结构体类型.
+在 Go 当中, 可以通过 **C.struct_xxx** 来访问 C 语言中定义的 `struct xxx` 结构体类型.
 
-结构体的内存按照C语言的通用对齐规则, 在 32 位Go语言环境 C 语言结构也按照 32 位对齐规则,
-在 64 位Go语言环境按照 64 位对齐规则. 对于指定了特殊对齐规则的结构体, 无法在 CGO 中访问.
+结构体的内存按照C语言的通用对齐规则, 在 32 位 Go 语言环境 C 语言结构也按照 32 位对齐规则, 在 64 位Go语言环境按照 64 
+位对齐规则. 对于指定了特殊对齐规则的结构体, 无法在 CGO 中访问.
+
+> 注: 结构体当中出现了 Go 语言的关键字, 通过下划线的方式进行访问.
 
 ```cgo
 /*
 struct A {
-    int i;
+    int   i;
     float f;
+    int   type;
+    char  chan;
 };
 */
 import "C"
 
 func main() {
     var a C.struct_A
+    
     fmt.Println(a.i)
-}
-```
-
-结构体当中出现了 Go 语言的关键字, 通过下划线的方式进行访问.
-
-```cgo
-/*
-struct A {
-    int type;
-    char chan;
-};
-*/
-import "C"
-
-func main() {
-    var a C.struct_A
+    fmt.Println(a.f)
     fmt.Println(a._type)
     fmt.Println(a._chan)
 }
 ```
 
-> 如果有两个成员, 一个是以 Go 语言关键字命名, 另外一个刚好是以下划线和Go语言关键字命名, 那么以 Go 语言关键字命名的
-成员将无法访问(被屏蔽)
+> 如果有两个成员, 一个是以 Go 语言关键字命名, 另外一个刚好是以下划线和Go语言关键字命名, 那么以 Go 语言关键字命名的成员
+将无法访问(被屏蔽)
 
 
-C 语言结构体中 `位字段` 对应的成员无法在 Go 语言当中访问. 如果需要操作 `位字段` 成员, 需要通过在 C 语言当中定义辅
-助函数来完成.  对应 `零长数组` 的成员, 无法在 Go 语言中直接访问数组的元素, 但其中 `零长数组` 的成员所在的位置偏移
-量依然可以通过 `unsafe.Offset(a.arr)` 来访问.
+C 语言结构体中 `位字段` 对应的成员无法在 Go 语言当中访问. 如果需要操作 `位字段` 成员, 需要通过在 C 语言当中定义辅助函
+数来完成. 对应 `零长数组` 的成员, 无法在 Go 语言中直接访问数组的元素, 但其中 `零长数组` 的成员所在的位置偏移量依然可以
+通过 `unsafe.Offset(a.arr)` 来访问.
 
 ```cgo
 /*
@@ -189,7 +227,103 @@ func main() {
 }
 ```
 
-> 在 C 语言当中, 无法直接访问 Go 语言定义的结构体类型
+> 注: 在 C 语言当中, 无法直接访问 Go 语言定义的结构体类型. 如果要想访问, 则必须通过函数的方式进行参数传递已达到间接访问
+的目的.
+
+
+结构体复杂的案例: (展示在 C 函数当中传递 `C结构体` 和 `C结构体指针的方式`)
+
+```cgo
+/*
+#include <stdio.h>
+
+typedef struct option {
+    int iarg;
+    float farg;
+    const char* carg;
+    int* iptr;
+} option;
+
+int call(option arg1, option* arg2) {
+    printf("arg1 iarg: %d\n", arg1.iarg);
+    printf("arg1 farg: %0.2f\n", arg1.farg);
+    printf("arg1 carg: %s\n", arg1.carg);
+    printf("arg1 iptr: %d\n", *arg1.iptr);
+
+	printf("\n==========================\n\n");
+
+    printf("arg2 iarg: %d\n", (*arg2).iarg);
+    printf("arg2 farg: %0.2f\n", (*arg2).farg);
+    printf("arg2 carg: %s\n", (*arg2).carg);
+    printf("arg2 iptr: %d\n", *(*arg2).iptr);
+
+    return 0;
+}
+*/
+import "C"
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+	type option struct {
+		iarg C.int
+		farg C.float
+		carg *C.char
+		iptr *C.int
+	}
+
+	val := 100
+	opt := option{
+		iarg: C.int(10),
+		farg: C.float(100.00),
+		carg: C.CString("Hello World"),
+		iptr: (*C.int)(unsafe.Pointer(&val)),
+	}
+
+	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
+    
+    // 确定内存大小
+	size := 1 * int(unsafe.Sizeof(option{}))
+	// malloc 分配内存
+	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
+	// unsafe 转换成数组
+	arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:size:size]
+	// 对数组的元素进行赋值
+	arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
+
+	var res C.int
+	res = C.call(arg1, arg2)
+
+	fmt.Println(res)
+}
+```
+
+在 C 代码当中, 定义了一个 `typedef struct option` 类型, 然后在 `call()` 函数当中需要的参数类型分别是 `option`和
+`*option `. `call()` 函数代码就是打印参数里的值.
+
+在 Go 代码当中, 就是调用 C 语言的 `call()` 函数. Go当中定义了和 C 一致的结构体 `option`, 创建一个 `option` 类型
+的变量, 使用 `unsafe` 包直接将 `option` 变量直接转换成 `C.struct_option`(call函数参数 arg1).
+
+而对于 call 函数参数 arg2, 转换相对复杂了一些, 详细步骤参考代码当中的的注释.
+
+
+**CGO函数调用的细节点:**
+
+1. 在 C 语言当中, 数组和指针是等价的.
+
+2. 在 C 语言当中 `const xxx* ptr`(指向xxx常量的指针), `xxx const* ptr`(指向xxx常量的指针), `xxx* const ptr`
+(指向xxx的指针常数, 即const指针), 在 cgo 调用的时候, 全部都转换成 `*C.struct_xxx`.
+
+3. 在 CGO 当中, 需要在 Go 当中定义和 C 中 "一致" 的结构体, 方便 `unsafe` 转换. 所谓一致, 就是 Go 结构体当中成员的
+类型都是 `C.xxx` 或 `*C.xxx` 类型.
+
+4. 在调用 C 语言函数时, 若参数类型需要转换成 `C.struct_xxx`, 则可以直接使用 `unsafe` 包进行直接转换.
+
+5. 在调用 C 语言函数时, 若参数类型需要转换成 `*C.struct_xxx`, 必须按照 `C数组` 的方式进行转换. 即 `确定内存长度`,
+`malloc分配内存`, `unsafe包转换成数组`, `对数组的元素进行赋值`. 这一点非常的重要.
+
 
 #### 联合类型
 
@@ -201,12 +335,12 @@ func main() {
 #include <stdint.h>
 
 union B {
-    int i;
+    int   i;
     float f;
 };
 
 union C {
-    int8_t i8;
+    int8_t  i8;
     int64_t i64;
 };
 */
