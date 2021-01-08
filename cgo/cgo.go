@@ -3,6 +3,7 @@ package main
 /*
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 typedef struct option {
     int iarg;
@@ -12,18 +13,23 @@ typedef struct option {
 } option;
 
 
-int call(const option arg1, const option* arg2) {
+int call(const option arg1, const option* arg2, unsigned int arg2len) {
     printf("arg1 iarg: %d\n", arg1.iarg);
     printf("arg1 farg: %0.2f\n", arg1.farg);
     printf("arg1 carg: %s\n", arg1.carg);
     printf("arg1 iptr: %d\n", *arg1.iptr);
 
+	printf("%ld\n", sizeof(option));
+
 	printf("\n==========================\n\n");
 
-    printf("arg2 iarg: %d\n", (*arg2).iarg);
-    printf("arg2 farg: %0.2f\n", (*arg2).farg);
-    printf("arg2 carg: %s\n", (*arg2).carg);
-    printf("arg2 iptr: %d\n", *(*arg2).iptr);
+	for (unsigned int i=0; i<arg2len; i++) {
+		printf("arg2 iarg: %d\n", (arg2[i]).iarg);
+		printf("arg2 farg: %0.2f\n", (arg2[i]).farg);
+		printf("arg2 carg: %s\n", (arg2[i]).carg);
+		printf("arg2 iptr: %d\n", *(arg2[i]).iptr);
+		printf("\n--------------------\n\n");
+    }
 
     return 0;
 }
@@ -56,13 +62,18 @@ func main() {
 
 	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
 
-	size := 1 * int(unsafe.Sizeof(option{}))
+	N := 2
+	size := N * int(unsafe.Sizeof(option{}))
 	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
-	arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:size:size]
+	arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:N:N]
+
+	fmt.Println("size", size, "len", len(arg2ptr), size)
+
 	arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
+	arg2ptr[1] = *(*C.struct_option)(unsafe.Pointer(&opt))
 
 	var res C.int
-	res = C.call(arg1, arg2)
+	res = C.call(arg1, arg2, C.uint(N))
 
 	fmt.Println(res)
 

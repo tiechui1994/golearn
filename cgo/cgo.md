@@ -758,6 +758,94 @@ C 语言空间的内存是稳定的, 只要不是被人为提前释放, 那么�
 案例: 因为 Go 语言限制, 无法在 Go 语言当中的创建大于 2GB 内存的切片. 借助 cgo 技术, 可以实现在 C 语言环境创建大于 
 2GB 的内存, 然后转为 Go 语言的切片使用.
 
+C 内存管理函数:
+
+```
+头文件: <stdlib.h>
+声明: void* malloc(int n)
+含义: 在堆上, 分配n个字节, 并返回 void 指针类型.
+返回值: 分配成功, 返回分配在堆上存储空间的首地址; 否则返回 NULL
+
+
+头文件: <stdlib.h>
+声明: void* calloc(int n, int size)
+含义: 在堆上, 分配 n*size 个字节, 并初始化为0, 并返回 void 指针类型.
+返回值: 同 malloc
+
+
+头文件: <stdlib.h>
+声明: void* realloc(void* p, int n)
+含义: 重新分配堆上的void指针p所指的空间为n个字节, 同时会赋值原有内容到新分配的堆上存储空间. 注意, 若原来的void指针p在
+堆上的空间不大于n个字节, 则保持不变.
+返回值: 同 malloc
+
+
+头文件: <stdlib.h>
+声明: void free(void* p)
+含义: 释放 void 指针 p 所指的堆上的空间.
+
+
+头文件: <string.h>
+声明: void* memset(void* p, int c, int n)
+含义: 对于void指针p为首地址的n个字节, 将其中的每个字节设置为c.
+返回值: 返回指向存储区域 p 的void类型指针.
+```
+
+C 内存管理案例(`malloc`, `realloc`, `memset`, `free`):
+
+```cgo
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define SIZE 5
+
+void main() {
+    long int* arr, d;
+    int i;
+    int length = SIZE;
+
+    arr = (long int*)malloc(length*sizeof(long int));
+    memset(arr, 0, length*sizeof(long int));
+
+    printf("input numbers util you input zero: \n");
+
+    for(;;) {
+        printf("> ");
+        scanf("%ld", &d);
+        if (d==0) {
+            arr[i++]=0;
+            break;
+        } else {
+            arr[i++]=d;
+        }
+
+        if (i >= length) {
+            // 重新分配 2*(length*size) 大小的内存, 并把后半部分 length*size 大小的内存设置为 0
+            arr = (long int*)realloc(arr, 2*length*sizeof(long int));
+            memset(arr+length, 0, length*sizeof(long int));
+            length *= 2;
+        }
+    }
+
+    printf("\n");
+    printf("output all numbers: \n");
+    for (int idx=0; idx<i; idx++) {
+        if (idx && idx%5==0) {
+            printf("\n");
+        }
+
+        printf("%ld\t", *(arr+idx));
+    }
+
+    printf("\n");
+
+    free(arr);
+}
+```
+
+内存分配案例:
+
 ```cgo
 /*
 #include <stdlib.h>
@@ -778,6 +866,8 @@ func freeByteSlice(p []byte) {
 }
 ```
 
+> 注: `free()` 是 `<stdlib.h>` 当中的函数.
+
 
 ### C 临时访问传入的 Go 内存
 
@@ -794,6 +884,7 @@ Go 语言内存已经移动了位置, 仍然使用之前的地址来操作该内
 ```cgo
 /*
 #include <stdio.h>
+#include <stdlib.h>
 
 void printString(const char* s) {
     printf("%s \n", s);
@@ -829,8 +920,7 @@ void printString(const char* s, int n) {
 import "C"
 
 func printString(s string) {
-    p := (*reflect.SliceHeader)(unsafe.Pointer(&s)) // 使用 Go 的地址, 强制转换成为 C 语言的地址
-    C.printString((*C.char)(unsafe.Pointer(p.Data), C.int(len(s))) 
+   C.printString(C.CString(s), C.int(len(s)))
 }
 ```
 

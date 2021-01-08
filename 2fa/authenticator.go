@@ -326,9 +326,10 @@ func getParams() {
            const char *optstring,
            const struct option *longopts, int *longindex);
 	*/
-	size := len(options) * int(unsafe.Sizeof(option{}))
+	N := len(options)
+	size := N * int(unsafe.Sizeof(option{}))
 	opts := (*C.struct_option)(C.malloc(C.size_t(size)))
-	optsptr := (*[1024]C.struct_option)(unsafe.Pointer(opts))[:size:size]
+	optsptr := (*[1024]C.struct_option)(unsafe.Pointer(opts))[:N:N]
 	for i := range options {
 		name, ok := options[i][0].(string)
 		flag := options[i][2].(int)
@@ -343,9 +344,10 @@ func getParams() {
 		optsptr[i] = *(*C.struct_option)(unsafe.Pointer(&opt))
 	}
 
-	size = len(os.Args) * 8
+	N = len(os.Args)
+	size = N * 8
 	argv := (**C.char)(C.malloc(C.size_t(size)))
-	argptr := (*[1024]*C.char)(unsafe.Pointer(argv))[:size:size]
+	argptr := (*[1024]*C.char)(unsafe.Pointer(argv))[:N:N]
 	for i := range os.Args {
 		argptr[i] = C.CString(os.Args[i])
 	}
