@@ -622,15 +622,90 @@ func getParams() {
 		issuer = hostname()
 	}
 
+	secret := Secret()
+
 	use_totp := 0
 	if mode == ASK_MODE {
-
+		use_totp = maybe("Do you want authentication tokens to be time-based")
 	} else {
 		use_totp, mode = TOTP_MODE, TOTP_MODE
 	}
 
+	if quite == 0 {
+		display(secret, label, use_totp, issuer)
+		fmt.Printf("Your new secret key is: %s", secret_fn)
+
+		if confirm != 0 && use_totp != 0 {
+			for {
+				test_code := ask("Enter code from app (-1 to skip):")
+				val, err := strconv.ParseInt(test_code, 10, 64)
+				if err != nil || val < 0 {
+					fmt.Println("Code confirmation skipped")
+					break
+				}
+
+				if step_size != 0 {
+					step_size = 30
+				}
+
+				tm := int(time.Now().Unix()) / step_size
+				correct_code := GenerateCode(nil, tm)
+				if correct_code == int(val) {
+					fmt.Println("Code confirmed")
+					break
+				}
+
+				fmt.Println("Code incorrect (correct code %06d). Try again.")
+				fmt.Println(correct_code)
+			}
+		} else {
+			tm := 1
+			fmt.Printf("Your verification code for code %d is %06d\n", tm,
+				GenerateCode(nil, tm))
+		}
+
+		fmt.Println("Your emergency scratch codes are:")
+	}
+
 	_ = use_totp
 
+}
+
+func Secret() []byte {
+	var (
+		hotp      = `" HOTP_COUNTER 1\n`
+		_         = `" TOTP_AUTH\n`
+		disallow  = `" DISALLOW_REUSE\n`
+		step      = `" STEP_SIZE 30\n`
+		window    = `" WINDOW_SIZE 17\n`
+		ratelimit = `" RATE_LIMIT 3 30\n`
+	)
+	log.Println(len(hotp))
+
+	secretLen := (SECRET_BITS+BITS_PER_BASE32_CHAR-1)/BITS_PER_BASE32_CHAR +
+		1 /*newline*/ +
+		len(hotp) + // hottop and totp are mutually exclusive
+		len(disallow) +
+		len(step) +
+		len(window) +
+		len(ratelimit) + 5 /* NN MMM (total of five digits)*/ +
+		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1 /*newline*/) +
+		1 /* NUL termination character */
+
+	var secret = make([]byte, secretLen, secretLen)
+
+	dataLen := SECRET_BITS/8 + MAX_SCRATCHCODES*BYTES_PER_SCRATCHCODE
+	var data = make([]byte, dataLen, dataLen)
+
+	fd, _ := os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
+	n, _ := fd.Read(data)
+	if n != len(data) {
+		os.Exit(1)
+		return nil
+	}
+
+	n = base32Encode(secret, data[:SECRET_BITS/8])
+	return secret[:n]
 }
 
 func main() {
