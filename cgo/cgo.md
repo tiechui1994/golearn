@@ -324,7 +324,6 @@ func main() {
 5. 在调用 C 语言函数时, 若参数类型需要转换成 `*C.struct_xxx`, 必须按照 `C数组` 的方式进行转换. 即 `确定内存长度`,
 `malloc分配内存`, `unsafe包转换成数组`, `对数组的元素进行赋值`. 这一点非常的重要.
 
-
 #### 联合类型
 
 对于联合类型,可以通过 `C.union_xxx` 来访问 C 语言中定义的 `union xxx` 类型. **但是 Go 语言中并不支持C语言联合类型,
@@ -400,13 +399,16 @@ main(){
 
 ### 数组, 字符串和切片
 
+- C 语言当中的`数组,指针和字符串`
+
 在 C 语言当中, 数组名其实对应着一个指针, 指向特定类型特定长度的一段内存, 但是这个指针不能被修改.
 
 当把数组名传递给一个函数时, 实际上传递的是数组第一个元素的地址.
 
 C 语言的字符串是一个 char 类型的数组, 字符串的长度需要根据表示结尾的NULL字符的位置确定.
 
----
+
+- Go 语言当中的 `数组,字符串和切片`
 
 Go 当中, 数组是一种值类型, 而且数组的长度是数组类型的一部分.
 
@@ -414,11 +416,14 @@ Go 当中, 字符串对应一个长度确定的只读 byte 类型的内存.
 
 Go 当中, 切片是一个简化版的动态数组.
 
----
 
-Go 语言 和 C 语言的数组, 字符串和切片之间的相互转换可以简化为 `Go 语言的切片和 C 语言中指向一定长度内存的指针` 
-之间的转换.
+- CGO 当中`数组,字符串和切片`转换的本质
 
+Go 语言 和 C 语言的数组, 字符串和切片之间的相互转换可以简化为 `Go 语言的切片和 C 语言中指向一定长度内存的指针` 之间的
+转换.
+
+
+- 系统内存的转换函数(主要针对的是字符串和字节数组)
 
 ```
 // Go String to C String 
@@ -438,8 +443,8 @@ func C.GoStringN(*C.char, C.int) string
 func C.GoBytes(unsafe.Pointer, C.int) []byte
 ```
 
-> C.CString 针对输入 Go 字符串, 克隆一个 C 语言格式的字符串; 返回的字符串由 C 语言的 malloc 函数分配,
-> 不使用时需要通过 C 语言的 free 函数释放.
+> C.CString 针对输入 Go 字符串, 克隆一个 C 语言格式的字符串; 返回的字符串由 C 语言的 malloc 函数分配, 不使用时需要
+> 通过 C 语言的 free 函数释放.
 >
 > C.Cbytes 函数和 C.CString 类似, 针对输入的 Go 语言切片克一个 C 语言版本的字符数组.
 >
@@ -449,8 +454,8 @@ func C.GoBytes(unsafe.Pointer, C.int) []byte
 > 
 > C.GoBytes 用于从 C 语言数组, 克隆一个 Go 语言字节切片.
 
-当 C 语言字符串或数组向 Go 语言转换时, 克隆的内存由 Go 语言分配管理. 通过该组转换函数, 转换前和转换后的内存
-依然在各自的语言环境中, 它们并没有跨域 Go 语言和 C 语言.
+当 C 语言字符串或数组向 Go 语言转换时, 克隆的内存由 Go 语言分配管理. 通过该组转换函数, 转换前和转换后的内存依然在各自
+的语言环境中, 它们并没有跨域 Go 语言和 C 语言.
 
 克隆方式实现转换的优点是接口和内存管理简单. 缺点是克隆需要分配新的内存和复制操作都会导致额外的开销.
 
@@ -469,42 +474,53 @@ type SliceHeader struct {
 }
 ```
 
-如果不希望单独分配内存, 可以在Go当中直接访问C的内存空间:
+`C 语言字符串, 数组转换成 Go 语言的字符串, 数组` 案例:
 
 ```cgo
 /**
 #include <string.h>
+
 char arr[10];
-cahr *s = "Hello";
+char *s = "Hello";
 **/
 import "C"
 
 func main() {
     // 通过 reflect.SliceHeader 转换
-    var arr0 []byte
-    var arr0Hdr = (*reflect.SliceHeader)(unsafe.Pointer(&arr0))
-    arr0Hdr.Data = uintptr(unsafe.Pointer(&C.arr[0])
-    arr0Hdr.Len = 10
-    arr0Hdr.Cap = 10
-    
-    // 通过切片语法转换
-    arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
-    
-    var s0 string
-    var s0Hdr = (*reflect.SliceHeader)(unsafe.Pointer(&s0))
-    s0Hdr.Data = uintptr(unsafe.Pointer(C.s))
-    s0Hdr.Len = int(C.strlen(C.s))
-    
-    sLen := int(C.strlen(C.s))
-    s1 := string(*[31]byte)(unsafe.Pointer(C.s))[:SLen:SLen]
+   	var arr []byte
+   	array := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+   	array.Data = uintptr(unsafe.Pointer(&C.arr[0]))
+   	array.Len = 10
+   	array.Cap = 10
+   
+   	// 切片
+   	arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
+   
+   	// 通过 reflect.StringHeader 转换
+   	var s string
+   	str := (*reflect.StringHeader)(unsafe.Pointer(&s))
+   	str.Data = uintptr(unsafe.Pointer(C.s))
+   	str.Len = int(C.strlen(C.s))
+   
+   	// 切片
+   	length := int(C.strlen(C.s))
+   	s1 := string((*[31]byte)(unsafe.Pointer(C.s))[:length:length])
+   
+   	fmt.Println("arr:", string(arr), "arr1:", string(arr1), "s:", s, "s1:", s1)
 }
 ```
 
-> Go 字符串是只读的, 用户需要自己保证 Go 字符串在使用期间, 底层对应的 C 字符串内容不会发生变化, 内存不会被
-> 提前释放掉.
+需要注意上述代码的使用场景, 是在 Go 当中访问 C 当中的变量. 反之, 在调用 C 函数, 将 Go 变量转换成 C 变量的时候, 上述代
+码是非法无效的 (`runtime error: cgo argument has Go pointer to Go pointer`), 必须要通过前面介绍的方法进行转换.
+
+> 注: 上述代码中, 是在Go当中直接访问C的内存空间. 即 C 和 Go 共享变量.
+
+> Go 字符串是只读的, 用户需要自己保证 Go 字符串在使用期间, 底层对应的 C 字符串内容不会发生变化, 内存不会被提前释放掉.
 
 
 ### 指针间的转换
+
+- C 和 Go 关于指针的区别
 
 在 C 语言中, 不同类型的指针是可以显式或隐式转换的, 如果是隐式只是会在编译时给出一些警告信息.
 
@@ -512,12 +528,12 @@ Go 语言对于不同类型的转换非常严格, 任何 C 语言中可能出现
 
 指针是 C 语言的灵魂, 指针间的自由转换也是 cgo 代码中经常要解决的第一个问题.
 
----
 
-在 Go 语言中两个指针的类型完全一致则不需要转换可以直接使用. 如果一个指针类型是用 type 命令在另
-一个指针类型基础上构建的, 换言之 `两个指针是 "底层结构完全相同" 的指针`, 那么可以通过直接强制转
-换语法进行指针间的转换.  但是 cgo 经常要面对是2个完全不同类型的指针间的转换, 原则上这种操作在纯
-Go 语言代码是严格禁止的.
+- Go 当中两个指针之间的转换
+
+在 Go 语言中两个指针的类型完全一致则不需要转换可以直接使用. 如果一个指针类型是用 type 命令在另一个指针类型基础上构建的, 
+换言之 `两个指针是 "底层结构完全相同" 的指针`, 那么可以通过直接强制转换语法进行指针间的转换.  但是 cgo 经常要面对是2个
+完全不同类型的指针间的转换, 原则上这种操作在纯Go 语言代码是严格禁止的.
 
 ```
 var p *X
@@ -527,8 +543,8 @@ q = (*X)(unsafe.Pointer(p)) // *X => *Y
 p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 ```
 
-为了实现 X 类型和 Y 类型的指针的转换, 需要借助 `unsafe.Pointer` 作为中间桥接类型实现不同类型
-指针之间的转换. `unsafe.Pointer` 指针类型类似 C 语言中的 `void*` 类型的指针.
+为了实现 X 类型和 Y 类型的指针的转换, 需要借助 `unsafe.Pointer` 作为中间桥接类型实现不同类型指针之间的转换. 
+`unsafe.Pointer` 指针类型类似 C 语言中的 `void*` 类型的指针.
 
 指针简单转换流程图:
 
@@ -537,9 +553,9 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 ### 数值和指针的转换
 
-为了严格控制指针的使用, Go 语言禁止将数值类型直接转为指针类型! 不过, Go 语言针对 `unsafe.Pointer`
-指针类型特别定义了一个 `unitptr` 类型. 可以以 `unitptr` 为中介, 实现数值类型到 `unsafe.Pointer`
-指针类型的转换. 再结合前面提到的方法, 就可以实现数值类型和指针的转换了.
+为了严格控制指针的使用, Go 语言禁止将数值类型直接转为指针类型! 不过, Go 语言针对 `unsafe.Pointer` 指针类型特别定义了
+一个 `unitptr` 类型. 可以以 `unitptr` 为中介, 实现数值类型到 `unsafe.Pointer` 指针类型的转换. 再结合前面提到的方
+法, 就可以实现数值类型和指针的转换了.
 
 int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
 
@@ -551,19 +567,18 @@ int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
 
 在 Go 语言当中, 数组或数组对应的切片不再是指针类型, 因此无法直接实现不同类型的切片之间的转换.
 
-在 Go 的 `reflect`包提供了切片类型的底层结构, 再结合前面不同类型直接的指针转换, 可以实现 []X
-到 []Y 类型的切片转换.
+在 Go 的 `reflect`包提供了切片类型的底层结构, 再结合前面不同类型直接的指针转换, 可以实现 []X 到 []Y 类型的切片转换.
 
 ```
 var p []X
 var q []Y
 
-pHdr := (*reflect.SliceHeader)(unsafe.Pointer(&p))
-qHdr := (*reflect.SliceHeader)(unsafe.Pointer(&q))
+src := (*reflect.SliceHeader)(unsafe.Pointer(&p))
+dst := (*reflect.SliceHeader)(unsafe.Pointer(&q))
 
-qHdr.Data = pHdr.Data
-qHdr.Len = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
-qHdr.Cap = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
+dst.Data = src.Data
+dst.Len = src.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
+dst.Cap = src.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
 ```
 
 
@@ -578,7 +593,7 @@ qHdr.Cap = pHdr.Len * int(unsafe.Sizeof(p[0])) / int(unsafe.Sizeof(q[0]))
 在一个 Go 源文件当中, 如果出现 `import "C"` 指令则表示将调用 cgo 命令生成对应的中间文件. 下面是生成的中间文件的简单
 示意图:
 
-![image](/cgo_middle_process.png)
+![image](/images/cgo_middle_process.png)
 
 
 包含有 4 个 Go 文件, 其中 nocgo 开头的文件中没有 `import "C"` 指令, 其他的 2 个文件则包含了 cgo 代码. cgo 命令

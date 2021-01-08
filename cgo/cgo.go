@@ -2,6 +2,7 @@ package main
 
 /*
 #include <stdio.h>
+#include <string.h>
 
 typedef struct option {
     int iarg;
@@ -9,6 +10,7 @@ typedef struct option {
     const char* carg;
     int* iptr;
 } option;
+
 
 int call(const option arg1, const option* arg2) {
     printf("arg1 iarg: %d\n", arg1.iarg);
@@ -25,11 +27,15 @@ int call(const option arg1, const option* arg2) {
 
     return 0;
 }
+
+char arr[10]={'h','e','l','l','o'};
+char *s = "Hello";
 */
 import "C"
 import (
 	"fmt"
 	"unsafe"
+	"reflect"
 )
 
 func main() {
@@ -59,4 +65,26 @@ func main() {
 	res = C.call(arg1, arg2)
 
 	fmt.Println(res)
+
+	// 通过 reflect.SliceHeader 转换
+	var arr []byte
+	array := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+	array.Data = uintptr(unsafe.Pointer(&C.arr[0]))
+	array.Len = 10
+	array.Cap = 10
+
+	// 切片
+	arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
+
+	// 通过 reflect.StringHeader 转换
+	var s string
+	str := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	str.Data = uintptr(unsafe.Pointer(C.s))
+	str.Len = int(C.strlen(C.s))
+
+	// 切片
+	length := int(C.strlen(C.s))
+	s1 := string((*[31]byte)(unsafe.Pointer(C.s))[:length:length])
+
+	fmt.Println("arr:", string(arr), "arr1:", string(arr1), "s:", s, "s1:", s1)
 }
