@@ -11,7 +11,9 @@ import (
 	"time"
 	"unsafe"
 	"strconv"
+	"bytes"
 )
+
 /*
 #include <getopt.h>
 #include <stdio.h>
@@ -37,12 +39,20 @@ int callparam(struct option *longopts, char* const argv[]) {
 import "C"
 
 const (
-	ASK_MODE  = 0
-	HOTP_MODE = 1
-	TOTP_MODE = 2
+	char_zero = '\000'
+	char_line = "\n"
 )
 
 const (
+	TRUE  = 1
+	FALSE = 0
+)
+
+const (
+	ASK_MODE  = 0
+	HOTP_MODE = 1
+	TOTP_MODE = 2
+
 	ASK_REUSE      = 0
 	DISALLOW_REUSE = 1
 	ALLOW_REUSE    = 2
@@ -67,7 +77,7 @@ func GenerateCode(key []byte, tm int) int {
 		i--
 	}
 
-	secretLen := (len(key) + 7) / 8 * BITS_PER_BASE32_CHAR
+	secretLen := (strlen(key) + 7) / 8 * BITS_PER_BASE32_CHAR
 
 	if secretLen <= 0 || secretLen > 100 {
 		return -1
@@ -135,7 +145,7 @@ func base32Encode(dst []byte, src []byte) int {
 	}
 
 	if count < len(dst) {
-		dst[count] = '\000'
+		dst[count] = char_zero
 	}
 
 	return count
@@ -183,7 +193,7 @@ func base32Decode(dst []byte, src []byte) int {
 	}
 
 	if count < len(dst) {
-		dst[count] = '\000'
+		dst[count] = char_zero
 	}
 
 	return count
@@ -214,7 +224,9 @@ func display(secret []byte, label string, use_totop int, issuer string) {
 
 	log.Println(issuer, len(secret))
 
-	value := "secret=" + string(secret)
+	sl := strlen(secret)
+	log.Println("s1", sl)
+	value := "secret=" + string(secret[:sl])
 
 	log.Println(issuer != "")
 	if issuer != "" {
@@ -266,12 +278,6 @@ func usage() {
  -e, --emergency-codes=N        Number of emergency codes to generate`)
 }
 
-func dec(val *int32) int32 {
-	res := *val
-	*val -= 1
-	return res
-}
-
 func maybe(msg string) int {
 	fmt.Println()
 	for {
@@ -281,9 +287,9 @@ func maybe(msg string) int {
 		fmt.Scanln(&read)
 		switch read {
 		case "Y", "y":
-			return 1
+			return TRUE
 		case "N", "n":
-			return 0
+			return FALSE
 		}
 	}
 }
@@ -293,6 +299,71 @@ func ask(msg string) string {
 	var read string
 	fmt.Scanln(&read)
 	return read
+}
+
+/*
+头文件: #include <string.h>
+声明: void* memcpy(void *dst, const void *src, size_t n);
+功能: 将 src 所指向的内存内容的前 n 个字节拷贝到 dst 所指的内存地址上.
+返回值: dst 的首地址
+
+头文件: #include <string.h>
+声明: void* memmove(void *dst, const void *src, size_t n);
+功能: 将 src 所指向的内存内容的前 n 个字节拷贝到 dst 所指的内存地址上.
+返回值: dst 的首地址
+
+memmove() 和 memcpy() 的功能是一样的.
+memcpy() 函数有一个限制, 就是目的地址(dst)和原地址(src)不能重叠.
+memmove() 函数没有 memcpy() 的缺点, 就是执行的效率比 memcpy() 函数低一些.
+*/
+
+func addOption(buf []byte, opt string) {
+	if strlen(buf)+strlen([]byte(opt)) >= len(buf) {
+		panic("assert")
+	}
+
+	idx := bytes.IndexByte(buf, '\n') + 1
+	if idx == 0 {
+		panic("assert")
+	}
+
+	N := strlen([]byte(opt))
+	L := strlen(buf[N:]) + 1
+	copy(buf[idx+N:idx+N+L], buf[idx:])
+	copy(buf[idx:idx+N], opt)
+}
+
+const (
+	option_1 = `Do you want to disallow multiple uses of the same authentication
+token? This restricts you to one login about every 30s, but it increases
+your chances to notice or even prevent man-in-the-middle attacks`
+
+	option_2 = `By default, a new token is generated every 30 seconds by the mobile app.
+In order to compensate for possible time-skew between the client and the server,
+we allow an extra token before and after the current time. This allows for a
+time skew of up to 30 seconds between authentication server and client. If you
+experience problems with poor time synchronization, you can increase the window
+from its default size of 3 permitted codes (one previous code, the current
+code, the next code) to 17 permitted codes (the 8 previous codes, the current
+code, and the 8 next codes). This will permit for a time skew of up to 4 minutes
+between client and server.
+Do you want to do so?`
+
+	option_4 = `If the computer that you are logging into isn't hardened against brute-force
+login attempts, you can enable rate-limiting for the authentication module.
+By default, this limits attackers to no more than 3 login attempts every 30s.
+Do you want to enable rate-limiting?`
+
+	option_3 = `By default, three tokens are valid at any one time. This accounts for
+generated-but-not-used tokens and failed login attempts. In order to
+decrease the likelihood of synchronization problems, this window can be 
+increased from its default size of 3 to 17. Do you want to do so?`
+)
+
+func maybeAddOption(msg string, buf []byte, opt string) {
+	if maybe(msg) == TRUE {
+		addOption(buf, opt)
+	}
 }
 
 func getParams() {
@@ -322,9 +393,8 @@ func getParams() {
 	}
 
 	/*
-	int getopt_long(int argc, char* const argv[],
-           const char *optstring,
-           const struct option *longopts, int *longindex);
+	int getopt_long(int argc, char* const argv[], const char *optstring,
+                    const struct option *longopts, int *longindex);
 	*/
 	N := len(options)
 	size := N * int(unsafe.Sizeof(option{}))
@@ -355,25 +425,30 @@ func getParams() {
 	var idx int32 = -1
 
 	mode := ASK_MODE
-	reuse := ALLOW_REUSE
-	confirm := 1
-	force := 0
+	reuse := ASK_REUSE
+
+	force, quite := 0, 0
+	r_limit, r_time := 0, 0
+
+	secret_fd := ""
 	label := ""
 	issuer := ""
-	quite := 0
-	r_limit := 0
-	r_time := 0
+
+	confirm := 1
 	step_size := 0
 	window_size := 0
-	emergency_codes := 0
-	secret_fn := ""
+	emergency_codes := -1
 
+	// error func
 	version := func() {
 		fmt.Println("google-authenticator 1.0.0")
 	}
-
 	success := func() {
 		os.Exit(0)
+	}
+	reuse_err := func() {
+		fmt.Println("Reuse of tokens is not a meaningful parameter in counter-based mode")
+		os.Exit(1)
 	}
 	failed := func(msg string) {
 		fmt.Println(msg)
@@ -398,10 +473,6 @@ func getParams() {
 		os.Exit(1)
 	}
 
-	reuse_err := func() {
-		fmt.Println("Reuse of tokens is not a meaningful parameter in counter-based mode")
-		os.Exit(1)
-	}
 	for {
 		var c C.int
 		c = C.getopt_long(
@@ -412,6 +483,7 @@ func getParams() {
 			(*C.int)(unsafe.Pointer(&idx)),
 		)
 
+		fmt.Println("c", c)
 		if c > 0 {
 			for i := 0; i < len(options)-1; i++ {
 				if options[i][3].(int32) == int32(c) {
@@ -422,8 +494,6 @@ func getParams() {
 		} else if c < 0 {
 			break
 		}
-
-		log.Println("c", string(c), "idx", idx)
 
 		if dec(&idx) <= 0 {
 			// --help
@@ -535,7 +605,7 @@ func getParams() {
 			r_limit = -1
 		} else if dec(&idx) == 0 {
 			// --secret, -s
-			if secret_fn != "" {
+			if secret_fd != "" {
 				dump_err("-s")
 			}
 			if C.GoString(C.optarg) == "" {
@@ -543,7 +613,7 @@ func getParams() {
 				os.Exit(1)
 			}
 
-			secret_fn = C.GoString(C.optarg)
+			secret_fd = C.GoString(C.optarg)
 		} else if dec(&idx) == 0 {
 			// --step-size, -S
 			if step_size != 0 {
@@ -592,9 +662,7 @@ func getParams() {
 		}
 	}
 
-	_, _, _ = confirm, force, label
-
-	optind := *(*int)(unsafe.Pointer(&C.optind))
+	optind := int(C.optind)
 	if optind != len(os.Args) {
 		usage()
 		if idx < -1 {
@@ -622,7 +690,7 @@ func getParams() {
 		issuer = hostname()
 	}
 
-	secret := Secret()
+	buf, secret := Secret()
 
 	use_totp := 0
 	if mode == ASK_MODE {
@@ -631,9 +699,10 @@ func getParams() {
 		use_totp, mode = TOTP_MODE, TOTP_MODE
 	}
 
+	// quite
 	if quite == 0 {
 		display(secret, label, use_totp, issuer)
-		fmt.Printf("Your new secret key is: %s", secret_fn)
+		fmt.Printf("Your new secret key is: %s", secret_fd)
 
 		if confirm != 0 && use_totp != 0 {
 			for {
@@ -649,7 +718,7 @@ func getParams() {
 				}
 
 				tm := int(time.Now().Unix()) / step_size
-				correct_code := GenerateCode(nil, tm)
+				correct_code := GenerateCode(secret, tm)
 				if correct_code == int(val) {
 					fmt.Println("Code confirmed")
 					break
@@ -661,98 +730,205 @@ func getParams() {
 		} else {
 			tm := 1
 			fmt.Printf("Your verification code for code %d is %06d\n", tm,
-				GenerateCode(nil, tm))
+				GenerateCode(secret, tm))
 		}
 
 		fmt.Println("Your emergency scratch codes are:")
 	}
 
-	_ = use_totp
-
-}
-
-func Secret() []byte {
-	var (
-		hotp      = `" HOTP_COUNTER 1\n`
-		_         = `" TOTP_AUTH\n`
-		disallow  = `" DISALLOW_REUSE\n`
-		step      = `" STEP_SIZE 30\n`
-		window    = `" WINDOW_SIZE 17\n`
-		ratelimit = `" RATE_LIMIT 3 30\n`
-	)
-	log.Println(len(hotp))
-
-	secretLen := (SECRET_BITS+BITS_PER_BASE32_CHAR-1)/BITS_PER_BASE32_CHAR +
-		1 /*newline*/ +
-		len(hotp) + // hottop and totp are mutually exclusive
-		len(disallow) +
-		len(step) +
-		len(window) +
-		len(ratelimit) + 5 /* NN MMM (total of five digits)*/ +
-		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1 /*newline*/) +
-		1 /* NUL termination character */
-
-	var secret = make([]byte, secretLen, secretLen)
-
-	dataLen := SECRET_BITS/8 + MAX_SCRATCHCODES*BYTES_PER_SCRATCHCODE
-	var data = make([]byte, dataLen, dataLen)
-
-	fd, _ := os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
-	n, _ := fd.Read(data)
-	if n != len(data) {
-		os.Exit(1)
-		return nil
+	strcat(secret, "\n")
+	if use_totp != 0 {
+		strcat(secret, totp)
+	} else {
+		strcat(secret, hotp)
 	}
 
-	n = base32Encode(secret, data[:SECRET_BITS/8])
-	return secret[:n]
-}
+	for i := 0; i < emergency_codes; i++ {
+	scratch_code:
+		scratch := 0
+		for j := 0; j < BYTES_PER_SCRATCHCODE; j++ {
+			scratch = 256*scratch + int(buf[SECRET_BITS/8+BYTES_PER_SCRATCHCODE*i+j])
+		}
 
-func main() {
-	var (
-		hotp      = `" HOTP_COUNTER 1\n`
-		_         = `" TOTP_AUTH\n`
-		disallow  = `" DISALLOW_REUSE\n`
-		step      = `" STEP_SIZE 30\n`
-		window    = `" WINDOW_SIZE 17\n`
-		ratelimit = `" RATE_LIMIT 3 30\n`
-	)
-	log.Println(len(hotp))
+		modules := 1
+		for j := 0; j < SCRATCHCODE_LENGTH; j++ {
+			modules *= 10
+		}
 
-	secretLen := (SECRET_BITS+BITS_PER_BASE32_CHAR-1)/BITS_PER_BASE32_CHAR +
-		1 /*newline*/ +
-		len(hotp) + // hottop and totp are mutually exclusive
-		len(disallow) +
-		len(step) +
-		len(window) +
-		len(ratelimit) + 5 /* NN MMM (total of five digits)*/ +
-		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1 /*newline*/) +
-		1 /* NUL termination character */
+		scratch = (scratch & 0x7FFFFFFF) % modules
+		if scratch < modules/10 {
+			idx := SECRET_BITS/8 + BYTES_PER_SCRATCHCODE*i
+			urandom(buf[idx:idx+BYTES_PER_SCRATCHCODE])
+			goto scratch_code
+		}
 
-	var secret = make([]byte, secretLen, secretLen)
+		if quite == 0 {
+			fmt.Printf("  %08d\n", scratch)
+		}
 
-	dataLen := SECRET_BITS/8 + MAX_SCRATCHCODES*BYTES_PER_SCRATCHCODE
-	var data = make([]byte, dataLen, dataLen)
+		idx := bytes.IndexByte(secret, char_zero)
+		strcat(secret[idx:], fmt.Sprintf("%08d\n", scratch))
+	}
 
-	fd, _ := os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
-	n, _ := fd.Read(data)
-	if n != len(data) {
+	// secret file
+	if secret_fd == "" {
+		home := os.Getenv("HOME")
+		if home == "" {
+			fmt.Println("Cannot determine home directory")
+			return
+		}
+
+		secret_fd = home + "/.google_authenticator"
+	}
+
+	// force
+	if force == 0 {
+		s := fmt.Sprintf(`Do you want me to update your "%s" file?`, secret_fd)
+		if maybe(s) == FALSE {
+			os.Exit(0)
+		}
+	}
+
+	// Add optional flags
+	if use_totp != 0 {
+		if reuse == ASK_REUSE {
+			maybeAddOption(option_1, secret, disallow)
+		} else if reuse == DISALLOW_REUSE {
+			addOption(secret, disallow)
+		}
+
+		if step_size != 0 {
+			s := fmt.Sprintf(`" STEP_SIZE %d\n`, step_size)
+			addOption(secret, s)
+		}
+
+		if window_size == 0 {
+			maybeAddOption(option_2, secret, "")
+		} else {
+			if window_size <= 0 {
+				window_size = 3
+			}
+			s := fmt.Sprintf(`" WINDOW_SIZE %d\n`, window_size)
+			addOption(secret, s)
+		}
+	} else {
+		// Counter based
+		if window_size == 0 {
+			maybeAddOption(option_3, secret, window)
+		} else {
+			if window_size <= 0 {
+				window_size = 1
+			}
+			s := fmt.Sprintf(`" WINDOW_SIZE %d\n`, window_size)
+			addOption(secret, s)
+		}
+	}
+
+	if r_limit == 0 && r_time == 0 {
+		maybeAddOption(option_4, secret, ratelimit)
+	} else if r_limit > 0 && r_time > 0 {
+		s := fmt.Sprintf(`" RATE_LIMIT %d %d\n`, r_limit, r_time)
+		addOption(secret, s)
+	}
+
+	// Save file.
+	tmp_fd := fmt.Sprintf("%s~", secret_fd)
+	fd, err := os.OpenFile(tmp_fd, os.O_WRONLY|os.O_EXCL|os.O_CREATE|os.O_TRUNC, 0400)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, `Failed to create "%s" (%s)`, secret_fd, err.Error())
 		return
 	}
 
-	data = []byte("12345678901234567890123456789012345678901234567890123456")
-	n = base32Encode(secret, data[:SECRET_BITS/8])
+	defer func() {
+		os.Rename(tmp_fd, secret_fd)
+		fd.Close()
+	}()
 
-	label := getLabel()
-	issuer := hostname()
+	_, err = fd.Write(secret[:strlen(secret)])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to write new secret")
+		return
+	}
+}
 
-	display(secret[:n], label, TOTP_MODE, issuer)
+const (
+	hotp      = `" HOTP_COUNTER 1` + char_line
+	totp      = `" TOTP_AUTH` + char_line
+	disallow  = `" DISALLOW_REUSE` + char_line
+	step      = `" STEP_SIZE 30` + char_line
+	window    = `" WINDOW_SIZE 17` + char_line
+	ratelimit = `" RATE_LIMIT 3 30` + char_line
+)
 
-	tm := time.Now().Unix() / 30
-	code := GenerateCode(secret[:n], int(tm))
-	log.Println("code", code)
+var ufd *os.File
 
-	//getParams()
+func urandom(data []byte) {
+	if ufd == nil {
+		var err error
+		ufd, err = os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
+		if err != nil {
+			os.Exit(1)
+		}
+	}
 
-	maybe("Do you want authentication tokens to be time-based")
+	var count int
+retry:
+	n, _ := ufd.Read(data)
+	if n != len(data) && count < 3 {
+		count++
+		goto retry
+	}
+}
+
+func Secret() (origin, secret []byte) {
+	secretLen := (SECRET_BITS+BITS_PER_BASE32_CHAR-1)/BITS_PER_BASE32_CHAR +
+		1 + // newline
+		len(hotp) + // hottop and totp are mutually exclusive
+		len(disallow) +
+		len(step) +
+		len(window) +
+		len(ratelimit) + 5 + // NN MMM (total of five digits)
+		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1 ) + // newline
+		1 // NUL termination character
+
+	secret = make([]byte, secretLen, secretLen)
+
+	originLen := SECRET_BITS/8 + MAX_SCRATCHCODES*BYTES_PER_SCRATCHCODE
+	origin = make([]byte, originLen, originLen)
+
+	urandom(origin)
+
+	base32Encode(secret, origin[:SECRET_BITS/8])
+	return origin, secret
+}
+
+// 字符串长度
+func strlen(data []byte) int {
+	var i = len(data) - 1
+	for i >= 0 {
+		if data[i] == char_zero {
+			i--
+		} else {
+			return i + 1
+		}
+	}
+
+	return 0
+}
+
+// 字符串追加
+func strcat(data []byte, str string) {
+	sl := strlen(data)
+	copy(data[sl:], str)
+}
+
+// i-- 操作
+func dec(val *int32) int32 {
+	res := *val
+	*val -= 1
+	return res
+}
+
+func main() {
+	getParams()
 }
