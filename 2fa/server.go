@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func check_counterbased_code(secretfile string, code, hotp_counter int, secret, buf []byte) int {
 	if hotp_counter < 1 {
@@ -52,6 +55,19 @@ func compute_code(secret []byte, value int) int {
 	truncatedHash &= 0x7FFFFFFF
 	truncatedHash %= 1000000
 	return truncatedHash
+}
+
+func get_cfg_value(key string, buf []byte) byte {
+	key_len := strlen([]byte(key))
+	line := buf
+
+	if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:2+key_len]), key) == 0 {
+		ptr := line[2+key_len]
+		if ptr == 0 || ptr == ' ' || ptr == '\t' || ptr == '\r' || ptr == '\n' {
+
+		}
+	}
+	return 0
 }
 
 func set_cfg_value(key, val string, buf []byte) int {
