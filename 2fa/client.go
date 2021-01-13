@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"log"
 	"os/user"
 	"fmt"
 	"net/url"
@@ -76,20 +75,17 @@ func display(secret []byte, label string, use_totop int, issuer string) {
 		totop = "h"
 	}
 
-	log.Println(issuer, len(secret))
-
 	sl := strlen(secret)
-	log.Println("s1", sl)
 	value := "secret=" + string(secret[:sl])
 
-	log.Println(issuer != "")
 	if issuer != "" {
 		value = fmt.Sprintf("%v&issuer=%v", value, issuer)
 	}
 
 	u := fmt.Sprintf("otpauth://%votp/%s?%s", totop, string(label), value)
 	u = "https://www.google.com/chart?chs=300x300&chld=M|0&cht=qr&chl=" + url.PathEscape(u)
-	log.Println(u)
+	fmt.Println("Warning: pasting the following URL into your browser exposes the OTP secret to Google:")
+	fmt.Println("  " + u)
 }
 
 /*
@@ -339,7 +335,6 @@ func getParams() {
 			(*C.int)(unsafe.Pointer(&idx)),
 		)
 
-		fmt.Println("c", c)
 		if c > 0 {
 			for i := 0; i < len(options)-1; i++ {
 				if options[i][3].(int32) == int32(c) {
@@ -558,7 +553,7 @@ func getParams() {
 	// quite
 	if quite == 0 {
 		display(secret, label, use_totp, issuer)
-		fmt.Printf("Your new secret key is: %s", secret_fd)
+		fmt.Printf("Your new secret key is: %s\n", string(secret))
 
 		if confirm != 0 && use_totp != 0 {
 			for {

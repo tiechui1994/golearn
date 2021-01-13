@@ -62,6 +62,98 @@ func strcspn(str1, str2 string) int {
 	return idx
 }
 
+func lower(c byte) byte {
+	return c | ('x' - 'X')
+}
+
+func strtouint(s string, endptr *string, base int) uint64 {
+	if endptr == nil {
+		endptr = new(string)
+	}
+
+	*endptr = ""
+	base0 := base == 0
+
+	switch {
+	case 2 <= base && base <= 36:
+	case base == 0:
+		base = 10
+		if s[0] == '0' {
+			switch {
+			case len(s) >= 3 && lower(s[1]) == 'b':
+				base = 2
+				s = s[2:]
+			case len(s) >= 3 && lower(s[1]) == 'o':
+				base = 8
+				s = s[2:]
+			case len(s) >= 3 && lower(s[1]) == 'x':
+				base = 16
+				s = s[2:]
+			default:
+				base = 8
+				s = s[1:]
+			}
+		}
+	default:
+		return 0
+	}
+
+	const intSize = 32 << (^uint(0) >> 63)
+	const maxUint64 = 1<<64 - 1
+
+	var cutoff uint64
+	switch base {
+	case 10:
+		cutoff = maxUint64/10 + 1
+	case 16:
+		cutoff = maxUint64/16 + 1
+	default:
+		cutoff = maxUint64/uint64(base) + 1
+	}
+
+	bitSize := int(intSize)
+	maxVal := uint64(1)<<uint(bitSize) - 1
+	var n uint64
+	for i, c := range []byte(s) {
+		var d byte
+		switch {
+		case c == '_' && base0:
+			// underscoreOK already called
+			continue
+		case '0' <= c && c <= '9':
+			d = c - '0'
+		case 'a' <= lower(c) && lower(c) <= 'z':
+			d = lower(c) - 'a' + 10
+		default:
+			*endptr = s[i:]
+			return n
+		}
+
+		if d >= byte(base) {
+			*endptr = s[i:]
+			return n
+		}
+
+		if n >= cutoff {
+			*endptr = s[i:]
+			// n*base overflows
+			return maxVal
+		}
+
+		n *= uint64(base)
+		n1 := n + uint64(d)
+		if n1 < n || n1 > maxVal {
+			*endptr = s[i:]
+			// n+v overflows
+			return maxVal
+		}
+
+		n = n1
+	}
+
+	return n
+}
+
 func GenerateCode(key []byte, tm int) int {
 	var challenge [8]uint8
 	for i := len(challenge) - 1; i >= 0; tm >>= 8 {

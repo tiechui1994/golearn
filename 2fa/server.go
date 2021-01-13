@@ -1,11 +1,50 @@
 package main
 
 import (
-	"fmt"
 	"strings"
-	"os"
+	"fmt"
+	"bytes"
+	"io/ioutil"
+	"time"
+	"sort"
 )
 
+/*
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static char oom;
+
+static char *get_cfg_value(const char *key, const char *buf) {
+  const size_t key_len = strlen(key);
+  for (const char *line = buf; *line; ) {
+    const char *ptr;
+    if (line[0] == '"' && line[1] == ' ' && !strncmp(line+2, key, key_len) &&
+        (!*(ptr = line+2+key_len) || *ptr == ' ' || *ptr == '\t' ||
+         *ptr == '\r' || *ptr == '\n')) {
+      ptr += strspn(ptr, " \t");
+      size_t val_len = strcspn(ptr, "\r\n");
+      char *val = malloc(val_len + 1);
+      if (!val) {
+        printf("Out of memory\n");
+        return &oom;
+      } else {
+        memcpy(val, ptr, val_len);
+        val[val_len] = '\000';
+        return val;
+      }
+    } else {
+      line += strcspn(line, "\r\n");
+      line += strspn(line, "\r\n");
+    }
+  }
+  return NULL;
+}
+
+
+*/
+import "C"
 
 const (
 	NULLERR        = 0
@@ -42,7 +81,7 @@ func check_counterbased_code(secretfile string, code, hotp_counter int, secret, 
 		return 1
 	}
 
-	window := window_size(secretfile, buf)
+	window := window_size(buf)
 	if window == 0 {
 		return -1
 	}
@@ -51,7 +90,7 @@ func check_counterbased_code(secretfile string, code, hotp_counter int, secret, 
 		hash := compute_code(secret, hotp_counter+i)
 		if hash == code {
 			counter_str := fmt.Sprintf("%d", hotp_counter+i+1)
-			if set_cfg_value("HOTP_COUNTER", counter_str, buf) < 0 {
+			if set("HOTP_COUNTER", counter_str, &buf) < 0 {
 				return -1
 			}
 		}
@@ -60,8 +99,200 @@ func check_counterbased_code(secretfile string, code, hotp_counter int, secret, 
 	return 0
 }
 
-func window_size(secretfile string, buf []byte) int {
-	return 1
+func rate_limit(updated *int, buf *[]byte) int {
+	value := get("RATE_LIMIT", *buf)
+	if value == nil {
+		return 0
+	}
+
+	call := func(origin string, value, endptr *string, result *uint64) uint64 {
+		*value = origin
+		*result = strtouint(*value, endptr, 10)
+		return *result
+	}
+
+	var ptr string
+	var attempts, interval uint64
+	var endptr string
+	//attempts := strtouint(ptr, &endptr, 10)
+
+	if call(string(value), &ptr, &endptr, &attempts) < 1 || endptr == string(value) || attempts > 100 ||
+		(endptr[0] != ' ' && endptr[0] != '\t' ) ||
+		call(endptr, &ptr, &endptr, &interval) < 1 || endptr == ptr || interval > 3600 {
+		fmt.Println("Invalid RATE_LIMIT option.")
+		return -1
+	}
+
+	now := time.Now().Unix()
+	timestamps := []int64{now}
+
+	num := 1
+	for endptr != "" && endptr[0] != '\r' && endptr[0] != '\n' {
+		var timestamp uint64
+		if (endptr[0] != ' ' && endptr[0] != '\t') ||
+			call(endptr, &ptr, &endptr, &timestamp) != 0 ||
+			ptr == endptr {
+			fmt.Println("Invalid list of timestamps in RATE_LIMIT.")
+			return -1
+		}
+
+		num++
+		timestamps = append(timestamps, int64(timestamp))
+	}
+
+	sort.Slice(timestamps, func(i, j int) bool {
+		return timestamps[i] < timestamps[j]
+	})
+
+	start := 0
+	stop := -1
+	for i, v := range timestamps {
+		if v < now-int64(interval) {
+			start = i + 1
+		} else if v > now {
+			break
+		}
+
+		stop = i
+	}
+
+	exceeded := 0
+	if stop-start+1 > int(attempts) {
+		exceeded = 1
+		start = stop - int(attempts) + 1
+	}
+
+	list := make([]byte, 25*(2+stop-start+1)+4)
+	copy(list, fmt.Sprintf("%d %d", attempts, interval))
+	prnt := bytes.IndexByte(list, '\000')
+	for i := start; i <= stop; i++ {
+		copy(list[prnt:], fmt.Sprintf(" %u", timestamps[i]))
+	}
+
+	set("RATE_LIMIT", string(list), buf)
+	*updated = 1
+
+	if exceeded != 0 {
+		fmt.Println("Too many concurrent login attempts. Please try again.")
+		return -1
+	}
+
+	return 0
+}
+
+func invalidate_timebased_code(tm int64, updated *int, buf *[]byte) int {
+	disallow := get("DISALLOW_REUSE", *buf)
+	if disallow == nil {
+		return 0
+	}
+	window := window_size(*buf)
+	if window == 0 {
+		return -1
+	}
+
+	ptr := disallow
+	for len(ptr) > 0 {
+		idx := strspn(string(ptr), " \t\r\n")
+		ptr = ptr[idx:]
+
+		if len(ptr) == 0 {
+			break
+		}
+
+		var endptr string
+		blocked := strtouint(string(ptr), &endptr, 10)
+		if string(ptr) == endptr ||
+			(endptr != "" && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') {
+			return -1
+		}
+
+		if tm == int64(blocked) {
+			step := step_size(*buf)
+			if step == 0 {
+				return -1
+			}
+			fmt.Printf("Trying to reuse a previously used time-based code.\n"+
+				"Retry again in %d seconds. \n"+
+				"Warning! This might mean, you are currently subject to a \n"+
+				"man-in-the-middle attack.\n", step)
+			return -1
+		}
+
+		if int(blocked)-int(tm) >= window || int(tm)-int(blocked) >= window {
+			idx := strspn(endptr, " \t")
+			endptr = endptr[idx:]
+			elen := strlen([]byte(endptr))
+			ptr = []byte(endptr[:elen+1])
+		} else {
+			ptr = []byte(endptr)
+		}
+	}
+
+	data := make([]byte, strlen(disallow)+40)
+	copy(data, disallow[:strlen(disallow)+1])
+	disallow = data
+
+	pos := bytes.LastIndexByte(disallow, '\000')
+	val := fmt.Sprintf(" %d", tm)
+	copy(disallow[pos:], val)
+
+	set("DISALLOW_REUSE", string(disallow), buf)
+	*updated = 1
+
+	return 0
+}
+
+func window_size(buf []byte) int {
+	value := get("STEP_SIZE", buf)
+	if value == nil {
+		return 3
+	}
+
+	var endptr string
+	window := strtouint(string(value), &endptr, 10)
+	if string(value) == endptr ||
+		(endptr != "" && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
+		window < 1 || window > 100 {
+		return 0
+	}
+
+	return int(window)
+}
+
+func step_size(buf []byte) int {
+	value := get("WINDOW_SIZE", buf)
+	if value == nil {
+		return 30
+	}
+
+	var endptr string
+	step := strtouint(string(value), &endptr, 10)
+	if string(value) == endptr ||
+		(endptr != "" && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
+		step < 1 || step > 60 {
+		return 0
+	}
+
+	return int(step)
+}
+
+func get_hotp_counter(buf []byte) int {
+	value := get("HOTP_COUNTER", buf)
+	var counter uint64
+	if value != nil {
+		counter = strtouint(string(value), nil, 10)
+	}
+
+	return int(counter)
+}
+
+func timestamp(buf []byte) int {
+	step := step_size(buf)
+	if step == 0 {
+		return 0
+	}
+
+	return int(time.Now().Unix()) / step
 }
 
 func compute_code(secret []byte, value int) int {
@@ -85,24 +316,21 @@ func compute_code(secret []byte, value int) int {
 	return truncatedHash
 }
 
-func get_cfg_value(key string, buf []byte) []byte {
-	key_len := strlen([]byte(key))
-	line := buf
+func get(key string, buf []byte) []byte {
+	keylen := strlen([]byte(key))
+	line := string(buf)
 
-	for len(line) > 0 {
-		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:2+key_len]), key) == 0 {
-			idx := 2 + key_len
-			char := line[idx]
-			if char == 0 || char == ' ' || char == '\t' || char == '\r' || char == '\n' {
-				idx += strspn(string(line[idx:]), " \t")
-				val_len := strcspn(string(line[idx:]), "\r\n")
-				val := line[idx:idx+val_len]
-				return val
-			}
+	for len(line) > len(key) {
+		idx := 2 + keylen
+		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:idx]), key) == 0 &&
+			(line[idx] == 0 || line[idx] == ' ' || line[idx] == '\t' || line[idx] == '\r' || line[idx] == '\n') {
+			idx += strspn(line[idx:], " \t")
+			vallen := strcspn(line[idx:], "\r\n")
+			return []byte(line[idx:idx+vallen])
 		} else {
-			idx := strcspn(string(line), "\r\n")
+			idx := strcspn(line, "\r\n")
 			line = line[idx:]
-			idx += strspn(string(line), "\r\n")
+			idx = strspn(line, "\r\n")
 			line = line[idx:]
 		}
 	}
@@ -110,47 +338,69 @@ func get_cfg_value(key string, buf []byte) []byte {
 	return nil
 }
 
-func set_cfg_value(key, val string, buf []byte) int {
-	key_len := strlen([]byte(key))
-	line := buf
+func set(key, val string, buf *[]byte) int {
+	keylen := strlen([]byte(key))
 
 	var (
 		start, stop int
 	)
-	for len(line) > 0 {
-		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:2+key_len]), key) == 0 {
-			idx := 2 + key_len
-			char := line[idx]
-			if char == 0 || char == ' ' || char == '\t' || char == '\r' || char == '\n' {
-				start = 0
-				stop = start + strcspn(string(line[start:]), "\r\n")
-				stop += strspn(string(line[stop:]), "\r\n")
-				break
-			}
+
+	line := string(*buf)
+	for len(line) > len(key) {
+		idx := 2 + keylen
+		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:idx]), key) == 0 && (
+			line[idx] == 0 || line[idx] == ' ' || line[idx] == '\t' || line[idx] == '\r' || line[idx] == '\n') {
+			offset := strcspn(line, "\r\n")
+			stop = start + offset
+			stop += strspn(line[offset:], "\r\n")
+			break
 		} else {
-			idx := strcspn(string(line), "\r\n")
+			idx := strcspn(line, "\r\n")
 			line = line[idx:]
-			idx += strspn(string(line), "\r\n")
+			start += idx
+
+			idx = strspn(line, "\r\n")
 			line = line[idx:]
+			start += idx
 		}
 	}
 
-	if start == 0 && stop == 0 {
-		start = strcspn(string(buf), "\r\n")
-		start += strspn(string(buf[start:]), "\r\n")
+	if stop == 0 {
+		line := string(*buf)
+		start = strcspn(line, "\r\n")
+		start += strspn(line[start:], "\r\n")
 		stop = start
 	}
 
-	val_len := strlen([]byte(val))
-	total_len := key_len + val_len + 4
+	data := make([]byte, 1+1+len(key)+1+len(val)+1)
+	data[0] = '"'
+	data[1] = ' '
+	copy(data[2:2+len(key)], key)
+	data[2+len(key)] = ' '
+	copy(data[2+len(key)+1:2+len(key)+1+len(val)], val)
+	data[1+1+len(key)+1+len(val)] = '\n'
 
-	_ = total_len
+	*buf = append(
+		(*buf)[:start],
+		append(data, (*buf)[stop:]...)...
+	)
 
-	return -1
+	return 0
 }
 
 func main() {
-	for _, v := range os.Args {
-		fmt.Println(v)
-	}
+	buf, _ := ioutil.ReadFile("/home/user/.google_authenticator")
+	//val := get("TOTP_AUTH", buf)
+	//fmt.Println(string(buf), val == nil, len(val))
+	//
+	//var ptr *C.char
+	//var result C.ulong
+	//result = C.strtoul(C.CString("2030300 This is test"), &ptr, C.int(10))
+	//fmt.Println("result", result, "["+C.GoString(ptr)+"]")
+	//
+	//var p = new(string)
+	//fmt.Println(strtouint("2030300", p, 10), "[" + *p+"]", *p == "")
+	var res *C.char
+	res = C.ca(C.CString(string(buf)))
+	fmt.Println(C.GoString(res))
 }
