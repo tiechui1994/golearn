@@ -72,7 +72,48 @@ type Params struct {
 	allow_readonly    int
 }
 
-func check_counterbased_code(secretfile string, code, hotp_counter int, secret, buf []byte) int {
+func check_scratch_codes(updated *int, buf []byte, code int) int {
+	idx := strcspn(string(buf), "\n")
+	ptr := string(buf[idx:])
+
+	var endptr string
+	for {
+		for ptr[0] == '\r' || ptr[0] == '\n' {
+			ptr = ptr[1:]
+		}
+		if ptr[0] == '"' {
+			idx := strcspn(ptr, "\n")
+			ptr = ptr[idx:]
+			continue
+		}
+
+		scratchcode := strtouint(ptr, &endptr, 10)
+
+		if ptr == endptr ||
+			(endptr[0] != '\r' && endptr[0] != '\n' && endptr != "") ||
+			scratchcode < 10*1000*1000 || scratchcode >= 100*1000*1000 {
+			break
+		}
+
+		if scratchcode == uint64(code) {
+			for endptr[0] == '\n' || endptr[0] == '\r' {
+				endptr = endptr[1:]
+			}
+
+			ptr = endptr[:strlen([]byte(endptr))+1]
+			*updated = 1
+			fmt.Printf("debug: scratch code %d used and removed.\n", code)
+			return 0
+		}
+
+		ptr = endptr
+	}
+
+	fmt.Println("debug: no scratch code used")
+	return 1
+}
+
+func check_counterbased_code(code, hotp_counter int, secret, buf []byte) int {
 	if hotp_counter < 1 {
 		return 1
 	}
