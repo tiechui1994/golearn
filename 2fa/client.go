@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/user"
 	"fmt"
-	"net/url"
 	"time"
 	"unsafe"
 	"strconv"
@@ -50,16 +49,6 @@ const (
 	ALLOW_REUSE    = 2
 )
 
-const ()
-
-func hostname() string {
-	hostname, err := os.Hostname()
-	if err == nil {
-		return hostname
-	}
-	return "unix"
-}
-
 func getLabel() string {
 	userinfo, err := user.Current()
 	if err == nil {
@@ -70,20 +59,19 @@ func getLabel() string {
 }
 
 func display(secret []byte, label string, use_totop int, issuer string) {
-	totop := "t"
-	if use_totop == HOTP_MODE {
-		totop = "h"
+	totop := "h"
+	if use_totop != 0 {
+		totop = "t"
 	}
 
 	sl := strlen(secret)
 	value := "secret=" + string(secret[:sl])
 
 	if issuer != "" {
-		value = fmt.Sprintf("%v&issuer=%v", value, issuer)
+		value = fmt.Sprintf("%v&issuer=%v", value, urlencode(issuer))
 	}
-
-	u := fmt.Sprintf("otpauth://%votp/%s?%s", totop, string(label), value)
-	u = "https://www.google.com/chart?chs=300x300&chld=M|0&cht=qr&chl=" + url.PathEscape(u)
+	u := fmt.Sprintf("otpauth://%votp/%s?%s", totop, urlencode(string(label)), value)
+	u = "https://www.google.com/chart?chs=200x200&chld=M|0&cht=qr&chl=" + urlencode(u)
 	fmt.Println("Warning: pasting the following URL into your browser exposes the OTP secret to Google:")
 	fmt.Println("  " + u)
 }
@@ -564,24 +552,22 @@ func getParams() {
 					break
 				}
 
-				if step_size != 0 {
+				if step_size == 0 {
 					step_size = 30
 				}
-
 				tm := int(time.Now().Unix()) / step_size
-				correct_code := GenerateCode(secret, tm)
+				correct_code := GenerateCode(string(secret), tm)
 				if correct_code == int(val) {
 					fmt.Println("Code confirmed")
 					break
 				}
 
-				fmt.Println("Code incorrect (correct code %06d). Try again.")
-				fmt.Println(correct_code)
+				fmt.Printf("Code incorrect (correct code %06d). Try again.\n", correct_code)
 			}
 		} else {
 			tm := 1
 			fmt.Printf("Your verification code for code %d is %06d\n", tm,
-				GenerateCode(secret, tm))
+				GenerateCode(string(secret), tm))
 		}
 
 		fmt.Println("Your emergency scratch codes are:")
@@ -649,7 +635,7 @@ func getParams() {
 		}
 
 		if step_size != 0 {
-			s := fmt.Sprintf(`" STEP_SIZE %d\n`, step_size)
+			s := fmt.Sprintf(`" STEP_SIZE %d`+char_line, step_size)
 			addOption(secret, s)
 		}
 
@@ -659,7 +645,7 @@ func getParams() {
 			if window_size <= 0 {
 				window_size = 3
 			}
-			s := fmt.Sprintf(`" WINDOW_SIZE %d\n`, window_size)
+			s := fmt.Sprintf(`" WINDOW_SIZE %d`+char_line, window_size)
 			addOption(secret, s)
 		}
 	} else {
@@ -670,7 +656,7 @@ func getParams() {
 			if window_size <= 0 {
 				window_size = 1
 			}
-			s := fmt.Sprintf(`" WINDOW_SIZE %d\n`, window_size)
+			s := fmt.Sprintf(`" WINDOW_SIZE %d`+char_line, window_size)
 			addOption(secret, s)
 		}
 	}
@@ -678,7 +664,7 @@ func getParams() {
 	if r_limit == 0 && r_time == 0 {
 		maybeAddOption(option_4, secret, ratelimit)
 	} else if r_limit > 0 && r_time > 0 {
-		s := fmt.Sprintf(`" RATE_LIMIT %d %d\n`, r_limit, r_time)
+		s := fmt.Sprintf(`" RATE_LIMIT %d %d`+char_line, r_limit, r_time)
 		addOption(secret, s)
 	}
 
@@ -714,6 +700,11 @@ const (
 var ufd *os.File
 
 func urandom(data []byte) {
+	for i := 0; i < len(data); i++ {
+		data[i] = 10
+	}
+
+	return
 	if ufd == nil {
 		var err error
 		ufd, err = os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
@@ -731,7 +722,7 @@ retry:
 	}
 }
 
-func Secret() (origin, secret []byte) {
+func Secret() (origin []byte, secret []byte) {
 	secretLen := (SECRET_BITS+BITS_PER_BASE32_CHAR-1)/BITS_PER_BASE32_CHAR +
 		1 + // newline
 		len(hotp) + // hottop and totp are mutually exclusive
@@ -749,7 +740,7 @@ func Secret() (origin, secret []byte) {
 
 	urandom(origin)
 
-	base32Encode(secret, origin[:SECRET_BITS/8])
+	base32Encode(origin, SECRET_BITS/8, secret, len(secret))
 	return origin, secret
 }
 
