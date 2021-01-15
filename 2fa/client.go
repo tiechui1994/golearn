@@ -65,11 +65,16 @@ func display(secret []byte, label string, use_totop int, issuer string) {
 	}
 
 	sl := strlen(secret)
-	value := "secret=" + string(secret[:sl])
+	value := fmt.Sprintf("secret=%s&algorithm=%s&digits=%v&period=%v", string(secret[:sl]),
+		"SHA1", 6, 30)
 
+	if use_totop == 0 {
+		value = fmt.Sprintf("%v&counter=%v", value, 0)
+	}
 	if issuer != "" {
 		value = fmt.Sprintf("%v&issuer=%v", value, urlencode(issuer))
 	}
+
 	u := fmt.Sprintf("otpauth://%votp/%s?%s", totop, urlencode(string(label)), value)
 	u = "https://www.google.com/chart?chs=200x200&chld=M|0&cht=qr&chl=" + urlencode(u)
 	fmt.Println("Warning: pasting the following URL into your browser exposes the OTP secret to Google:")

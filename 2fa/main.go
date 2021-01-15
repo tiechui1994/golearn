@@ -6,36 +6,113 @@ package main
 #include <stdlib.h>
 #include <string.h>
 
-static int convert() {
-	const char* value = "3 30";
-	const char *endptr = value, *ptr;
-	int attempts, interval;
-	errno = 0;
+#define ULONG_MAX 0xFFFFFFFF
 
-	attempts = (int)strtoul(ptr = endptr, (char **)&endptr, 10);
-	printf("result:%d\n", attempts < 1 || ptr == endptr || attempts > 100 || errno || (*endptr != ' ' && *endptr != '\t'));
-	printf("endptr:[%s]\n", endptr);
-	interval = (int)strtoul(ptr = endptr, (char **)&endptr, 10);
-	printf("result:%d\n", interval<1 || ptr == endptr || interval>3600 || errno );
-	printf("endptr:[%s]\n", endptr);
-	return 0;
+static int ISSPACE(int ch) {
+	return (ch == '\t' || ch == '\n' || ch == '\v' || ch == '\f' || ch == '\r' || ch == ' ') ? 1 : 0;
+}
+static int ISDIGIT(int ch) {
+	return  (ch >= '0' && ch <= '9') ? 1 : 0;
+}
+static int ISALPHA(int ch) {
+	return ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) ? 1 : 0;
+}
+static int ISUPPER(int ch) {
+	return ('A' <= ch && ch <= 'Z') ? 1 : 0;
+}
+
+unsigned long strtou(const char *nptr, char **endptr, register int base)
+{
+        register const char *s = nptr;
+        register unsigned long acc;
+        register int c;
+        register unsigned long cutoff;
+        register int neg = 0, any, cutlim;
+        do {
+                c = *s++;
+        } while (ISSPACE(c));
+        if (c == '-') {
+                neg = 1;
+                c = *s++;
+        } else if (c == '+')
+                c = *s++;
+        if ((base == 0 || base == 16) &&
+            c == '0' && (*s == 'x' || *s == 'X')) {
+                c = s[1];
+                s += 2;
+                base = 16;
+        }
+        if (base == 0)
+              base = c == '0' ? 8 : 10;
+
+        printf("cur1:[%s]\n",s);
+
+        cutoff = (unsigned long)ULONG_MAX / (unsigned long)base;
+        cutlim = (unsigned long)ULONG_MAX % (unsigned long)base;
+        int idx = 0;
+        for (acc = 0, any = 0;; c = *s++) {
+        		idx++;
+                if (ISDIGIT(c))
+                        c -= '0';
+                else if (ISALPHA(c))
+                        c -= ISUPPER(c) ? 'A' - 10 : 'a' - 10;
+                else
+                        break;
+                if (c >= base)
+                        break;
+                if (any < 0 || acc > cutoff || (acc == cutoff && c > cutlim))
+                        any = -1;
+                else {
+                        any = 1;
+                        acc *= base;
+                        acc += c;
+                }
+        }
+
+        printf("cur2:[%s]\n", s);
+        printf("idx:%d\n", idx);
+
+        if (any < 0) {
+                acc = ULONG_MAX;
+                errno = ERANGE;
+        } else if (neg)
+                acc = -acc;
+
+        if (endptr != 0)
+        	printf("endptr: [%s]\n", s-1);
+        	printf("any:%d\n", any);
+            *endptr = (char *) (any ? s - 1 : nptr);
+        return (acc);
+}
+
+static void plus(int val) {
+  	char *endptr;
+  	//if (*endptr) {
+  	//	printf("nil\n");
+  	//}
+
+  	const char* space = "";
+  	*endptr = *space;
+	if (!*endptr) {
+  		printf("empty\n");
+  	}
+
+  	const char* zero = "0";
+  	*endptr = *zero;
+	if (!*endptr) {
+  		printf("zero\n");
+  	}
+
+  	const char* sp = " ";
+  	*endptr = *sp;
+	if (!*endptr) {
+  		printf("space\n");
+  	}
 }
 
 
-static int plus() {
-	char d[] = {'0','1','2','3','4','5','6'};
-	char* s = d;
-	printf("d: %c\n", *s);
-	char c = *s++; // c=*s; s++
-	printf("d: %c\n", *s);
-	printf("c: %c\n", c);
-	printf("%s\n", s-1);
-	// *s, s++
-	return 0;
-}
 */
 import "C"
 
 func main() {
-	C.plus()
 }
