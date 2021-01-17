@@ -9,6 +9,7 @@ import (
 	"unsafe"
 	"os"
 	"io"
+	"os/user"
 )
 
 const (
@@ -19,8 +20,12 @@ const (
 	PROMPT         = 0
 	TRY_FIRST_PASS = 1
 	USE_FIRST_PASS = 2
+)
 
-	SECRET = "/home/user/.google_authenticator"
+const (
+	SECRET        = "/home/user/.google_authenticator"
+	CODE_PROMPT   = "Verification code: "
+	PWCODE_PROMPT = "Password & verification code: "
 )
 
 type Params struct {
@@ -548,7 +553,84 @@ func getSecretFile(username string, params Params) string {
 		spec = params.secret_filename_spec
 	}
 
-	return spec
+	var u *user.User
+	var secfile string
+	var allow_tilde int
+	if params.fixed_uid == 0 {
+		var err error
+		u, err = user.Lookup(username)
+		if err != nil {
+			goto errout
+		}
+
+		if u.HomeDir == "" {
+			fmt.Printf("user(\"%s\") has no home dir\n", username)
+			goto errout
+		}
+
+		if (u.HomeDir)[0] != '/' {
+			fmt.Printf("User \"%s\" hone dir not absolare\n", username)
+			goto errout
+		}
+	}
+
+	secfile = spec
+	allow_tilde = 1
+
+	for offset := 0; secfile[offset] != 0; {
+		cur := secfile[offset:]
+		vars := ""
+		varslen := 0
+		subst := ""
+		if allow_tilde != 0 && cur[0] == '~' {
+			varslen = 1
+			if u == nil {
+				fmt.Println("Home dir in  'secret' not  implemented when 'user' set")
+				goto errout
+			}
+
+			subst = u.HomeDir
+			vars = cur
+		} else if secfile[offset] == '$' {
+			if strings.HasPrefix(cur, "${HOME}") {
+				varslen = 7
+				if u == nil {
+					fmt.Println("Home dir in  'secret' not  implemented when 'user' set")
+					goto errout
+				}
+
+				subst = u.HomeDir
+				vars = cur
+			} else if strings.HasPrefix(cur, "${USER}") {
+				varslen = 7
+				subst = username
+				vars = cur
+			}
+
+			if vars != "" {
+				substlen := strlen([]byte(subst))
+				varidx := strings.Index(secfile, vars)
+				cp := make([]byte, strlen([]byte(secfile))+substlen)
+				copy(cp[varidx+substlen:], vars[varslen:])
+				copy(cp[:varidx+substlen], subst)
+				offset = varidx + substlen
+				allow_tilde = 0
+				secfile = string(cp)
+			} else {
+				allow_tilde = 0
+
+				if cur[0] == '/' {
+					allow_tilde = 1
+				}
+
+				offset++
+			}
+		}
+	}
+	return secfile
+
+errout:
+	return ""
 }
 
 func timestamp(buf []byte) int {
@@ -676,16 +758,27 @@ func run(argcode string) int {
 	}
 
 	var (
-		buf                   []byte
-		secret                []byte
-		seclen                int
-		earlyupdated, updated int
-		stoppedbyratelimit    int
+		buf    []byte
+		secret []byte
+		seclen int
 
-		rc         = PAM_AUTH_ERR
-		username   = username()
-		secretfile = getSecretFile(username, param)
+		rc = PAM_AUTH_ERR
 	)
+
+	var prompt string
+	if param.authtok_propt != "" {
+		prompt = param.authtok_propt
+	} else {
+		prompt = CODE_PROMPT
+		if param.forward_pass != 0 {
+			prompt = PWCODE_PROMPT
+		}
+	}
+
+	var earlyupdated, updated = 0, 0
+	username := username()
+	secretfile := getSecretFile(username, param)
+	stoppedbyratelimit := 0
 
 	if secretfile != "" {
 		fd, err := os.OpenFile(secretfile, os.O_RDONLY, 0)
