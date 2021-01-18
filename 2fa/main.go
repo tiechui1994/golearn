@@ -85,34 +85,21 @@ unsigned long strtou(const char *nptr, char **endptr, register int base)
         return (acc);
 }
 
-static void plus(int val) {
-  	char *endptr;
-  	//if (*endptr) {
-  	//	printf("nil\n");
-  	//}
-
-  	const char* space = "";
-  	*endptr = *space;
-	if (!*endptr) {
-  		printf("empty\n");
-  	}
-
-  	const char* zero = "0";
-  	*endptr = *zero;
-	if (!*endptr) {
-  		printf("zero\n");
-  	}
-
-  	const char* sp = " ";
-  	*endptr = *sp;
-	if (!*endptr) {
-  		printf("space\n");
+static void plus(const char* desc, char* endptr) {
+	if (*endptr) {
+  		printf("%s (*var) is TRUE \n", desc);
   	}
 }
 
 
 */
 import "C"
+import "fmt"
 
 func main() {
+	C.plus(C.CString("empty str"), C.CString(""))
+	C.plus(C.CString("zero array"), C.CString(string([]byte{0, 0, 0, 0, 0})))
+	fmt.Println("len", len(string([]byte{0, 0, 0, 0, 0})))
+	C.plus(C.CString("'0' str"), C.CString("0"))
+	C.plus(C.CString("' ' str"), C.CString(" "))
 }

@@ -386,3 +386,10 @@ func memset(data []byte, value byte, length int) {
 		data[i] = value
 	}
 }
+
+func ask(msg string) string {
+	fmt.Printf("%s ", msg)
+	var read string
+	fmt.Scanln(&read)
+	return read
+}

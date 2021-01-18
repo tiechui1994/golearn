@@ -23,7 +23,7 @@ const (
 )
 
 const (
-	SECRET        = "/home/user/.google_authenticator"
+	SECRET        = "~/.google_authenticator"
 	CODE_PROMPT   = "Verification code: "
 	PWCODE_PROMPT = "Password & verification code: "
 )
@@ -33,20 +33,31 @@ type Params struct {
 	authtok_propt        string
 	nullok               int
 	noskewadj            int
-	echocode             int
 	fixed_uid            int
 	no_increment_hotp    int
-	uid                  int
 	pass_mode            int
 	forward_pass         int
-	no_strict_owner      int
 	allowed_perm         int
-	grace_period         int64
 	allow_readonly       int
 	debug                bool
 }
 
-func check_scratch_codes(updated *int, buf []byte, code int, params Params) int {
+// if *endptr
+func isNotEmpty(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	for _, b := range s {
+		if b != 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkScratchCodes(updated *int, buf []byte, code int, params Params) int {
 	idx := strcspn(string(buf), "\n")
 	ptr := string(buf[idx:])
 
@@ -65,7 +76,7 @@ func check_scratch_codes(updated *int, buf []byte, code int, params Params) int 
 		scratchcode := strtoul(ptr, &endptr, 10, &errno)
 
 		if errno != 0 || ptr == endptr ||
-			(endptr[0] != '\r' && endptr[0] != '\n' && endptr != "") ||
+			(endptr[0] != '\r' && endptr[0] != '\n' && isNotEmpty(endptr)) ||
 			scratchcode < 10*1000*1000 || scratchcode >= 100*1000*1000 {
 			break
 		}
@@ -95,7 +106,7 @@ func check_scratch_codes(updated *int, buf []byte, code int, params Params) int 
 	return 1
 }
 
-func check_counterbased_code(updated *int, buf *[]byte, secret []byte, seclen, code, hotpcounter int,
+func checkCounterbasedCode(updated *int, buf *[]byte, secret []byte, seclen, code, hotpcounter int,
 	mustadvancecounter *int, param Params) int {
 	if hotpcounter < 1 {
 		return 1
@@ -105,7 +116,7 @@ func check_counterbased_code(updated *int, buf *[]byte, secret []byte, seclen, c
 		return 1
 	}
 
-	window := window_size(*buf)
+	window := WindowSize(*buf)
 	if window == 0 {
 		return -1
 	}
@@ -115,7 +126,7 @@ func check_counterbased_code(updated *int, buf *[]byte, secret []byte, seclen, c
 	}
 
 	for i := 0; i < window; i++ {
-		hash := compute_code(secret, seclen, hotpcounter+i)
+		hash := ComputeCode(secret, seclen, hotpcounter+i)
 		if param.debug {
 			fmt.Printf("debug window counter code:%v\n", hash)
 		}
@@ -133,8 +144,8 @@ func check_counterbased_code(updated *int, buf *[]byte, secret []byte, seclen, c
 	return 1
 }
 
-func check_timebased_code(updated *int, buf *[]byte, secret []byte, seclen, code int, param Params) int {
-	if is_top(*buf) {
+func checkTimebasedCode(updated *int, buf *[]byte, secret []byte, seclen, code int, param Params) int {
+	if isTOTP(*buf) {
 		return 1
 	}
 
@@ -160,7 +171,7 @@ func check_timebased_code(updated *int, buf *[]byte, secret []byte, seclen, code
 		fmt.Printf("debug: skew:%d\n", skew)
 	}
 
-	window := window_size(*buf)
+	window := WindowSize(*buf)
 	if window == 0 {
 		return -1
 	}
@@ -169,13 +180,13 @@ func check_timebased_code(updated *int, buf *[]byte, secret []byte, seclen, code
 	}
 
 	for i := -((window - 1) / 2); i <= window/2; i++ {
-		hash := compute_code(secret, seclen, tm+skew+i)
+		hash := ComputeCode(secret, seclen, tm+skew+i)
 		if param.debug {
 			fmt.Printf("debug window timer code:%v\n", hash)
 		}
 
 		if hash == code {
-			return invalidate_timebased_code(tm+skew+i, updated, buf)
+			return invalidateTimebasedCode(tm+skew+i, updated, buf)
 		}
 	}
 
@@ -183,12 +194,12 @@ func check_timebased_code(updated *int, buf *[]byte, secret []byte, seclen, code
 		skew = 1000000
 
 		for i := 0; i < 25*60; i++ {
-			hash := compute_code(secret, seclen, tm-i)
+			hash := ComputeCode(secret, seclen, tm-i)
 			if hash == code && skew == 1000000 {
 				skew = -i
 			}
 
-			hash = compute_code(secret, seclen, tm+i)
+			hash = ComputeCode(secret, seclen, tm+i)
 			if hash == code && skew == 1000000 {
 				skew = i
 			}
@@ -199,19 +210,19 @@ func check_timebased_code(updated *int, buf *[]byte, secret []byte, seclen, code
 				fmt.Println("debug: time skew adjusted")
 			}
 
-			return check_time_skew(updated, buf, skew, tm)
+			return checkTimeSkew(updated, buf, skew, tm)
 		}
 	}
 
 	return 1
 }
 
-func invalidate_timebased_code(tm int, updated *int, buf *[]byte) int {
+func invalidateTimebasedCode(tm int, updated *int, buf *[]byte) int {
 	disallow := get("DISALLOW_REUSE", *buf)
 	if disallow == nil {
 		return 0
 	}
-	window := window_size(*buf)
+	window := WindowSize(*buf)
 	if window == 0 {
 		return -1
 	}
@@ -229,12 +240,12 @@ func invalidate_timebased_code(tm int, updated *int, buf *[]byte) int {
 		var errno int
 		blocked := strtoul(string(ptr), &endptr, 10, &errno)
 		if errno != 0 || string(ptr) == endptr ||
-			(endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r' || endptr != "") {
+			(endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r' || isNotEmpty(endptr)) {
 			return -1
 		}
 
 		if tm == int(blocked) {
-			step := step_size(*buf)
+			step := StepSize(*buf)
 			if step == 0 {
 				return -1
 			}
@@ -268,7 +279,7 @@ func invalidate_timebased_code(tm int, updated *int, buf *[]byte) int {
 	return 0
 }
 
-func check_time_skew(updated *int, buf *[]byte, skew, tm int) int {
+func checkTimeSkew(updated *int, buf *[]byte, skew, tm int) int {
 	rc := -1
 
 	resetting := get("RESETTING_TIME_SKEW", *buf)
@@ -291,7 +302,7 @@ func check_time_skew(updated *int, buf *[]byte, skew, tm int) int {
 			errno = 0
 			j := int(strtoul(ptr[1:], &endptr, 10, &errno))
 			if errno != 0 || ptr == endptr ||
-				(endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\r' && endptr[0] != '\n' && endptr != "") {
+				(endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\r' && endptr[0] != '\n' && isNotEmpty(endptr)) {
 				break
 			}
 
@@ -383,22 +394,17 @@ func or(args ...bool) bool {
 	}
 }
 
-func rate_limit(updated *int, buf *[]byte) int {
+func RateLimit(updated *int, buf *[]byte) int {
 	value := get("RATE_LIMIT", *buf)
 	if value == nil {
 		return 0
 	}
 
 	// cond || (result = f(value=origin, endptr, error))
-	assign := func(origin string, value, endptr *string, result *uint, errno *int) uint {
+	assign := func(origin string, value, endptr *string, errno *int, result *uint) uint {
 		*value = origin
 		*result = strtoul(*value, endptr, 10, errno)
 		return *result
-	}
-
-	// cond || (t=exec, expect)
-	other := func(exec interface{}, expect int) int {
-		return expect
 	}
 
 	var ptr string
@@ -406,9 +412,9 @@ func rate_limit(updated *int, buf *[]byte) int {
 	var errno int
 	var endptr string
 
-	if assign(string(value), &ptr, &endptr, &attempts, &errno) < 1 ||
+	if assign(string(value), &ptr, &endptr, &errno, &attempts) < 1 ||
 		or(endptr == string(value), attempts > 100, errno != 0, endptr[0] != ' ' && endptr[0] != '\t') ||
-		assign(endptr, &ptr, &endptr, &interval, &errno) < 1 ||
+		assign(endptr, &ptr, &endptr, &errno, &interval) < 1 ||
 		or(endptr == ptr, interval > 3600, errno != 0) {
 		fmt.Println("Invalid RATE_LIMIT option.")
 		return -1
@@ -418,10 +424,12 @@ func rate_limit(updated *int, buf *[]byte) int {
 	timestamps := []int64{now}
 
 	num := 1
-	for endptr != "" && endptr[0] != '\r' && endptr[0] != '\n' {
+	for isNotEmpty(endptr) && endptr[0] != '\r' && endptr[0] != '\n' {
 		var timestamp uint
+		errno = 0
+
 		if (endptr[0] != ' ' && endptr[0] != '\t') ||
-			other(assign(endptr, &ptr, &endptr, &timestamp, &errno), errno) != 0 ||
+			(assign(endptr, &ptr, &endptr, &errno, &timestamp) >= 0 && errno != 0) ||
 			ptr == endptr {
 			fmt.Println("Invalid list of timestamps in RATE_LIMIT.")
 			return -1
@@ -471,7 +479,7 @@ func rate_limit(updated *int, buf *[]byte) int {
 	return 0
 }
 
-func window_size(buf []byte) int {
+func WindowSize(buf []byte) int {
 	value := get("WINDOW_SIZE", buf)
 	if value == nil {
 		return 3
@@ -480,7 +488,7 @@ func window_size(buf []byte) int {
 	var endptr string
 	window := strtoul(string(value), &endptr, 10)
 	if string(value) == endptr ||
-		(endptr != "" && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
+		(isNotEmpty(endptr) && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
 		window < 1 || window > 100 {
 		return 0
 	}
@@ -488,7 +496,7 @@ func window_size(buf []byte) int {
 	return int(window)
 }
 
-func step_size(buf []byte) int {
+func StepSize(buf []byte) int {
 	value := get("STEP_SIZE", buf)
 	if value == nil {
 		return 30
@@ -498,7 +506,7 @@ func step_size(buf []byte) int {
 	var errno int
 	step := strtoul(string(value), &endptr, 10, &errno)
 	if errno != 0 || string(value) == endptr ||
-		(endptr != "" && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
+		(isNotEmpty(endptr) && endptr[0] != ' ' && endptr[0] != '\t' && endptr[0] != '\n' && endptr[0] != '\r') ||
 		step < 1 || step > 60 {
 		return 0
 	}
@@ -506,7 +514,7 @@ func step_size(buf []byte) int {
 	return int(step)
 }
 
-func get_hotp_counter(buf []byte) int {
+func HotpCounter(buf []byte) int {
 	value := get("HOTP_COUNTER", buf)
 	var counter uint
 	if value != nil {
@@ -516,7 +524,7 @@ func get_hotp_counter(buf []byte) int {
 	return int(counter)
 }
 
-func get_shared_secret(buf *[]byte, secretfile string, seclen *int, param Params) []byte {
+func getSharedSecret(buf *[]byte, secretfile string, seclen *int, param Params) []byte {
 	base32Len := strcspn(string(*buf), "\n")
 	if base32Len > 100000 {
 		return nil
@@ -606,35 +614,76 @@ func getSecretFile(username string, params Params) string {
 				subst = username
 				vars = cur
 			}
+		}
 
-			if vars != "" {
-				substlen := strlen([]byte(subst))
-				varidx := strings.Index(secfile, vars)
-				cp := make([]byte, strlen([]byte(secfile))+substlen)
-				copy(cp[varidx+substlen:], vars[varslen:])
-				copy(cp[:varidx+substlen], subst)
-				offset = varidx + substlen
-				allow_tilde = 0
-				secfile = string(cp)
-			} else {
-				allow_tilde = 0
+		if vars != "" {
+			substlen := strlen([]byte(subst))
+			varidx := strings.Index(secfile, vars)
+			cp := make([]byte, strlen([]byte(secfile))+substlen)
+			copy(cp[varidx+substlen:], vars[varslen:])
+			copy(cp[:varidx+substlen], subst)
+			offset = varidx + substlen
+			allow_tilde = 0
+			secfile = string(cp)
+		} else {
+			allow_tilde = 0
 
-				if cur[0] == '/' {
-					allow_tilde = 1
-				}
-
-				offset++
+			if cur[0] == '/' {
+				allow_tilde = 1
 			}
+
+			offset++
 		}
 	}
-	return secfile
+
+	return secfile[:strlen([]byte(secfile))]
 
 errout:
 	return ""
 }
 
+func openSecretFile(secfile, username string, params *Params) (*os.File, os.FileInfo) {
+	exec := func(fd *os.File, info *os.FileInfo) error {
+		var err error
+		*info, err = fd.Stat()
+		return err
+	}
+
+	var info os.FileInfo
+	fd, err := os.Open(secfile)
+	if err != nil || exec(fd, &info) != nil {
+		if params.nullok != NULLERR {
+			params.nullok = SECRETNOTFOUND
+		} else {
+			fmt.Printf("Failed to read \"%s\" for \"%s\": %s\n", secfile,
+				username, err.Error())
+		}
+
+		goto err
+	}
+
+	if params.debug {
+		fmt.Printf("debug: Secret file permissions are %04o."+
+			" Allowed permissions are %04o\n", info.Mode()&03777, params.allowed_perm)
+	}
+
+	if info.Mode()&03777&os.FileMode(^params.allowed_perm) != 0 {
+		fmt.Printf("Secret file permissions (%04o)"+
+			" are more permissive than %04o\n", info.Mode()&03777, params.allowed_perm)
+		goto err
+	}
+
+	return fd, info
+
+err:
+	if fd != nil {
+		fd.Close()
+	}
+	return nil, info
+}
+
 func timestamp(buf []byte) int {
-	step := step_size(buf)
+	step := StepSize(buf)
 	if step == 0 {
 		return 0
 	}
@@ -642,7 +691,11 @@ func timestamp(buf []byte) int {
 	return int(time.Now().Unix()) / step
 }
 
-func compute_code(secret []byte, seclen, value int) int {
+func requestCode(msg string) string {
+	return ask(msg)
+}
+
+func ComputeCode(secret []byte, seclen, value int) int {
 	var val [8]byte
 
 	equal := func(arg *int, value int) int {
@@ -668,7 +721,7 @@ func compute_code(secret []byte, seclen, value int) int {
 	return truncatedHash
 }
 
-func is_top(buf []byte) bool {
+func isTOTP(buf []byte) bool {
 	return strings.Index(string(buf), `" TOTP_AUTH`) == -1
 }
 
@@ -750,7 +803,7 @@ const (
 	PAM_IGNORE   = 3
 )
 
-func run(argcode string) int {
+func run() int {
 	param := Params{
 		nullok:       1,
 		debug:        true,
@@ -781,39 +834,25 @@ func run(argcode string) int {
 	stoppedbyratelimit := 0
 
 	if secretfile != "" {
-		fd, err := os.OpenFile(secretfile, os.O_RDONLY, 0)
-		if err != nil && os.IsNotExist(err) {
-			if param.nullok != NULLERR {
-				param.nullok = SECRETNOTFOUND
+		fd, info := openSecretFile(secretfile, username, &param)
+		if fd != nil {
+			buf = make([]byte, info.Size()+1)
+			var writer bytes.Buffer
+			io.CopyN(&writer, fd, info.Size())
+			copy(buf, writer.Bytes())
+			buf[info.Size()] = char_zero
+		}
+
+		if buf != nil && len(buf) > 0 {
+			if RateLimit(&earlyupdated, &buf) >= 0 {
+				secret = getSharedSecret(&buf, secretfile, &seclen, param)
 			} else {
-				fmt.Printf("Failed to read \"%s\" for \"%s\": %s\n", secretfile,
-					username, err.Error())
+				stoppedbyratelimit = 1
 			}
 		}
-		defer fd.Close()
-
-		stat, _ := fd.Stat()
-		if param.debug {
-			fmt.Printf("debug: Secret file permissions are %04o.\n"+
-				" Allowed permissions are %04o\n", stat.Mode()&03777, param.allowed_perm)
-		}
-
-		buf = make([]byte, stat.Size()+1)
-		var writer bytes.Buffer
-		io.CopyN(&writer, fd, stat.Size())
-		copy(buf, writer.Bytes())
-		buf[stat.Size()] = char_zero
 	}
 
-	if buf != nil && len(buf) > 0 {
-		if rate_limit(&earlyupdated, &buf) >= 0 {
-			secret = get_shared_secret(&buf, secretfile, &seclen, param)
-		} else {
-			stoppedbyratelimit = 1
-		}
-	}
-
-	hotp_counter := get_hotp_counter(buf)
+	hotp_counter := HotpCounter(buf)
 	if stoppedbyratelimit == 0 && (secret != nil || param.nullok != SECRETNOTFOUND) {
 		if secret == nil || len(secret) == 0 {
 			fmt.Printf("No secret configured for user %s, asking for code anyway.\n", username)
@@ -829,6 +868,7 @@ func run(argcode string) int {
 			*arg = value
 			return *arg
 		}
+
 		// condition ? xxx : xxx
 		expr := func(cond bool, t, f byte) byte {
 			if cond {
@@ -850,7 +890,7 @@ func run(argcode string) int {
 			switch mode {
 			case 0, 1:
 				if param.pass_mode == USE_FIRST_PASS || param.pass_mode == TRY_FIRST_PASS {
-					pw = []byte(argcode)
+					pw = []byte(requestCode(prompt))
 				}
 
 			default:
@@ -861,7 +901,7 @@ func run(argcode string) int {
 
 				if param.pass_mode == PROMPT || param.pass_mode == TRY_FIRST_PASS {
 					if savedpw == nil {
-						savedpw = []byte(argcode)
+						savedpw = []byte(requestCode(prompt))
 						fmt.Printf("debug savedpw:[%s]\n", string(pw))
 					}
 					if savedpw != nil {
@@ -904,7 +944,7 @@ func run(argcode string) int {
 			var endptr string
 			var errno int
 			l := strtoul(string(pw[pwlen-expectedlen:]), &endptr, 10, &errno)
-			if errno != 0 || l < 0 || endptr != "" {
+			if errno != 0 || l < 0 || isNotEmpty(endptr) {
 				pw = nil
 				continue
 			}
@@ -923,10 +963,10 @@ func run(argcode string) int {
 			}
 
 			if secret != nil {
-				switch check_scratch_codes(&updated, buf, code, param) {
+				switch checkScratchCodes(&updated, buf, code, param) {
 				case 1:
 					if hotp_counter > 0 {
-						switch check_counterbased_code(&updated, &buf, secret, seclen, code,
+						switch checkCounterbasedCode(&updated, &buf, secret, seclen, code,
 							hotp_counter, &mustadvancecounter, param) {
 						case 0:
 							rc = PAM_SUCCESS
@@ -936,7 +976,7 @@ func run(argcode string) int {
 						default:
 						}
 					} else {
-						switch check_timebased_code(&updated, &buf, secret, seclen, code, param) {
+						switch checkTimebasedCode(&updated, &buf, secret, seclen, code, param) {
 						case 0:
 							rc = PAM_SUCCESS
 						case 1:
@@ -969,13 +1009,9 @@ func run(argcode string) int {
 
 		if rc == PAM_SUCCESS {
 			fmt.Println("Accepted google_authenticator for " + username)
-			if param.grace_period != 0 {
-
-			}
 		} else {
 			fmt.Println("Invalid verification code for " + username)
 		}
-
 	}
 
 	if param.nullok == SECRETNOTFOUND {
@@ -984,7 +1020,11 @@ func run(argcode string) int {
 
 	if earlyupdated != 0 || updated != 0 {
 		// write all
-		fmt.Println("write", string(buf))
+		tempfile := fmt.Sprintf("%s~XXXXXX", secretfile)
+		fd, _ := os.OpenFile(tempfile, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0400)
+		defer fd.Close()
+		fd.Write(buf)
+		os.Rename(tempfile, secretfile)
 
 		if param.allow_readonly != 0 {
 			rc = PAM_AUTH_ERR
@@ -1000,10 +1040,7 @@ func run(argcode string) int {
 
 func main() {
 	for {
-		fmt.Printf("%s ", "Verification code:")
-		var read string
-		fmt.Scanln(&read)
-		if run(read) == PAM_SUCCESS {
+		if run() == PAM_SUCCESS {
 			break
 		}
 	}

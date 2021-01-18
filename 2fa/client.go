@@ -137,12 +137,7 @@ func maybe(msg string) int {
 	}
 }
 
-func ask(msg string) string {
-	fmt.Printf("%s ", msg)
-	var read string
-	fmt.Scanln(&read)
-	return read
-}
+
 
 /*
 头文件: #include <string.h>
