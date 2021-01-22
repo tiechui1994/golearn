@@ -2,100 +2,6 @@ package code
 
 import "bytes"
 
-const (
-	MODE_NUMBER    = 1 << 0
-	MODE_ALPHA_NUM = 1 << 1
-	MODE_8BIT_BYTE = 1 << 2
-	MODE_KANJI     = 1 << 3
-)
-
-var (
-	MODE_SIZE_SMALL = map[int]int{
-		MODE_NUMBER:    10,
-		MODE_ALPHA_NUM: 9,
-		MODE_8BIT_BYTE: 8,
-		MODE_KANJI:     8,
-	}
-	MODE_SIZE_MEDIUM = map[int]int{
-		MODE_NUMBER:    12,
-		MODE_ALPHA_NUM: 11,
-		MODE_8BIT_BYTE: 16,
-		MODE_KANJI:     10,
-	}
-	MODE_SIZE_LARGE = map[int]int{
-		MODE_NUMBER:    14,
-		MODE_ALPHA_NUM: 13,
-		MODE_8BIT_BYTE: 16,
-		MODE_KANJI:     12,
-	}
-)
-
-var (
-	ALPHA_NUM = []byte("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:")
-
-	NUMBER_LENGTH = map[int]int{
-		3: 10,
-		2: 7,
-		1: 4,
-	}
-
-	PATTERN_POSITION_TABLE = [][]int{
-		{},
-		{6, 18},
-		{6, 22},
-		{6, 26},
-		{6, 30},
-		{6, 34},
-		{6, 22, 38},
-		{6, 24, 42},
-		{6, 26, 46},
-		{6, 28, 50},
-		{6, 30, 54},
-		{6, 32, 58},
-		{6, 34, 62},
-		{6, 26, 46, 66},
-		{6, 26, 48, 70},
-		{6, 26, 50, 74},
-		{6, 30, 54, 78},
-		{6, 30, 56, 82},
-		{6, 30, 58, 86},
-		{6, 34, 62, 90},
-		{6, 28, 50, 72, 94},
-		{6, 26, 50, 74, 98},
-		{6, 30, 54, 78, 102},
-		{6, 28, 54, 80, 106},
-		{6, 32, 58, 84, 110},
-		{6, 30, 58, 86, 114},
-		{6, 34, 62, 90, 118},
-		{6, 26, 50, 74, 98, 122},
-		{6, 30, 54, 78, 102, 126},
-		{6, 26, 52, 78, 104, 130},
-		{6, 30, 56, 82, 108, 134},
-		{6, 34, 60, 86, 112, 138},
-		{6, 30, 58, 86, 114, 142},
-		{6, 34, 62, 90, 118, 146},
-		{6, 30, 54, 78, 102, 126, 150},
-		{6, 24, 50, 76, 102, 128, 154},
-		{6, 28, 54, 80, 106, 132, 158},
-		{6, 32, 58, 84, 110, 136, 162},
-		{6, 26, 54, 82, 110, 138, 166},
-		{6, 30, 58, 86, 114, 142, 170},
-	}
-)
-
-const (
-	G15      = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0)
-	G18      = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0)
-	G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1)
-)
-
-const (
-	PAD0 = 0xEC
-	PAD1 = 0x11
-)
-
-var ()
-
 func BCH_type_info(data uint) uint {
 	d := data << 10
 	for BCH_digit(d)-BCH_digit(G15) >= 0 {
@@ -311,7 +217,7 @@ func create_bytes(buffer BitBuffer, rsblocks []RSBlock) []byte {
 	offset := 0
 
 	maxDcCount, maxEcCount := 0, 0
-	dcdata, ecdata := make([][]byte, len(rsblocks)), make([]byte, len(rsblocks))
+	dcdata, ecdata := make([][]byte, len(rsblocks)), make([][]byte, len(rsblocks))
 
 	for r := 0; r < len(rsblocks); r++ {
 		dcCount := rsblocks[r].datacount
@@ -328,95 +234,58 @@ func create_bytes(buffer BitBuffer, rsblocks []RSBlock) []byte {
 
 		offset += dcCount
 
+		var rsPolly *Polynomial
 		if val, ok := RSPoly_LUT[ecCount]; ok {
-			rsPolly := "xxx"
+			rsPolly = MakePolynomial(val, 0)
 		} else {
-			rsPolly := "vvv"
+			rsPolly = MakePolynomial([]byte{1}, 0)
+
+			for i := byte(0); i < byte(ecCount); i++ {
+				rsPolly = rsPolly.Mul(MakePolynomial([]byte{1, gexp(i)}, 0))
+			}
 		}
 
-	}
+		rawPoly := MakePolynomial(dcdata[r], rsPolly.Len()-1)
+		modPoly := rawPoly.Mod(rsPolly)
 
-}
-
-type RSBlock struct {
-	totalcount int
-	datacount  int
-}
-
-func rs_blocks(version, correction int) []RSBlock {
-	offset := RS_BLOCK_OFFSET[correction]
-	rsblock := RS_BLOCK_TABLE[(version-1)*4+offset]
-
-	var blocks []RSBlock
-	for i := 0; i < len(rsblock); i += 3 {
-		count, totalcount, datacount := rsblock[i], rsblock[i+1], rsblock[i+2]
-		for j := 0; j < count; j++ {
-			blocks = append(blocks, RSBlock{totalcount, datacount})
+		ecdata[r] = make([]byte, rsPolly.Len()-1)
+		for i := 0; i < len(ecdata[r]); i++ {
+			modIndex := i + modPoly.Len() - len(ecdata[r])
+			if modIndex >= 0 {
+				ecdata[r][i] = modPoly.num[modIndex]
+			} else {
+				ecdata[r][i] = 0
+			}
 		}
 	}
 
-	return blocks
-}
-
-type Polynomial struct {
-	num []uint
-}
-
-func MakePolynomial(num []uint, shift int) *Polynomial {
-	p := new(Polynomial)
-	var offset int
-	for offset = 0; offset < len(num); offset++ {
-		if num[offset] != 0 {
-			goto done
-		}
+	totalCodeCount := 0
+	for _, rsblock := range rsblocks {
+		totalCodeCount += rsblock.totalcount
 	}
-	offset += 1
 
-done:
-	p.num = append(num[offset:], make([]uint, shift)...)
-	return p
-}
+	data := make([]byte, totalCodeCount)
+	index := 0
 
-func (p *Polynomial) Range() {
-
-}
-
-func (p *Polynomial) Mul(other Polynomial) *Polynomial {
-	num := make([]uint, len(p.num)+len(other.num)-1)
-
-	for i, ii := range p.num {
-		for j, jj := range other.num {
-			num[i+j] ^= gexp(glog(ii) + glog(jj))
+	for i := 0; i < maxDcCount; i++ {
+		for r := 0; r < len(rsblocks); r++ {
+			if i < len(dcdata[r]) {
+				data[index] = dcdata[r][i]
+				index += 1
+			}
 		}
 	}
 
-	return MakePolynomial(num, 0)
-}
-
-func (p *Polynomial) Mod(other Polynomial) *Polynomial {
-	diff := len(p.num) - len(other.num)
-	if diff < 0 {
-		return p
+	for i := 0; i < maxEcCount; i++ {
+		for r := 0; r < len(rsblocks); r++ {
+			if i < len(dcdata[r]) {
+				data[index] = ecdata[r][i]
+				index += 1
+			}
+		}
 	}
 
-	ratio := glog(p.num[0]) - glog(other.num[0])
-
-	num := make([]uint, len(p.num)+len(other.num)-1)
-
-	if diff != 0 {
-		n := len(p.num)
-		num = append(num, p.num[n-diff:]...)
-	}
-	
-	return MakePolynomial(num, 0).Mod(other)
-}
-
-func gexp(n uint) uint {
-	return EXP_TABLE[n%255]
-}
-
-func glog(n uint) uint {
-	return LOG_TABLE[n]
+	return data
 }
 
 func min(a, b int) int {
@@ -431,4 +300,11 @@ func max(a, b int) int {
 		return b
 	}
 	return a
+}
+
+//====================
+
+func optimal_data_chunks(data []byte, minimum int) qrdata {
+	
+	return qrdata{}
 }

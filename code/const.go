@@ -1,6 +1,98 @@
 package code
 
 const (
+	MODE_NUMBER    = 1 << 0
+	MODE_ALPHA_NUM = 1 << 1
+	MODE_8BIT_BYTE = 1 << 2
+	MODE_KANJI     = 1 << 3
+)
+
+var (
+	MODE_SIZE_SMALL = map[int]int{
+		MODE_NUMBER:    10,
+		MODE_ALPHA_NUM: 9,
+		MODE_8BIT_BYTE: 8,
+		MODE_KANJI:     8,
+	}
+	MODE_SIZE_MEDIUM = map[int]int{
+		MODE_NUMBER:    12,
+		MODE_ALPHA_NUM: 11,
+		MODE_8BIT_BYTE: 16,
+		MODE_KANJI:     10,
+	}
+	MODE_SIZE_LARGE = map[int]int{
+		MODE_NUMBER:    14,
+		MODE_ALPHA_NUM: 13,
+		MODE_8BIT_BYTE: 16,
+		MODE_KANJI:     12,
+	}
+)
+
+const (
+	G15      = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0)
+	G18      = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0)
+	G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1)
+)
+
+const (
+	PAD0 = 0xEC
+	PAD1 = 0x11
+)
+
+var (
+	ALPHA_NUM = []byte("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:")
+
+	NUMBER_LENGTH = map[int]int{
+		3: 10,
+		2: 7,
+		1: 4,
+	}
+
+	PATTERN_POSITION_TABLE = [][]int{
+		{},
+		{6, 18},
+		{6, 22},
+		{6, 26},
+		{6, 30},
+		{6, 34},
+		{6, 22, 38},
+		{6, 24, 42},
+		{6, 26, 46},
+		{6, 28, 50},
+		{6, 30, 54},
+		{6, 32, 58},
+		{6, 34, 62},
+		{6, 26, 46, 66},
+		{6, 26, 48, 70},
+		{6, 26, 50, 74},
+		{6, 30, 54, 78},
+		{6, 30, 56, 82},
+		{6, 30, 58, 86},
+		{6, 34, 62, 90},
+		{6, 28, 50, 72, 94},
+		{6, 26, 50, 74, 98},
+		{6, 30, 54, 78, 102},
+		{6, 28, 54, 80, 106},
+		{6, 32, 58, 84, 110},
+		{6, 30, 58, 86, 114},
+		{6, 34, 62, 90, 118},
+		{6, 26, 50, 74, 98, 122},
+		{6, 30, 54, 78, 102, 126},
+		{6, 26, 52, 78, 104, 130},
+		{6, 30, 56, 82, 108, 134},
+		{6, 34, 60, 86, 112, 138},
+		{6, 30, 58, 86, 114, 142},
+		{6, 34, 62, 90, 118, 146},
+		{6, 30, 54, 78, 102, 126, 150},
+		{6, 24, 50, 76, 102, 128, 154},
+		{6, 28, 54, 80, 106, 132, 158},
+		{6, 32, 58, 84, 110, 136, 162},
+		{6, 26, 54, 82, 110, 138, 166},
+		{6, 30, 58, 86, 114, 142, 170},
+	}
+)
+
+const (
 	ERROR_CORRECT_L = 1
 	ERROR_CORRECT_M = 0
 	ERROR_CORRECT_Q = 3
@@ -291,14 +383,14 @@ var (
 )
 
 var (
-	EXP_TABLE [256]uint
-	LOG_TABLE [256]uint
+	EXP_TABLE [256]byte
+	LOG_TABLE [256]byte
 )
 
 func init() {
 	for i := 0; i < 256; i++ {
-		EXP_TABLE[i] = uint(i)
-		LOG_TABLE[i] = uint(i)
+		EXP_TABLE[i] = byte(i)
+		LOG_TABLE[i] = byte(i)
 	}
 
 	for i := 0; i < 8; i++ {
@@ -309,7 +401,7 @@ func init() {
 		EXP_TABLE[i] = EXP_TABLE[i-4] ^ EXP_TABLE[i-5] ^ EXP_TABLE[i-6] ^ EXP_TABLE[i-8]
 	}
 
-	for i:=0; i<256;i++{
-		LOG_TABLE[EXP_TABLE[i]] = uint(i)
+	for i := 0; i < 256; i++ {
+		LOG_TABLE[EXP_TABLE[i]] = byte(i)
 	}
 }

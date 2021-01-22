@@ -1,11 +1,12 @@
 package code
 
 type Qrcode struct {
-	error_correction uint
-	version          int
-	modules_count    int
-	modules          [][]Bool
-	data_cache       []byte
+	correction    uint
+	version       int
+	modules_count int
+	modules       [][]Bool
+	data_list     []qrdata
+	data_cache    []byte
 }
 
 type Bool int
@@ -229,6 +230,22 @@ func (q *Qrcode) makeImpl(test bool, maskpattern uint) {
 	}
 
 	if len(q.data_cache) == 0 {
-		q.data_cache = nil
+		q.data_cache = create_data(q.version, q.correction, q.data_list)
 	}
+
+	q.map_data(q.data_cache, maskpattern)
+}
+
+func (q *Qrcode) add_data(data interface{}, optimize int) {
+	if val, ok := data.(qrdata); ok {
+		q.data_list = append(q.data_list, val)
+	} else {
+		if optimize != 0 {
+			q.data_list = append(q.data_list, optimal_data_chunks(data, optimize))
+		} else {
+			q.data_list = append(q.data_list, *Qrdata(data.([]byte), 0, false))
+		}
+	}
+
+	q.data_cache = nil
 }
