@@ -1,4 +1,4 @@
-package code
+package qrcode
 
 type Polynomial struct {
 	num []byte

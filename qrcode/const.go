@@ -1,4 +1,4 @@
-package code
+package qrcode
 
 const (
 	MODE_NUMBER    = 1 << 0
@@ -383,8 +383,9 @@ var (
 )
 
 var (
-	EXP_TABLE [256]byte
-	LOG_TABLE [256]byte
+	EXP_TABLE       [256]byte
+	LOG_TABLE       [256]byte
+	BIT_LIMIT_TABLE [][]int
 )
 
 func init() {
@@ -403,5 +404,20 @@ func init() {
 
 	for i := 0; i < 256; i++ {
 		LOG_TABLE[EXP_TABLE[i]] = byte(i)
+	}
+
+	// BIT_LIMIT_TABLE
+	BIT_LIMIT_TABLE = make([][]int, 0)
+	for correct := 0; correct < 4; correct++ {
+		subarray := []int{0}
+		for version := 1; version < 41; version++ {
+			rsblocks := rs_blocks(version, correct)
+			sum := 0
+			for _, v := range rsblocks {
+				sum += v.datacount
+			}
+			subarray = append(subarray, 8*sum)
+		}
+		BIT_LIMIT_TABLE = append(BIT_LIMIT_TABLE, subarray)
 	}
 }
