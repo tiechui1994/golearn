@@ -51,8 +51,8 @@ func TestLoop(t *testing.T) {
 	t.Log(BIT_LIMIT_TABLE)
 }
 
-func TestQrcode(t *testing.T)  {
-	code := MakeQrcode(5,0,0,2,0)
-	code.AddData([]byte("https://baidu.com"),20)
-	code.PrintAscii(nil,true)
+func TestQrcode(t *testing.T) {
+	code := MakeQrcode(1, 0, 0, 2, 0)
+	code.AddData([]byte("a"), 20)
+	code.PrintAscii(nil, true)
 }

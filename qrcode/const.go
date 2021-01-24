@@ -29,9 +29,9 @@ var (
 )
 
 const (
-	G15      = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0)
-	G18      = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0)
-	G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1)
+	G15      uint = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0)
+	G18      uint = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0)
+	G15_MASK uint = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1)
 )
 
 const (
@@ -356,7 +356,7 @@ var (
 )
 
 var (
-	RSPoly_LUT = map[int][]byte{
+	RSPoly_LUT = map[int][]uint{
 		7:  {1, 127, 122, 154, 164, 11, 68, 117},
 		10: {1, 216, 194, 159, 111, 199, 94, 95, 113, 157, 193},
 		13: {1, 137, 73, 227, 17, 177, 17, 52, 13, 46, 43, 83, 132, 120},
@@ -383,15 +383,15 @@ var (
 )
 
 var (
-	EXP_TABLE       [256]byte
-	LOG_TABLE       [256]byte
+	EXP_TABLE       [256]uint
+	LOG_TABLE       [256]uint
 	BIT_LIMIT_TABLE [][]int
 )
 
 func init() {
 	for i := 0; i < 256; i++ {
-		EXP_TABLE[i] = byte(i)
-		LOG_TABLE[i] = byte(i)
+		EXP_TABLE[i] = uint(i)
+		LOG_TABLE[i] = uint(i)
 	}
 
 	for i := 0; i < 8; i++ {
@@ -402,8 +402,8 @@ func init() {
 		EXP_TABLE[i] = EXP_TABLE[i-4] ^ EXP_TABLE[i-5] ^ EXP_TABLE[i-6] ^ EXP_TABLE[i-8]
 	}
 
-	for i := 0; i < 256; i++ {
-		LOG_TABLE[EXP_TABLE[i]] = byte(i)
+	for i := 0; i < 255; i++ {
+		LOG_TABLE[EXP_TABLE[i]] = uint(i)
 	}
 
 	// BIT_LIMIT_TABLE

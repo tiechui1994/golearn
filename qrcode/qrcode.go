@@ -5,6 +5,7 @@ import (
 	"os"
 	"golang.org/x/text/encoding/charmap"
 	"fmt"
+	"encoding/json"
 )
 
 type Qrcode struct {
@@ -17,7 +18,7 @@ type Qrcode struct {
 	count     int
 	modules   [][]Bool
 	datalist  []qrdata
-	datacache []byte
+	datacache []uint
 }
 
 type Bool int
@@ -42,6 +43,26 @@ func (b Bool) uint() uint {
 	}
 
 	return 0
+}
+
+func (b Bool) String() string {
+	if b == True {
+		return "True"
+	} else if b == False {
+		return "False"
+	} else {
+		return "None"
+	}
+}
+
+func (b Bool) MarshalJSON() ([]byte, error) {
+	if b == True {
+		return []byte("true"), nil
+	} else if b == False {
+		return []byte("false"), nil
+	} else {
+		return []byte("null"), nil
+	}
 }
 
 func MakeQrcode(version int, correction uint, boxsize, border int, maskpattern uint) *Qrcode {
@@ -155,9 +176,9 @@ func (q *Qrcode) setupTimingPattern() {
 func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 	data := (q.correction << 3) | maskpattern
 	bits := BCH_type_info(data)
-	fmt.Println("++", data, bits, maskpattern)
+	fmt.Println("BCH_type_info", data, bits)
 	for i := 0; i < 15; i++ {
-		mode := !test && (bits>>uint(i))&1 == 0
+		mode := !test && (bits>>uint(i))&1 == 1
 		if i < 6 {
 			q.modules[i][8] = MakeBool(mode)
 		} else if i < 8 {
@@ -169,13 +190,13 @@ func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 
 	// 垂直
 	for i := 0; i < 15; i++ {
-		mode := !test && (bits>>uint(i))&1 == 0
+		mode := !test && (bits>>uint(i))&1 == 1
 		if i < 8 {
 			q.modules[8][q.count-i-1] = MakeBool(mode)
 		} else if i < 9 {
-			q.modules[8][15-i-1] = MakeBool(mode)
+			q.modules[8][15-i-1+1] = MakeBool(mode)
 		} else {
-			q.modules[8][15-i+1] = MakeBool(mode)
+			q.modules[8][15-i-1] = MakeBool(mode)
 		}
 	}
 
@@ -185,6 +206,7 @@ func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 
 func (q *Qrcode) setupTypeNumber(test bool) {
 	bits := BCH_type_number(uint(q.version))
+	fmt.Println("BCH_type_number", q.version, bits)
 
 	for i := 0; i < 18; i++ {
 		mode := !test && (bits>>uint(i))&1 == 1
@@ -197,7 +219,7 @@ func (q *Qrcode) setupTypeNumber(test bool) {
 	}
 }
 
-func (q *Qrcode) mapData(data []byte, maskpattern uint) {
+func (q *Qrcode) mapData(data []uint, maskpattern uint) {
 	inc := -1
 	row := q.count - 1
 
@@ -205,7 +227,8 @@ func (q *Qrcode) mapData(data []byte, maskpattern uint) {
 	mask := mask_func(maskpattern)
 	datalen := len(data)
 
-	for col := q.count - 1; col > 0; col -= 2 {
+	ranges := xrange(q.count-1, 0, -2)
+	for _, col := range ranges {
 		if col <= 6 {
 			col -= 1
 		}
@@ -254,19 +277,13 @@ func (q *Qrcode) makeImpl(test bool, maskpattern uint) {
 			q.modules[row][col] = None
 		}
 	}
-	fmt.Println("modules init success")
 
 	q.setupPositionProbePattern(0, 0)
 	q.setupPositionProbePattern(q.count-7, 0)
 	q.setupPositionProbePattern(0, q.count-7)
-
-	fmt.Println("setupPositionProbePattern success")
 	q.setupPositionAdjustPattern()
-	fmt.Println("setupPositionAdjustPattern success")
 	q.setupTimingPattern()
-	fmt.Println("setupTimingPattern success")
 	q.setupTypeInfo(test, maskpattern)
-	fmt.Println("setupTypeInfo success")
 
 	if q.version >= 7 {
 		q.setupTypeNumber(test)
@@ -277,6 +294,8 @@ func (q *Qrcode) makeImpl(test bool, maskpattern uint) {
 	}
 
 	q.mapData(q.datacache, maskpattern)
+	d, _ := json.Marshal(q.modules)
+	fmt.Fprintln(fd, maskpattern, string(d))
 }
 
 func (q *Qrcode) make(fit bool) {
@@ -291,20 +310,27 @@ func (q *Qrcode) make(fit bool) {
 	}
 }
 
+var fd *os.File
+
+func init() {
+	fd, _ = os.Create("/tmp/go.txt")
+}
 func (q *Qrcode) bestMaskPattern() uint {
 	minLostPoint := 0
 	pattern := uint(0)
-	fmt.Println("pattern", pattern)
+	fmt.Println("before pattern", pattern)
 	for i := uint(0); i < 8; i++ {
 		q.makeImpl(true, i)
-		fmt.Println("make")
+
 		lostPoint := lost_point(q.modules)
+		fmt.Println("lost", i, lostPoint)
 		if i == 0 || minLostPoint > lostPoint {
+			minLostPoint = lostPoint
 			pattern = i
 		}
 	}
 
-	fmt.Println("pattern", pattern)
+	fmt.Println("after pattern", pattern)
 	return pattern
 }
 
@@ -325,16 +351,25 @@ func (q *Qrcode) bestFit(start int) int {
 
 	needbits := buffer.length
 	q.version = bitsectLeft(BIT_LIMIT_TABLE[q.correction], needbits, start, 0)
-
 	newmodesizes := mode_sizes_for_version(q.version)
-	if len(newmodesizes) != len(modesizes) {
-		return q.bestFit(q.version)
+
+	diff := func(a, b map[int]int) bool {
+		if len(a) != len(b) {
+			return true
+		}
+
+		for k, v := range b {
+			val, ok := a[k]
+			if !ok || val != v {
+				return true
+			}
+		}
+
+		return false
 	}
 
-	for k, v := range newmodesizes {
-		if modesizes[k] != v {
-			return q.bestFit(q.version)
-		}
+	if diff(newmodesizes, modesizes) {
+		q.bestFit(q.version)
 	}
 
 	return q.version

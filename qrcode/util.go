@@ -10,8 +10,7 @@ import (
 
 func BCH_type_info(data uint) uint {
 	d := data << 10
-	fmt.Println(data)
-	for BCH_digit(d)-BCH_digit(G15) >= 0 {
+	for int(BCH_digit(d)-BCH_digit(G15)) >= 0 {
 		d ^= G15 << (BCH_digit(d) - BCH_digit(G15))
 	}
 	return ((data << 10) | d) ^ G15_MASK
@@ -19,7 +18,7 @@ func BCH_type_info(data uint) uint {
 
 func BCH_type_number(data uint) uint {
 	d := data << 12
-	for BCH_digit(d)-BCH_digit(G18) >= 0 {
+	for int(BCH_digit(d)-BCH_digit(G18)) >= 0 {
 		d ^= G18 << (BCH_digit(d) - BCH_digit(G18))
 	}
 	return (data << 12) | d
@@ -181,7 +180,7 @@ func (bit *BitBuffer) putbit(b bool) {
 	bit.length += 1
 }
 
-func create_data(version int, correction uint, qrdatas []qrdata) []byte {
+func create_data(version int, correction uint, qrdatas []qrdata) []uint {
 	buffer := &BitBuffer{}
 	for i := range qrdatas {
 		data := &qrdatas[i]
@@ -221,15 +220,13 @@ func create_data(version int, correction uint, qrdatas []qrdata) []byte {
 			buffer.put(PAD1, 8)
 		}
 	}
-
 	return create_bytes(buffer, rsblocks)
 }
 
-func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []byte {
+func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []uint {
 	offset := 0
-
 	maxDcCount, maxEcCount := 0, 0
-	dcdata, ecdata := make([][]byte, len(rsblocks)), make([][]byte, len(rsblocks))
+	dcdata, ecdata := make([][]uint, len(rsblocks)), make([][]uint, len(rsblocks))
 
 	for r := 0; r < len(rsblocks); r++ {
 		dcCount := rsblocks[r].datacount
@@ -238,10 +235,10 @@ func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []byte {
 		maxDcCount = max(maxDcCount, dcCount)
 		maxEcCount = max(maxEcCount, ecCount)
 
-		dcdata[r] = make([]byte, dcCount)
+		dcdata[r] = make([]uint, dcCount)
 
 		for i := 0; i < len(dcdata[r]); i++ {
-			dcdata[r][i] = 0xff & buffer.buffer[i+offset]
+			dcdata[r][i] = 0xff & uint(buffer.buffer[i+offset])
 		}
 
 		offset += dcCount
@@ -250,17 +247,17 @@ func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []byte {
 		if val, ok := RSPoly_LUT[ecCount]; ok {
 			rsPolly = MakePolynomial(val, 0)
 		} else {
-			rsPolly = MakePolynomial([]byte{1}, 0)
+			rsPolly = MakePolynomial([]uint{1}, 0)
 
-			for i := byte(0); i < byte(ecCount); i++ {
-				rsPolly = rsPolly.Mul(MakePolynomial([]byte{1, gexp(i)}, 0))
+			for i := uint(0); i < uint(ecCount); i++ {
+				rsPolly = rsPolly.Mul(MakePolynomial([]uint{1, gexp(i)}, 0))
 			}
 		}
 
 		rawPoly := MakePolynomial(dcdata[r], rsPolly.Len()-1)
 		modPoly := rawPoly.Mod(rsPolly)
 
-		ecdata[r] = make([]byte, rsPolly.Len()-1)
+		ecdata[r] = make([]uint, rsPolly.Len()-1)
 		for i := 0; i < len(ecdata[r]); i++ {
 			modIndex := i + modPoly.Len() - len(ecdata[r])
 			if modIndex >= 0 {
@@ -276,7 +273,7 @@ func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []byte {
 		totalCodeCount += rsblock.totalcount
 	}
 
-	data := make([]byte, totalCodeCount)
+	data := make([]uint, totalCodeCount)
 	index := 0
 
 	for i := 0; i < maxDcCount; i++ {
@@ -290,7 +287,7 @@ func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []byte {
 
 	for i := 0; i < maxEcCount; i++ {
 		for r := 0; r < len(rsblocks); r++ {
-			if i < len(dcdata[r]) {
+			if i < len(ecdata[r]) {
 				data[index] = ecdata[r][i]
 				index += 1
 			}
@@ -403,7 +400,6 @@ func lost_point(modules [][]Bool) int {
 	lostpoint := 0
 
 	lostpoint += lostPointLevel1(modules, modcount)
-	fmt.Println("lostPointLevel1", lostpoint)
 	lostpoint += lostPointLevel2(modules, modcount)
 	lostpoint += lostPointLevel3(modules, modcount)
 	lostpoint += lostPointLevel4(modules, modcount)
@@ -646,4 +642,25 @@ func bitsectLeft(arr []int, x, lo, hi int) int {
 	}
 
 	return lo
+}
+
+// end
+// start, end
+// start, end, step
+func xrange(args ...int) []int {
+	switch len(args) {
+	case 1:
+		args = append([]int{0}, append(args, 1)...)
+	case 2:
+		args = append(args, 1)
+	case 3:
+	default:
+		panic("invalid params")
+	}
+
+	var ans []int
+	for i := args[0]; i < args[1]; i += args[2] {
+		ans = append(ans, i)
+	}
+	return ans
 }

@@ -1,10 +1,12 @@
 package qrcode
 
+import "fmt"
+
 type Polynomial struct {
-	num []byte
+	num []uint
 }
 
-func MakePolynomial(num []byte, shift int) *Polynomial {
+func MakePolynomial(num []uint, shift int) *Polynomial {
 	p := new(Polynomial)
 	var offset int
 	for offset = 0; offset < len(num); offset++ {
@@ -15,12 +17,12 @@ func MakePolynomial(num []byte, shift int) *Polynomial {
 	offset += 1
 
 done:
-	p.num = append(num[offset:], make([]byte, shift)...)
+	p.num = append(num[offset:], make([]uint, shift)...)
 	return p
 }
 
 func (p *Polynomial) Mul(other *Polynomial) *Polynomial {
-	num := make([]byte, len(p.num)+len(other.num)-1)
+	num := make([]uint, len(p.num)+len(other.num)-1)
 
 	for i, ii := range p.num {
 		for j, jj := range other.num {
@@ -37,9 +39,11 @@ func (p *Polynomial) Mod(other *Polynomial) *Polynomial {
 		return p
 	}
 
-	ratio := glog(p.num[0]) - glog(other.num[0])
+	p0 := uint(p.num[0])
+	o0 := uint(other.num[0])
+	ratio := glog(p0) - glog(o0)
 
-	var num []byte
+	var num []uint
 	for _, v := range zip(p.num, other.num) {
 		num = append(num, v[0]^gexp(glog(v[1])+ratio))
 	}
@@ -56,15 +60,15 @@ func (p *Polynomial) Len() int {
 	return len(p.num)
 }
 
-func gexp(n byte) byte {
+func gexp(n uint) uint {
 	return EXP_TABLE[n%255]
 }
 
-func glog(n byte) byte {
+func glog(n uint) uint {
 	return LOG_TABLE[n]
 }
 
-func zip(a, b []byte) [][2]byte {
+func zip(a, b []uint) [][2]uint {
 	al := len(a)
 	bl := len(b)
 
@@ -79,9 +83,9 @@ func zip(a, b []byte) [][2]byte {
 		length = al
 	}
 
-	var ans = make([][2]byte, length)
+	var ans = make([][2]uint, length)
 	for i := 0; i < length; i++ {
-		ans[i] = [...]byte{a[i], b[i]}
+		ans[i] = [...]uint{a[i], b[i]}
 	}
 
 	return ans
@@ -92,6 +96,10 @@ func zip(a, b []byte) [][2]byte {
 type RSBlock struct {
 	totalcount int
 	datacount  int
+}
+
+func (rs RSBlock) String() string {
+	return fmt.Sprintf("{total:%d,data:%d}", rs.totalcount, rs.datacount)
 }
 
 func rs_blocks(version, correction int) []RSBlock {
