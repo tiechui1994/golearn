@@ -3,9 +3,6 @@ package qrcode
 import (
 	"io"
 	"os"
-	"golang.org/x/text/encoding/charmap"
-	"fmt"
-	"encoding/json"
 )
 
 type Qrcode struct {
@@ -66,21 +63,26 @@ func (b Bool) MarshalJSON() ([]byte, error) {
 }
 
 func MakeQrcode(version int, correction uint, boxsize, border int, maskpattern uint) *Qrcode {
-	if correction == 0 {
+	if version < 0 || version > 41 {
+		version = 0
+	}
+	if correction < 0 || correction > ERROR_CORRECT_Q {
 		correction = ERROR_CORRECT_M
 	}
-	if boxsize == 0 {
+	if boxsize == 0 || boxsize < 0 {
 		boxsize = 10
 	}
-	if border == 0 {
+	if border == 0 || border < 0 {
 		border = 4
 	}
 
-	return &Qrcode{version: version,
-		border: border, boxsize: boxsize,
-		correction: correction,
-		maskpattern: maskpattern,}
-
+	return &Qrcode{
+		version:     version,
+		border:      border,
+		boxsize:     boxsize,
+		correction:  correction,
+		maskpattern: maskpattern,
+	}
 }
 
 func (q *Qrcode) setupPositionProbePattern(row, col int) {
@@ -176,7 +178,6 @@ func (q *Qrcode) setupTimingPattern() {
 func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 	data := (q.correction << 3) | maskpattern
 	bits := BCH_type_info(data)
-	fmt.Println("BCH_type_info", data, bits)
 	for i := 0; i < 15; i++ {
 		mode := !test && (bits>>uint(i))&1 == 1
 		if i < 6 {
@@ -206,7 +207,6 @@ func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 
 func (q *Qrcode) setupTypeNumber(test bool) {
 	bits := BCH_type_number(uint(q.version))
-	fmt.Println("BCH_type_number", q.version, bits)
 
 	for i := 0; i < 18; i++ {
 		mode := !test && (bits>>uint(i))&1 == 1
@@ -226,7 +226,6 @@ func (q *Qrcode) mapData(data []uint, maskpattern uint) {
 	bitIndex, byteIndex := 7, 0
 	mask := mask_func(maskpattern)
 	datalen := len(data)
-
 	ranges := xrange(q.count-1, 0, -2)
 	for _, col := range ranges {
 		if col <= 6 {
@@ -236,10 +235,10 @@ func (q *Qrcode) mapData(data []uint, maskpattern uint) {
 		colrange := []int{col, col - 1}
 		for {
 			for _, c := range colrange {
-				if q.modules[row][c] != None {
+				if q.modules[row][c] == None {
 					dark := false
 					if byteIndex < datalen {
-						dark = (data[byteIndex]>>uint(byteIndex))&1 == 1
+						dark = (data[byteIndex]>>uint(bitIndex))&1 == 1
 					}
 
 					if mask(row, c) {
@@ -257,6 +256,7 @@ func (q *Qrcode) mapData(data []uint, maskpattern uint) {
 			}
 
 			row += inc
+
 			if row < 0 || q.count <= row {
 				row -= inc
 				inc = -inc
@@ -294,8 +294,6 @@ func (q *Qrcode) makeImpl(test bool, maskpattern uint) {
 	}
 
 	q.mapData(q.datacache, maskpattern)
-	d, _ := json.Marshal(q.modules)
-	fmt.Fprintln(fd, maskpattern, string(d))
 }
 
 func (q *Qrcode) make(fit bool) {
@@ -308,29 +306,22 @@ func (q *Qrcode) make(fit bool) {
 	} else {
 		q.makeImpl(false, q.maskpattern)
 	}
+
 }
 
-var fd *os.File
-
-func init() {
-	fd, _ = os.Create("/tmp/go.txt")
-}
 func (q *Qrcode) bestMaskPattern() uint {
 	minLostPoint := 0
 	pattern := uint(0)
-	fmt.Println("before pattern", pattern)
 	for i := uint(0); i < 8; i++ {
 		q.makeImpl(true, i)
 
-		lostPoint := lost_point(q.modules)
-		fmt.Println("lost", i, lostPoint)
+		lostPoint := lostPoint(q.modules)
 		if i == 0 || minLostPoint > lostPoint {
 			minLostPoint = lostPoint
 			pattern = i
 		}
 	}
 
-	fmt.Println("after pattern", pattern)
 	return pattern
 }
 
@@ -376,14 +367,35 @@ func (q *Qrcode) bestFit(start int) int {
 }
 
 func (q *Qrcode) AddData(data interface{}, optimize int) {
-	if val, ok := data.(qrdata); ok {
-		q.datalist = append(q.datalist, val)
+	if optimize <= 0 {
+		optimize = 20
+	}
+
+	var origin []byte
+	switch data.(type) {
+	case qrdata:
+		q.datalist = append(q.datalist, data.(qrdata))
+		return
+	case *qrdata:
+		q.datalist = append(q.datalist, *data.(*qrdata))
+		return
+
+	case []byte:
+		origin = data.([]byte)
+	case string:
+		origin = []byte(data.(string))
+	case int:
+		origin = []byte(string(data.(int)))
+	case uint:
+		origin = []byte(string(data.(uint)))
+	default:
+		panic("invalid data type")
+	}
+
+	if optimize != 0 {
+		q.datalist = append(q.datalist, optimal_data_chunks(origin, optimize)...)
 	} else {
-		if optimize != 0 {
-			q.datalist = append(q.datalist, optimal_data_chunks(data.([]byte), optimize)...)
-		} else {
-			q.datalist = append(q.datalist, *Qrdata(data.([]byte), 0, true))
-		}
+		q.datalist = append(q.datalist, *Qrdata(origin, 0, true))
 	}
 
 	q.datacache = nil
@@ -400,8 +412,16 @@ func (q *Qrcode) PrintAscii(out io.Writer, invert bool) {
 
 	modcount := q.count
 	codes := make([]rune, 4)
+
+	/*
+	import "golang.org/x/text/encoding/charmap"
 	for i, ch := range []byte{255, 223, 220, 219} {
 		codes[i] = charmap.CodePage437.DecodeByte(ch)
+	}
+	*/
+
+	for i, ch := range []uint{0xa0, 0x2580, 0x2584, 0x2588} {
+		codes[i] = rune(ch)
 	}
 
 	if invert {
@@ -433,5 +453,4 @@ func (q *Qrcode) PrintAscii(out io.Writer, invert bool) {
 
 		out.Write([]byte("\n"))
 	}
-
 }

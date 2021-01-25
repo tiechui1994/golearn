@@ -406,7 +406,6 @@ func init() {
 		LOG_TABLE[EXP_TABLE[i]] = uint(i)
 	}
 
-	// BIT_LIMIT_TABLE
 	BIT_LIMIT_TABLE = make([][]int, 0)
 	for correct := 0; correct < 4; correct++ {
 		subarray := []int{0}

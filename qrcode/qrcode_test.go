@@ -52,7 +52,9 @@ func TestLoop(t *testing.T) {
 }
 
 func TestQrcode(t *testing.T) {
-	code := MakeQrcode(1, 0, 0, 2, 0)
-	code.AddData([]byte("a"), 20)
+	code := MakeQrcode(8, 0, 0, 2, 0)
+	data := "https://stackoverflow.com/questions/45086162/docker-mysql-error-1396-hy000-operation-create-user-failed-for-root"
+	code.AddData([]byte(data), 20)
 	code.PrintAscii(nil, true)
+	t.Log(code.version)
 }

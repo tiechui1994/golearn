@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
-	"encoding/hex"
 	"math"
+	"strconv"
 )
 
 func BCH_type_info(data uint) uint {
@@ -58,7 +58,7 @@ func mask_func(pattern uint) func(i, j int) bool {
 		}
 	case 4:
 		return func(i, j int) bool {
-			return (i+j)%2 == 0
+			return (i/2+j/3)%2 == 0
 		}
 	case 5:
 		return func(i, j int) bool {
@@ -118,7 +118,8 @@ func (q *qrdata) write(buffer *BitBuffer) {
 		for i := 0; i < len(q.data); i += 3 {
 			chars := q.data[i:i+3]
 			bitlen := NUMBER_LENGTH[len(chars)]
-			buffer.put(int(len(chars)), bitlen) // TODO:
+			val, _ := strconv.ParseInt(string(chars), 10, 64)
+			buffer.put(int(val), bitlen)
 		}
 	} else if q.mode == MODE_ALPHA_NUM {
 		for i := 0; i < len(q.data); i += 3 {
@@ -145,7 +146,7 @@ func (q qrdata) String() string {
 	case MODE_ALPHA_NUM, MODE_NUMBER:
 		return string(q.data)
 	default:
-		return hex.EncodeToString(q.data)
+		return string(q.data)
 	}
 }
 
@@ -161,7 +162,7 @@ func (bit *BitBuffer) get(index uint) bool {
 
 func (bit *BitBuffer) put(num int, length int) {
 	for i := 0; i < length; i++ {
-		b := (num>>(uint(length-i)-1))&1 == 1
+		b := (num>>(uint(length - i - 1)))&1 == 1
 		bit.putbit(b)
 	}
 }
@@ -180,6 +181,10 @@ func (bit *BitBuffer) putbit(b bool) {
 	bit.length += 1
 }
 
+func (bit *BitBuffer) len() int {
+	return bit.length
+}
+
 func create_data(version int, correction uint, qrdatas []qrdata) []uint {
 	buffer := &BitBuffer{}
 	for i := range qrdatas {
@@ -196,23 +201,23 @@ func create_data(version int, correction uint, qrdatas []qrdata) []uint {
 		bitlimit += v.datacount * 8
 	}
 
-	if buffer.length > bitlimit {
+	if buffer.len() > bitlimit {
 		panic("data overflow")
 	}
 
-	n := min(bitlimit-buffer.length, 4)
+	n := min(bitlimit-buffer.len(), 4)
 	for i := 0; i < n; i++ {
 		buffer.putbit(false)
 	}
 
-	delimit := buffer.length % 8
+	delimit := buffer.len() % 8
 	if delimit != 0 {
 		for i := 0; i < 8-delimit; i++ {
 			buffer.putbit(false)
 		}
 	}
 
-	bytetofill := (bitlimit - buffer.length) / 8
+	bytetofill := (bitlimit - buffer.len()) / 8
 	for i := 0; i < bytetofill; i++ {
 		if i%2 == 0 {
 			buffer.put(PAD0, 8)
@@ -395,7 +400,7 @@ done:
 
 //=============================================================================
 
-func lost_point(modules [][]Bool) int {
+func lostPoint(modules [][]Bool) int {
 	modcount := len(modules)
 	lostpoint := 0
 
@@ -659,8 +664,15 @@ func xrange(args ...int) []int {
 	}
 
 	var ans []int
-	for i := args[0]; i < args[1]; i += args[2] {
-		ans = append(ans, i)
+	if args[2] > 0 {
+		for i := args[0]; i < args[1]; i += args[2] {
+			ans = append(ans, i)
+		}
+	} else {
+		for i := args[0]; i > args[1]; i += args[2] {
+			ans = append(ans, i)
+		}
 	}
+
 	return ans
 }
