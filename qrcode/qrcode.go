@@ -3,10 +3,15 @@ package qrcode
 import (
 	"io"
 	"os"
+	"image/color"
+	"image"
+	"image/png"
+	"bytes"
+	"image/jpeg"
+	"golang.org/x/image/bmp"
 )
 
 type Qrcode struct {
-	boxsize     int
 	border      int
 	maskpattern uint
 	correction  uint
@@ -16,6 +21,8 @@ type Qrcode struct {
 	modules   [][]Bool
 	datalist  []qrdata
 	datacache []uint
+
+	white, black color.Color
 }
 
 type Bool int
@@ -62,24 +69,23 @@ func (b Bool) MarshalJSON() ([]byte, error) {
 	}
 }
 
-func MakeQrcode(version int, correction uint, boxsize, border int, maskpattern uint) *Qrcode {
+func MakeQrcode(version int, correction uint, border int, maskpattern uint) *Qrcode {
 	if version < 0 || version > 41 {
 		version = 0
 	}
 	if correction < 0 || correction > ERROR_CORRECT_Q {
 		correction = ERROR_CORRECT_M
 	}
-	if boxsize == 0 || boxsize < 0 {
-		boxsize = 10
-	}
+
 	if border == 0 || border < 0 {
 		border = 4
 	}
 
 	return &Qrcode{
+		white:       color.RGBA{R: 240, G: 230, B: 140, A: 255},
+		black:       color.Black,
 		version:     version,
 		border:      border,
-		boxsize:     boxsize,
 		correction:  correction,
 		maskpattern: maskpattern,
 	}
@@ -108,7 +114,7 @@ func (q *Qrcode) setupPositionProbePattern(row, col int) {
 }
 
 func (q *Qrcode) setupPositionAdjustPattern() {
-	pos := pattern_position(q.version)
+	pos := patternposition(q.version)
 
 	for i := 0; i < len(pos); i++ {
 		for j := 0; j < len(pos); j++ {
@@ -153,7 +159,7 @@ func (q *Qrcode) setupTimingPattern() {
 		}
 	}
 
-	pos := pattern_position(q.version)
+	pos := patternposition(q.version)
 	for i := 0; i < len(pos); i++ {
 		for j := 0; j < len(pos); j++ {
 			row, col := pos[i], pos[j]
@@ -177,7 +183,7 @@ func (q *Qrcode) setupTimingPattern() {
 
 func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 	data := (q.correction << 3) | maskpattern
-	bits := BCH_type_info(data)
+	bits := BCHTypeInfo(data)
 	for i := 0; i < 15; i++ {
 		mode := !test && (bits>>uint(i))&1 == 1
 		if i < 6 {
@@ -206,7 +212,7 @@ func (q *Qrcode) setupTypeInfo(test bool, maskpattern uint) {
 }
 
 func (q *Qrcode) setupTypeNumber(test bool) {
-	bits := BCH_type_number(uint(q.version))
+	bits := BCHTypeNumber(uint(q.version))
 
 	for i := 0; i < 18; i++ {
 		mode := !test && (bits>>uint(i))&1 == 1
@@ -224,7 +230,7 @@ func (q *Qrcode) mapData(data []uint, maskpattern uint) {
 	row := q.count - 1
 
 	bitIndex, byteIndex := 7, 0
-	mask := mask_func(maskpattern)
+	mask := maskfunc(maskpattern)
 	datalen := len(data)
 	ranges := xrange(q.count-1, 0, -2)
 	for _, col := range ranges {
@@ -290,7 +296,7 @@ func (q *Qrcode) makeImpl(test bool, maskpattern uint) {
 	}
 
 	if len(q.datacache) == 0 {
-		q.datacache = create_data(q.version, q.correction, q.datalist)
+		q.datacache = createData(q.version, q.correction, q.datalist)
 	}
 
 	q.mapData(q.datacache, maskpattern)
@@ -330,7 +336,7 @@ func (q *Qrcode) bestFit(start int) int {
 		start = 1
 	}
 
-	modesizes := mode_sizes_for_version(start)
+	modesizes := modeSizesForVersion(start)
 	buffer := &BitBuffer{}
 
 	for i := range q.datalist {
@@ -342,7 +348,7 @@ func (q *Qrcode) bestFit(start int) int {
 
 	needbits := buffer.length
 	q.version = bitsectLeft(BIT_LIMIT_TABLE[q.correction], needbits, start, 0)
-	newmodesizes := mode_sizes_for_version(q.version)
+	newmodesizes := modeSizesForVersion(q.version)
 
 	diff := func(a, b map[int]int) bool {
 		if len(a) != len(b) {
@@ -453,4 +459,119 @@ func (q *Qrcode) PrintAscii(out io.Writer, invert bool) {
 
 		out.Write([]byte("\n"))
 	}
+}
+
+func (q *Qrcode) image(size int) image.Image {
+	if q.datacache == nil {
+		q.make(true)
+	}
+
+	white := q.white
+	black := q.black
+
+	realSize := 21 + (q.version-1)*4 + 2*q.border
+
+	if size < 0 {
+		size = size * (-1) * realSize
+	}
+
+	if size < realSize {
+		size = realSize
+	}
+
+	pixelsPerModule := size / realSize
+
+	offset := (size - realSize*pixelsPerModule) / 2
+
+	react := image.Rectangle{Min: image.Pt(0, 0), Max: image.Pt(size, size)}
+
+	p := color.Palette([]color.Color{white, black})
+	img := image.NewPaletted(react, p)
+
+	border := q.border
+	modcount := q.count
+	point := func(x0, y0 int) (x, y int, b Bool) {
+		if min(x0, y0) < 0 || max(x0, y0) >= modcount {
+			return x0 + border, y0 + border, False
+		}
+
+		return x0 + border, y0 + border, q.modules[x0][y0]
+	}
+
+	for i := 0; i < size; i++ {
+		for j := 0; j < size; j++ {
+			img.Set(i, j, white)
+		}
+	}
+
+	for r := -q.border; r < modcount+q.border; r += 1 {
+		for c := -q.border; c < modcount+q.border; c += 1 {
+			x, y, value := point(r, c)
+
+			if value == True {
+				startX := x*pixelsPerModule + offset
+				startY := y*pixelsPerModule + offset
+
+				for i := startX; i < startX+pixelsPerModule; i++ {
+					for j := startY; j < startY+pixelsPerModule; j++ {
+						img.Set(i, j, black)
+					}
+				}
+			}
+		}
+	}
+
+	//for y, row := range q.modules {
+	//	for x, v := range row {
+	//		if v == True {
+	//			startX := x*pixelsPerModule + offset
+	//			startY := y*pixelsPerModule + offset
+	//
+	//			for i := startX; i < startX+pixelsPerModule; i++ {
+	//				for j := startY; j < startY+pixelsPerModule; j++ {
+	//					img.Set(i, j, black)
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
+
+	return img
+}
+
+func (q *Qrcode) PNG(size int) ([]byte, error) {
+	img := q.image(size)
+	encoder := png.Encoder{CompressionLevel: png.BestCompression}
+
+	var b bytes.Buffer
+	err := encoder.Encode(&b, img)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
+}
+
+func (q *Qrcode) JPEG(size int) ([]byte, error) {
+	img := q.image(size)
+
+	var b bytes.Buffer
+	err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 90})
+	if err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
+}
+
+func (q *Qrcode) BMP(size int) ([]byte, error) {
+	img := q.image(size)
+
+	var b bytes.Buffer
+	err := bmp.Encode(&b, img)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
 }

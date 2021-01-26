@@ -102,7 +102,7 @@ func (rs RSBlock) String() string {
 	return fmt.Sprintf("{total:%d,data:%d}", rs.totalcount, rs.datacount)
 }
 
-func rs_blocks(version, correction int) []RSBlock {
+func rsBlocks(version, correction int) []RSBlock {
 	offset := RS_BLOCK_OFFSET[correction]
 	rsblock := RS_BLOCK_TABLE[(version-1)*4+offset]
 

@@ -8,23 +8,23 @@ import (
 	"strconv"
 )
 
-func BCH_type_info(data uint) uint {
+func BCHTypeInfo(data uint) uint {
 	d := data << 10
-	for int(BCH_digit(d)-BCH_digit(G15)) >= 0 {
-		d ^= G15 << (BCH_digit(d) - BCH_digit(G15))
+	for int(BCHDigit(d)-BCHDigit(G15)) >= 0 {
+		d ^= G15 << (BCHDigit(d) - BCHDigit(G15))
 	}
 	return ((data << 10) | d) ^ G15_MASK
 }
 
-func BCH_type_number(data uint) uint {
+func BCHTypeNumber(data uint) uint {
 	d := data << 12
-	for int(BCH_digit(d)-BCH_digit(G18)) >= 0 {
-		d ^= G18 << (BCH_digit(d) - BCH_digit(G18))
+	for int(BCHDigit(d)-BCHDigit(G18)) >= 0 {
+		d ^= G18 << (BCHDigit(d) - BCHDigit(G18))
 	}
 	return (data << 12) | d
 }
 
-func BCH_digit(data uint) uint {
+func BCHDigit(data uint) uint {
 	var digit uint
 	for data != 0 {
 		digit += 1
@@ -34,11 +34,11 @@ func BCH_digit(data uint) uint {
 	return digit
 }
 
-func pattern_position(version int) []int {
+func patternposition(version int) []int {
 	return PATTERN_POSITION_TABLE[version-1]
 }
 
-func mask_func(pattern uint) func(i, j int) bool {
+func maskfunc(pattern uint) func(i, j int) bool {
 	switch pattern {
 	case 0:
 		return func(i, j int) bool {
@@ -77,7 +77,7 @@ func mask_func(pattern uint) func(i, j int) bool {
 	panic("bad pattern")
 }
 
-func mode_sizes_for_version(version int) map[int]int {
+func modeSizesForVersion(version int) map[int]int {
 	if version < 10 {
 		return MODE_SIZE_SMALL
 	} else if version < 27 {
@@ -87,8 +87,8 @@ func mode_sizes_for_version(version int) map[int]int {
 	}
 }
 
-func length_in_bits(mode, version int) int {
-	return mode_sizes_for_version(version)[mode]
+func lengthInBits(mode, version int) int {
+	return modeSizesForVersion(version)[mode]
 }
 
 //=============================================================================
@@ -185,16 +185,16 @@ func (bit *BitBuffer) len() int {
 	return bit.length
 }
 
-func create_data(version int, correction uint, qrdatas []qrdata) []uint {
+func createData(version int, correction uint, qrdatas []qrdata) []uint {
 	buffer := &BitBuffer{}
 	for i := range qrdatas {
 		data := &qrdatas[i]
 		buffer.put(data.mode, 4)
-		buffer.put(data.len(), length_in_bits(data.mode, version))
+		buffer.put(data.len(), lengthInBits(data.mode, version))
 		data.write(buffer)
 	}
 
-	rsblocks := rs_blocks(version, int(correction))
+	rsblocks := rsBlocks(version, int(correction))
 	bitlimit := 0
 
 	for _, v := range rsblocks {
@@ -225,10 +225,10 @@ func create_data(version int, correction uint, qrdatas []qrdata) []uint {
 			buffer.put(PAD1, 8)
 		}
 	}
-	return create_bytes(buffer, rsblocks)
+	return createBytes(buffer, rsblocks)
 }
 
-func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []uint {
+func createBytes(buffer *BitBuffer, rsblocks []RSBlock) []uint {
 	offset := 0
 	maxDcCount, maxEcCount := 0, 0
 	dcdata, ecdata := make([][]uint, len(rsblocks)), make([][]uint, len(rsblocks))
@@ -300,20 +300,6 @@ func create_bytes(buffer *BitBuffer, rsblocks []RSBlock) []uint {
 	}
 
 	return data
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a < b {
-		return b
-	}
-	return a
 }
 
 //=============================================================================
@@ -675,4 +661,18 @@ func xrange(args ...int) []int {
 	}
 
 	return ans
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a < b {
+		return b
+	}
+	return a
 }

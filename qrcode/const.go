@@ -410,7 +410,7 @@ func init() {
 	for correct := 0; correct < 4; correct++ {
 		subarray := []int{0}
 		for version := 1; version < 41; version++ {
-			rsblocks := rs_blocks(version, correct)
+			rsblocks := rsBlocks(version, correct)
 			sum := 0
 			for _, v := range rsblocks {
 				sum += v.datacount
