@@ -307,6 +307,11 @@ func (q *Qrcode) make(fit bool) {
 		q.bestFit(q.version)
 	}
 
+	if q.version > 40 {
+		panic("the data is too large, the QR code cannot accommodate.")
+	}
+
+
 	if q.maskpattern == 0 {
 		q.makeImpl(false, q.bestMaskPattern())
 	} else {

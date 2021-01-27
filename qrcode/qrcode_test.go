@@ -63,12 +63,13 @@ func TestQrcode(t *testing.T) {
 func TestPNG(t *testing.T) {
 	code := MakeQrcode(1, ERROR_CORRECT_M, 1, 0)
 	data := "https://stackoverflow.com/questions/45086162/docker-mysql-error-1396-hy000-operation-create-user-failed-for-root"
+
 	code.AddData([]byte(data), 20)
-	png, _ := code.PNG(400)
+	png, _ := code.PNG(500)
 	fd, _ := os.Create("./www.png")
 	fd.Write(png)
 
-	jpeg, _ := code.JPEG(400)
+	jpeg, _ := code.JPEG(500)
 	fd, _ = os.Create("./www.jpeg")
 	fd.Write(jpeg)
 }
