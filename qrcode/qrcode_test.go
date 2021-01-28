@@ -5,13 +5,6 @@ import (
 	"os"
 )
 
-func TestQrdata(t *testing.T) {
-	list := optimal_data_chunks([]byte("https://www.baidu.com 12345 122112 1212 1221"), 4)
-	for _, v := range list {
-		t.Log(string(v.data), len(v.data))
-	}
-}
-
 func TestIter(t *testing.T) {
 	N := 9
 	iter := iter(N)
@@ -36,7 +29,7 @@ func TestLoop(t *testing.T) {
 		return ans
 	}
 
-	BIT_LIMIT_TABLE = make([][]int, 0)
+	BIT_LIMIT_TABLE := make([][]int, 0)
 	for correct := 0; correct < 2; correct++ {
 		subarray := []int{0}
 		for version := 1; version < 4; version++ {
@@ -52,12 +45,15 @@ func TestLoop(t *testing.T) {
 	t.Log(BIT_LIMIT_TABLE)
 }
 
-func TestQrcode(t *testing.T) {
-	code := MakeQrcode(1, ERROR_CORRECT_H, 2, 0)
-	data := "https://stackoverflow.com/questions/45086162/docker-mysql-error-1396-hy000-operation-create-user-failed-for-root"
-	code.AddData([]byte(data), 20)
-	code.PrintAscii(nil, true)
-	t.Log(code.version, code.count, /*size=*/ 21+(code.version-1)*4+2*4 /*border*/)
+func BenchmarkQrcode(b *testing.B) {
+	data := "https://www.google.com"
+
+	for i := 0; i < b.N; i++ {
+		code := MakeQrcode(1, ERROR_CORRECT_H, 2, 0)
+		code.AddData([]byte(data), 20)
+		code.PrintAscii(nil, true)
+		b.Log(code.version, code.count, /*size=*/ 21+(code.version-1)*4+2*4 /*border*/)
+	}
 }
 
 func TestPNG(t *testing.T) {
@@ -72,4 +68,14 @@ func TestPNG(t *testing.T) {
 	jpeg, _ := code.JPEG(500)
 	fd, _ = os.Create("./www.jpeg")
 	fd.Write(jpeg)
+}
+
+func TestBitBuffer(t *testing.T) {
+	bit := BitBuffer{}
+	bit.put(192, 8)
+	bit.put(168, 8)
+	bit.put(2, 8)
+	bit.put(10, 8)
+
+	t.Log(bit.String(), bit.len())
 }

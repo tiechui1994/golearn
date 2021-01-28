@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"math"
 	"strconv"
+	"strings"
 )
 
 func BCHTypeInfo(data uint) uint {
@@ -93,27 +94,24 @@ func lengthInBits(mode, version int) int {
 
 //=============================================================================
 
-type qrdata struct {
+type Qrdata struct {
 	mode int
 	data []byte
 }
 
-func Qrdata(data []byte, mode int, check bool) *qrdata {
-	d := new(qrdata)
-	d.mode = mode
+func MakeQrdata(data []byte, mode int) Qrdata {
 	if mode != MODE_NUMBER && mode != MODE_ALPHA_NUM && mode != MODE_8BIT_BYTE {
-		panic("Invalid mode")
+		panic("invalid data mode")
 	}
 
-	d.data = data
-	return d
+	return Qrdata{mode: mode, data: data}
 }
 
-func (q *qrdata) len() int {
+func (q *Qrdata) len() int {
 	return len(q.data)
 }
 
-func (q *qrdata) write(buffer *BitBuffer) {
+func (q *Qrdata) write(buffer *BitBuffer) {
 	if q.mode == MODE_NUMBER {
 		for i := 0; i < len(q.data); i += 3 {
 			chars := q.data[i:i+3]
@@ -141,13 +139,8 @@ func (q *qrdata) write(buffer *BitBuffer) {
 	}
 }
 
-func (q qrdata) String() string {
-	switch q.mode {
-	case MODE_ALPHA_NUM, MODE_NUMBER:
-		return string(q.data)
-	default:
-		return string(q.data)
-	}
+func (q Qrdata) String() string {
+	return string(q.data)
 }
 
 type BitBuffer struct {
@@ -185,7 +178,16 @@ func (bit *BitBuffer) len() int {
 	return bit.length
 }
 
-func createData(version int, correction uint, qrdatas []qrdata) []uint {
+func (bit BitBuffer) String() string {
+	strs := make([]string, len(bit.buffer))
+	for i, v := range bit.buffer {
+		strs[i] = fmt.Sprintf("%v", v)
+	}
+
+	return strings.Join(strs, ".")
+}
+
+func createData(version int, correction uint, qrdatas []Qrdata) []uint {
 	buffer := &BitBuffer{}
 	for i := range qrdatas {
 		data := &qrdatas[i]
@@ -225,6 +227,7 @@ func createData(version int, correction uint, qrdatas []qrdata) []uint {
 			buffer.put(PAD1, 8)
 		}
 	}
+
 	return createBytes(buffer, rsblocks)
 }
 
@@ -304,7 +307,8 @@ func createBytes(buffer *BitBuffer, rsblocks []RSBlock) []uint {
 
 //=============================================================================
 
-func optimal_data_chunks(data []byte, minimum int) []qrdata {
+// split data to number and aplpha
+func dataChunks(data []byte, minimum int) []Qrdata {
 	alpha := "[0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ%/: \\$\\*\\+\\-\\.]"
 	num := "\\d"
 
@@ -346,7 +350,7 @@ func optimal_data_chunks(data []byte, minimum int) []qrdata {
 	}
 
 	var (
-		ans                     []qrdata
+		ans                     []Qrdata
 		mode                    int
 		isnum, isalpha, hasnext bool
 		chunk, subchunk         string
@@ -361,7 +365,7 @@ num:
 		goto done
 	}
 	if isnum {
-		ans = append(ans, *Qrdata([]byte(chunk), MODE_NUMBER, false))
+		ans = append(ans, MakeQrdata([]byte(chunk), MODE_NUMBER))
 	} else {
 		alphafunc := split(chunk, ralpha)
 	alpha:
@@ -374,7 +378,7 @@ num:
 		} else {
 			mode = MODE_8BIT_BYTE
 		}
-		ans = append(ans, *Qrdata([]byte(subchunk), mode, false))
+		ans = append(ans, MakeQrdata([]byte(subchunk), mode))
 		goto alpha
 	}
 

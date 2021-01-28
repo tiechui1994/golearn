@@ -19,7 +19,7 @@ type Qrcode struct {
 	version   int
 	count     int
 	modules   [][]Bool
-	datalist  []qrdata
+	datalist  []Qrdata
 	datacache []uint
 
 	white, black color.Color
@@ -384,11 +384,11 @@ func (q *Qrcode) AddData(data interface{}, optimize int) {
 
 	var origin []byte
 	switch data.(type) {
-	case qrdata:
-		q.datalist = append(q.datalist, data.(qrdata))
+	case Qrdata:
+		q.datalist = append(q.datalist, data.(Qrdata))
 		return
-	case *qrdata:
-		q.datalist = append(q.datalist, *data.(*qrdata))
+	case *Qrdata:
+		q.datalist = append(q.datalist, *data.(*Qrdata))
 		return
 
 	case []byte:
@@ -404,9 +404,9 @@ func (q *Qrcode) AddData(data interface{}, optimize int) {
 	}
 
 	if optimize != 0 {
-		q.datalist = append(q.datalist, optimal_data_chunks(origin, optimize)...)
+		q.datalist = append(q.datalist, dataChunks(origin, optimize)...)
 	} else {
-		q.datalist = append(q.datalist, *Qrdata(origin, 0, true))
+		q.datalist = append(q.datalist, MakeQrdata(origin, 0))
 	}
 
 	q.datacache = nil
