@@ -11,19 +11,13 @@ type Node interface {
 	
 	// 在日志中追加数据, 需要实现方保证数据追加的成功
 	Propose(ctx context.Context, data []byte) error 
-	// ProposeConfChange proposes a configuration change. Like any proposal, the
-	// configuration change may be dropped with or without an error being
-	// returned. In particular, configuration changes are dropped unless the
-	// leader has certainty that there is no prior unapplied configuration
-	// change in its log.
-	//
-	// The method accepts either a pb.ConfChange (deprecated) or pb.ConfChangeV2
-	// message. The latter allows arbitrary configuration changes via joint
-	// consensus, notably including replacing a voter. Passing a ConfChangeV2
-	// message is only allowed if all Nodes participating in the cluster run a
-	// version of this library aware of the V2 API. See pb.ConfChangeV2 for
-	// usage details and semantics.
-	// 集群配置变更
+	
+	// 
+	// 集群配置变更. 与任何提议一样, 可以删除配置更改, 返回或者不返回错误. 特别地, 如果 leader 确定在其日志中包含未
+	// 应用的配置更改, 则将当前的配置更改将被删除. 
+	// 
+	// 方法接收 pb.ConfChange (deprecated) 或 pb.ConfChangeV2 消息. 后者允许通过联合共识进行任意配置更改, 贴别
+	// 是包含替换 voters. 当参与集群的所有节点都运行该库的可识别v2 API的版本时, 才允许传递 ConfChangeV2 消息.
 	ProposeConfChange(ctx context.Context, cc pb.ConfChangeI) error 
 
     // 根据消息变更状态机的状态
