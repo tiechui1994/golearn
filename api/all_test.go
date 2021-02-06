@@ -177,3 +177,19 @@ func TestDNS(t *testing.T) {
 	t.Log(err)
 	t.Log(ips)
 }
+
+func TestLogin(t *testing.T) {
+	pri, pub := GenKey()
+	oeap := OAEP{prikey: pri, pubkey: pub, alg: "sha1"}
+	oeap.init()
+
+	plain := "hello"
+
+	ciphertxt := oeap.Encrypt([]byte(plain))
+	t.Log("ciphertxt", ciphertxt)
+
+	pliantext := oeap.Decrypt(ciphertxt)
+	t.Log("pliantext", string(pliantext), len(pliantext))
+
+	t.Log("equal", string(plain) == string(pliantext))
+}
