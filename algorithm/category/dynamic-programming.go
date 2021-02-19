@@ -143,29 +143,54 @@ func DivisorGame(n int) bool {
 游戏一直持续到所有 piles 当中的石子都被拿完. "返回先手拿到最大数量的石子".
 **/
 
-func StoneGameII(piles []int) {
-	const Max = int(1>>64 - 1)
-	var dfs func(arr []int, i, j int, m int, memo [][]int) int
-
-	dfs = func(arr []int, i, j int, m int, memo [][]int) int {
-		if i > j {
-			return 0
-		}
-
-		if memo[i][j] != Max {
-			return memo[i][j]
-		}
-
-		var (
-			one
-		)
-
-		for k := 0; k < 2*m; k++ {
-			me += arr[k+i]
-			other := dfs(arr, i+k+1, j, max(m, k+1), memo)
-			if me < other {
-
-			}
+func StoneGameII(piles []int) int {
+	N := len(piles)
+	// 后缀和
+	sum := make([]int, N)
+	for i := N - 1; i >= 0; i-- {
+		if i == N-1 {
+			sum[i] = piles[i]
+		} else {
+			sum[i] = sum[i+1] + piles[i]
 		}
 	}
+
+	/*
+	游戏增加了一个限制: 每次取的数据可是是前一次的2倍, 因此当次取的最优策略是限制下一次取的值的最小, 那么这次
+	获取就是最大了.
+	*/
+	var dfs func(arr []int, index, M int, memo [][]int, sum []int) int
+	dfs = func(arr []int, index, M int, memo [][]int, sum []int) int {
+		// 边界
+		if index == len(arr) {
+			return 0
+		}
+		// 剩余石子不足2M
+		if len(arr)-index <= 2*M {
+			return sum[index]
+		}
+
+		if memo[index][M] != 0 {
+			return memo[index][M]
+		}
+
+		score := int(1>>64 - 1)
+		for i := 1; i <= 2*M; i++ {
+			score = min(score,
+				dfs(arr, index+1, max(M, i), memo, sum))
+		}
+
+		memo[index][M] = sum[index] - score
+
+		return sum[index] - score
+	}
+
+	// memo[i][j] 表示在 [i:N] 堆时, M=j的状况下, 先取的人能获得的最多石子数量
+	// memo[i][M] = max( memo[i][M], sum[i:]-memo[i+x][max(M,x)] ) 1<= x <=2M
+	memo := make([][]int, N)
+	for i := range memo {
+		memo[i] = make([]int, 2*N)
+	}
+
+	return dfs(piles, 0, 1, memo, sum)
 }
