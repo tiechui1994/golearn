@@ -1,8 +1,8 @@
 package category
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestMaxSlidingWindow(t *testing.T) {
@@ -14,5 +14,10 @@ func TestMaxSlidingWindow(t *testing.T) {
 }
 
 func TestPriorityQueue_Less(t *testing.T) {
-	fmt.Println(2^2^2)
+	fmt.Println(2 ^ 2 ^ 2)
+}
+
+func TestCanIWin(t *testing.T) {
+	N := 4
+	t.Logf("N: %v, CanWin:%v", N, CanIWin(N))
 }
