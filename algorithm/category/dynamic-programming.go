@@ -156,8 +156,8 @@ func StoneGameII(piles []int) int {
 	}
 
 	/*
-	游戏增加了一个限制: 每次取的数据可是是前一次的2倍, 因此当次取的最优策略是限制下一次取的值的最小, 那么这次
-	获取就是最大了.
+	游戏增加了一个限制: 每次取的数据可是是前一次的2倍, 因此当次取的最优策略是限制下一次取的值的最小, 那么这次获取就是最
+	大了.
 	*/
 	var dfs func(arr []int, index, M int, memo [][]int, sum []int) int
 	dfs = func(arr []int, index, M int, memo [][]int, sum []int) int {
@@ -174,6 +174,7 @@ func StoneGameII(piles []int) int {
 			return memo[index][M]
 		}
 
+		// 限制对手拿到最小的值
 		score := int(1>>64 - 1)
 		for i := 1; i <= 2*M; i++ {
 			score = min(score,
@@ -193,4 +194,59 @@ func StoneGameII(piles []int) int {
 	}
 
 	return dfs(piles, 0, 1, memo, sum)
+}
+
+/**
+1406: 石子游戏III
+
+给定一个数字 piles, piles[i] 表示第 i 堆石子的个数.
+
+在每个回合中, 该玩家可以拿走剩下的 "前X堆的所有石子", X取值是1, 2, 3. 游戏一直持续到所有 piles 当中的石子都被拿完.
+
+A, B 玩这个游戏, 谁会赢(A是先手, 并且A,B都采用最优策略)?
+*/
+
+func StoneGameIII(piles []int) int {
+	const Max = int(1>>64 - 1)
+
+	N := len(piles)
+	// 后缀和
+	sum := make([]int, N)
+	for i := N - 1; i >= 0; i-- {
+		if i == N-1 {
+			sum[i] = piles[i]
+		} else {
+			sum[i] = sum[i+1] + piles[i]
+		}
+	}
+
+	var dfs func(arr []int, i int, memo []int) int
+	dfs = func(arr []int, i int, memo []int) int {
+		// 边界
+		if i == len(arr) {
+			return 0
+		}
+
+		if memo[i] != Max {
+			return memo[i]
+		}
+
+		score := 0
+		res := Max
+		for k := i; k < i+3 && k < len(arr); k++ {
+			score += arr[k]
+			res = max(res, score-dfs(arr, k+1, memo))
+		}
+
+		memo[i] = res
+
+		return memo[i]
+	}
+
+	memo := make([]int, N)
+	for i := range memo {
+		memo[i] = Max
+	}
+
+	return dfs(piles, 0, memo)
 }
