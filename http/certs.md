@@ -1,3 +1,64 @@
+## PKI 标准(X.509, PKCS)
+
+- 证书, 密码学key格式标准
+
+X.509 标准, PKCS(公钥加密标准)系列(`PKCS#1`, `PKCS#8`, `PKCS#12`)
+
+- 文件编码格式
+
+DER编码格式, PEM编码格式
+
+
+- 常见证书标准格式(PEM编码)
+
+1) X.509 Certificate
+
+```
+-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----
+```
+
+2) X.509 Certificate Subject Public Key Info
+
+```
+-----BEGIN PUBLIC KEY-----
+-----END PUBLIC KEY-----
+```
+
+3) PKCS#1 Private Key
+
+```
+-----BEGIN RSA PRIVATE KEY-----
+-----END RSA PRIVATE KEY-----
+```
+
+4) PKCS#1 Public Key
+
+```
+-----BEGIN RSA PUBLIC KEY-----
+-----END RSA PUBLIC KEY-----
+```
+
+5) PKCS#8 Unencrypted Private Key
+
+```
+-----BEGIN PRIVATE KEY-----
+-----END PRIVATE KEY-----
+```
+
+6) PKCS#8 Encrypted Private Key
+
+```
+-----BEGIN ENCRYPTED PRIVATE KEY-----
+-----END ENCRYPTED PRIVATE KEY-----
+```
+
+> 注: 带有密码
+
+
+PKI标准分为第一代标准和第二代标准. 第一代PKI标准包括 `PKCS系列(公钥加密标准)`, `X.509(PKIX)` 等
+
+
 ## 证书流程
 
 先弄清楚几个概念: CER, CRT, CA, CSR
@@ -29,7 +90,7 @@ openssl req -new -x509 -days 365 -key ca.key -out ca.crt
 # private key (带有加密密码)
 openssl genrsa -des3 -out server.key 1024
 
-# private key (不带加密密码)
+# 分离私钥(PKCS#1 Private Key)
 openssl rsa -in server.key -out server.key.text
 ```
 

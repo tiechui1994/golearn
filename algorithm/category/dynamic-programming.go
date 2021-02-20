@@ -1,5 +1,7 @@
 package category
 
+import "strconv"
+
 /*
 动态规划一: 博弈类
 */
@@ -104,7 +106,7 @@ memo[i][j] = max( arr[i] - memo[i+1][j], arr[j] - memo[i][j-1] )
 */
 
 func StoneGameI(piles []int) bool {
-	const Max = int(1>>64 - 1)
+	const Max = int(1<<64 - 1)
 
 	/**
 	dfs 的作用就是计算 i, j 之间最大差距
@@ -218,18 +220,7 @@ A, B 玩这个游戏, 谁会赢(A是先手, 并且A,B都采用最优策略)?
 */
 
 func StoneGameIII(piles []int) string {
-	const Max = int(1>>64 - 1)
-
-	N := len(piles)
-	// 后缀和
-	sum := make([]int, N)
-	for i := N - 1; i >= 0; i-- {
-		if i == N-1 {
-			sum[i] = piles[i]
-		} else {
-			sum[i] = sum[i+1] + piles[i]
-		}
-	}
+	const Max = int(1<<63 - 1)
 
 	var dfs func(arr []int, i int, memo []int) int
 	dfs = func(arr []int, i int, memo []int) int {
@@ -254,6 +245,7 @@ func StoneGameIII(piles []int) string {
 		return memo[i]
 	}
 
+	N := len(piles)
 	memo := make([]int, N)
 	for i := range memo {
 		memo[i] = Max
@@ -267,6 +259,139 @@ func StoneGameIII(piles []int) string {
 	if ans > 0 {
 		return "A"
 	}
-	
+
 	return "B"
+}
+
+//==================================================================================================
+
+/*
+动态规划二: 单序列类
+*/
+
+/**
+91: 解码方法
+
+'A' -> 1
+'B' -> 2
+...
+'Z' -> 26
+
+已知编码消息, 求解解码的方法总数.
+
+dp[i] = dp[i-1] + dp[i-2]
+*/
+
+func NumDecodeings(s string) int {
+	if len(s) == 0 {
+		return 0
+	}
+
+	dp := make([]int, len(s)+1)
+
+	dp[0] = 1
+	if s[0] != '0' {
+		dp[1] = 1
+	}
+
+	for i := 2; i <= len(s); i++ {
+		two, _ := strconv.ParseInt(s[i-2:i], 10, 32)
+		one, _ := strconv.ParseInt(s[i-1:i], 10, 32)
+		if 10 <= two && two <= 26 {
+			dp[i] += dp[i-2]
+		}
+		if one != 0 {
+			dp[i] += dp[i-1]
+		}
+	}
+
+	return dp[len(s)]
+}
+
+func NumDecodeingsI(s string) int {
+	var dfs func(i int, memo []int) int
+
+	dfs = func(i int, memo []int) int {
+		if i == 0 {
+			return 1
+		}
+
+		if memo[i] > 0 {
+			return memo[i]
+		}
+
+		if s[i] == '0' {
+			memo[i] = 0
+		} else if i+1 < len(s) && (s[i] == '1' || s[i] == '2' && s[i+1] <= '6') {
+			memo[i] = dfs(i+1, memo) + dfs(i+2, memo)
+		} else {
+			memo[i] = dfs(i+1, memo)
+		}
+
+		return memo[i]
+	}
+
+	memo := make([]int, len(s))
+	return dfs(0, memo)
+}
+
+/*
+139: 单词拆分.
+
+给定一个非空字符串s和一个包含非空单词的列表 wordDict, 判断s是否可以被空格拆分为一个或多个在字典都出现的单词.
+
+注: 拆分后的单词列表当中包含所有的 wordDict 当中的单词.
+
+dp[j] = dp[i] && dict.has(s[i:j])  0 <= i < j
+
+dp[0] = true 因为 s[0:0] 是空字符串. 最终看 dp[N].
+*/
+
+func WordBreak(s string, wordDict []string) bool {
+	N := len(s)
+	dict := make(map[string]bool)
+	for _, w := range wordDict {
+		dict[w] = true
+	}
+
+	dp := make([]bool, N+1)
+	dp[0] = true
+
+	for i := 1; i <= N; i++ {
+		for j := 0; j < i; j++ {
+			if _, ok := dict[s[j:i]]; dp[j] && ok {
+				dp[i] = true
+			}
+		}
+	}
+
+	return dp[N]
+}
+
+/*
+140: 单词拆分II.
+
+给定一个非空字符串s和一个包含非空单词的列表 wordDict. 在字符串中增加空格来构建一个句子, 使得句子中所有的单词都在词典当
+中, 返回所有可能的句子.
+*/
+
+func WordBreakII(s string, wordDict []string) bool {
+	N := len(s)
+	dict := make(map[string]bool)
+	for _, w := range wordDict {
+		dict[w] = true
+	}
+
+	dp := make([]bool, N+1)
+	dp[0] = true
+
+	for i := 1; i <= N; i++ {
+		for j := 0; j < i; j++ {
+			if _, ok := dict[s[j:i]]; dp[j] && ok {
+				dp[i] = true
+			}
+		}
+	}
+
+	return dp[N]
 }
