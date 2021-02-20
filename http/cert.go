@@ -70,6 +70,12 @@ func Verfiy() {
 func Code() {
 	private, _ := rsa.GenerateKey(rand.Reader, 1024)
 	public := &private.PublicKey
+
+	plain := []byte("Hello")
+	ciphertext, _ := rsa.EncryptPKCS1v15(rand.Reader, public, plain)
+	fmt.Println(hex.EncodeToString(ciphertext))
+	plaintext, _ := rsa.DecryptPKCS1v15(rand.Reader, private, ciphertext)
+	fmt.Println(string(plaintext))
 }
 
 func main() {
@@ -95,4 +101,6 @@ func main() {
 	X509Parse(data)
 
 	Verfiy()
+
+	Code()
 }
