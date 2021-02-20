@@ -1,6 +1,9 @@
 package category
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 /*
 动态规划一: 博弈类
@@ -106,7 +109,7 @@ memo[i][j] = max( arr[i] - memo[i+1][j], arr[j] - memo[i][j-1] )
 */
 
 func StoneGameI(piles []int) bool {
-	const Max = int(1<<64 - 1)
+	const Max = int(1<<63 - 1)
 
 	/**
 	dfs 的作用就是计算 i, j 之间最大差距
@@ -359,7 +362,7 @@ func WordBreak(s string, wordDict []string) bool {
 
 	for i := 1; i <= N; i++ {
 		for j := 0; j < i; j++ {
-			if _, ok := dict[s[j:i]]; dp[j] && ok {
+			if dp[j] && dict[s[j:i]] {
 				dp[i] = true
 			}
 		}
@@ -373,25 +376,54 @@ func WordBreak(s string, wordDict []string) bool {
 
 给定一个非空字符串s和一个包含非空单词的列表 wordDict. 在字符串中增加空格来构建一个句子, 使得句子中所有的单词都在词典当
 中, 返回所有可能的句子.
+
+dp[i] = { j }; 其中 j 满足 dp[j].length > 0 && 0 <= j < i && s[j:i] 存在于 wordDict 当中
+
+这样组成一个二维数组 dp[][]
+
+从最后 dp[N] 开始倒退计算, 当前 cur 为"", 遍历 dp[N], s[k:N] + " " + cur 便是当前的 cur,
+继续上述的过程, 直到 N 变为 0, 遍历结束, 此时的 cur 就是一个截断结果.
 */
 
-func WordBreakII(s string, wordDict []string) bool {
+func WordBreakII(s string, wordDict []string) []string {
 	N := len(s)
 	dict := make(map[string]bool)
 	for _, w := range wordDict {
 		dict[w] = true
 	}
 
-	dp := make([]bool, N+1)
-	dp[0] = true
+	var dp = make([][]int, N+1)
+	for i := 0; i <= N; i++ {
+		dp[i] = []int{}
+	}
 
+	dp[0] = append(dp[0], 0)
 	for i := 1; i <= N; i++ {
 		for j := 0; j < i; j++ {
-			if _, ok := dict[s[j:i]]; dp[j] && ok {
-				dp[i] = true
+			if len(dp[j]) > 0 && dict[s[j:i]] {
+				dp[i] = append(dp[i], j)
 			}
 		}
 	}
 
-	return dp[N]
+	var ans []string
+	var result func(cur string, index int, str string)
+	result = func(cur string, index int, str string) {
+		if index == 0 {
+			ans = append(ans, strings.TrimSpace(cur))
+			return
+		}
+
+		for _, idx := range dp[index] {
+			result(str[idx:index]+" "+cur, idx, str)
+		}
+	}
+
+	result("", N, s)
+
+	return ans
 }
+
+/*
+
+*/

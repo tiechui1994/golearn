@@ -2,6 +2,7 @@ package category
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -20,4 +21,11 @@ func TestPriorityQueue_Less(t *testing.T) {
 func TestCanIWin(t *testing.T) {
 	N := 4
 	t.Logf("N: %v, CanWin:%v", N, CanIWin(N))
+}
+
+func TestWordBreakII(t *testing.T) {
+	s1 := "catsanddog"
+	dict1 := []string{"cat", "cats", "and", "sand", "dog"}
+	res1 := WordBreakII(s1, dict1)
+	t.Log("\n" + strings.Join(res1, "\n"))
 }
