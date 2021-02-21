@@ -425,5 +425,45 @@ func WordBreakII(s string, wordDict []string) []string {
 }
 
 /*
+53: 最大子序和
 
+dp[i] = max(dp[i-1]+nums[i], nums[i])
+*/
+
+/*
+152: 最大子序乘积
+
+dpmax[i] = max(dp[i-1]*nums[i], nums[i])
+
+dpmin[i] = min(dp[i-1]*nums[i], nums[i])
+*/
+
+func MaxProduct(nums []int) int {
+	N := len(nums)
+	dpmax := make([]int, N)
+	dpmin := make([]int, N)
+
+	ans := nums[0]
+	dpmax[0] = nums[0]
+	dpmin[0] = nums[0]
+
+	for i := 1; i < N; i++ {
+		if nums[i] > 0 {
+			dpmax[i] = max(nums[i], dpmax[i-1]*nums[i])
+			dpmin[i] = min(nums[i], dpmin[i-1]*nums[i])
+		} else {
+			dpmax[i] = max(nums[i], dpmin[i-1]*nums[i])
+			dpmin[i] = min(nums[i], dpmax[i-1]*nums[i])
+		}
+
+		ans = max(dpmax[i], ans)
+	}
+
+	return ans
+}
+
+/*
+198. 打家劫舍
+
+dp[i] = max(dp[i-1], dp[i-2]+nums[i]) 表示第 i 天最大的收益. 分别表示第i天不抢和抢
 */
