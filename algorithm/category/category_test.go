@@ -29,3 +29,8 @@ func TestWordBreakII(t *testing.T) {
 	res1 := WordBreakII(s1, dict1)
 	t.Log("\n" + strings.Join(res1, "\n"))
 }
+
+func TestLengthLIS(t *testing.T) {
+	case1 := []int{10, 9, 2, 5, 7, 101, 18}
+	t.Log(case1, "LIS", LengthLIS2(case1))
+}

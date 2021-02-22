@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 )
 
+// pem格式解析
 func X509Parse(data []byte) {
 	// -----BEGIN RSA PRIVATE KEY-----
 	_, err := x509.ParsePKCS1PrivateKey(data)
@@ -49,6 +50,7 @@ func X509Parse(data []byte) {
 	}
 }
 
+// 签名, 私钥签名 <-> 公钥验证
 func Verfiy() {
 	private, _ := rsa.GenerateKey(rand.Reader, 1024)
 	public := &private.PublicKey
@@ -67,6 +69,7 @@ func Verfiy() {
 	fmt.Println(err)
 }
 
+// 加密, 公钥加密 <-> 私钥解密
 func Code() {
 	private, _ := rsa.GenerateKey(rand.Reader, 1024)
 	public := &private.PublicKey
@@ -74,6 +77,7 @@ func Code() {
 	plain := []byte("Hello")
 	ciphertext, _ := rsa.EncryptPKCS1v15(rand.Reader, public, plain)
 	fmt.Println(hex.EncodeToString(ciphertext))
+
 	plaintext, _ := rsa.DecryptPKCS1v15(rand.Reader, private, ciphertext)
 	fmt.Println(string(plaintext))
 }

@@ -425,13 +425,13 @@ func WordBreakII(s string, wordDict []string) []string {
 }
 
 /*
-53: 最大子序和
+53: 最大子序(Sequence)和
 
 dp[i] = max(dp[i-1]+nums[i], nums[i])
 */
 
 /*
-152: 最大子序乘积
+152: 最大子序(Sequence)乘积
 
 dpmax[i] = max(dp[i-1]*nums[i], nums[i])
 
@@ -467,3 +467,88 @@ func MaxProduct(nums []int) int {
 
 dp[i] = max(dp[i-1], dp[i-2]+nums[i]) 表示第 i 天最大的收益. 分别表示第i天不抢和抢
 */
+
+/*
+300: LIS (最长递增子序列) Longest Increasing Subsequence
+
+dp[i] = max(dp[i], dp[k]+1) 其中 k 满足的条件 0 <= k < i && nums[k] < nums[i]
+表示以 i 结尾的最长递增子序列
+*/
+
+// O(n^2)
+func LengthLIS(nums []int) int {
+	N := len(nums)
+	dp := make([]int, N)
+	for i := range dp {
+		dp[i] = 1
+	}
+
+	var ans = 1
+	for i := 1; i < N; i++ {
+		for j := 0; j < i; j++ {
+			if nums[i] > nums[j] {
+				dp[i] = max(dp[i], dp[j]+1)
+			}
+		}
+
+		ans = max(ans, dp[i])
+	}
+
+	return ans
+}
+
+// O(nlgn)
+func LengthLIS2(nums []int) int {
+	binarySearch := func(arr []int, size int, target int) int {
+		left, right := 0, size-1
+		for left <= right {
+			mid := (left + right) / 2
+			if arr[mid] < target {
+				left = mid + 1
+			} else {
+				right = mid - 1
+			}
+		}
+		return left
+	}
+
+	size, N := 0, len(nums)
+	dp := make([]int, N)
+	for i := 0; i < N; i++ {
+		pos := binarySearch(dp, size, nums[i])
+		dp[pos] = nums[i]
+
+		if pos == size {
+			size++
+		}
+	}
+
+	return size
+}
+
+/*
+1713. 得到子序列(Subsequence)的最少操作次数
+
+有两个数组, target和nums, 其中 target 包含若干个"互不相同"的整数, nums可能包含重复元素.
+
+每一次操作中, 可以在 nums 的任意位置插入一个整数. 返回最少操作次数, 使得 target 成为 nums 的一个子序列(Subsequence).
+
+注: 数组的子序列指的是是删除数组的某些元素(也可能一个元素都不删除), 同时不改变其余元素的相对顺序得到的数组. 例如:
+[2,7,4] 是 [4, "2", 3, "7", 2, 1, "4"] 的一个子序列, 但是 [2, 4, 2] 则不是
+*/
+
+func MinOperations(target []int, nums []int) int {
+	dict := make(map[int]int) // target<->index
+	for i, val := range target {
+		dict[val] = i
+	}
+
+	indexs := make([]int, 0, len(nums))
+	for _, val := range nums {
+		if idx, ok := dict[val]; ok {
+			indexs = append(indexs, idx)
+		}
+	}
+
+	return len(target) - LengthLIS2(indexs)
+}

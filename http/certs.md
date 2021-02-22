@@ -18,35 +18,42 @@ DER编码格式, PEM编码格式
 -----END CERTIFICATE-----
 ```
 
-2) X.509 Certificate Subject Public Key Info
+2) X.509 Certificate Request
+
+```
+-----BEGIN CERTIFICATE REQUEST-----
+-----END CERTIFICATE REQUEST-----
+```
+
+3) X.509 Certificate Subject Public Key Info
 
 ```
 -----BEGIN PUBLIC KEY-----
 -----END PUBLIC KEY-----
 ```
 
-3) PKCS#1 Private Key
+4) PKCS#1 Private Key
 
 ```
 -----BEGIN RSA PRIVATE KEY-----
 -----END RSA PRIVATE KEY-----
 ```
 
-4) PKCS#1 Public Key
+5) PKCS#1 Public Key
 
 ```
 -----BEGIN RSA PUBLIC KEY-----
 -----END RSA PUBLIC KEY-----
 ```
 
-5) PKCS#8 Unencrypted Private Key
+6) PKCS#8 Unencrypted Private Key
 
 ```
 -----BEGIN PRIVATE KEY-----
 -----END PRIVATE KEY-----
 ```
 
-6) PKCS#8 Encrypted Private Key
+7) PKCS#8 Encrypted Private Key
 
 ```
 -----BEGIN ENCRYPTED PRIVATE KEY-----
