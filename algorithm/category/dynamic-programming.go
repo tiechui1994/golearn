@@ -555,7 +555,6 @@ func MinOperations(target []int, nums []int) int {
 	return len(target) - LengthLIS2(indexs)
 }
 
-
 //==================================================================================================
 
 /*
@@ -570,3 +569,73 @@ f(i, j) 表示将下标位置 i 到 j 的所有元素合并能获得的价值的
 - 特征: 能将问题分解为能两两合并的形式
 - 求解: 整个问题的最优值, 枚举合并点, 将问题分解为左右部分, 最后合并两个部分的最优值得到原问题的最优值
 */
+
+/*
+1547. 切棍子的最小成本
+
+有一根长度为 n 的棍子, 需要按照 cuts 当中的节点进行切割. 每次切割的成本是当前棍子的长度. 求解切割棍子的最小成本.
+
+dp(i,j) = min( dp(i,k) + dp(k,j) + j-i ) 其中 k 是切割点.
+
+dp(0, n) 则是最终的结果.
+*/
+
+func MinCutCost(n int, cuts []int) int {
+	var dfs func(i, j int, memo map[[2]int]int) int
+
+	dfs = func(i, j int, memo map[[2]int]int) int {
+		if i+1 == j {
+			return 0
+		}
+
+		if val, ok := memo[[2]int{i, j}]; ok {
+			return val
+		}
+
+		var find bool
+		var res = int(1<<63 - 1)
+		for _, cut := range cuts {
+			if i < cut && cut < j {
+				find = true
+				res = min(dfs(i, cut, memo)+dfs(cut, j, memo)+j-i, res)
+			}
+		}
+
+		if !find {
+			return 0
+		}
+
+		memo[[...]int{i, j}] = res
+		return res
+	}
+
+	return dfs(0, n, make(map[[2]int]int))
+}
+
+/*
+516: 最长回文子序列
+
+dp[i][j] = max(dp[i+1][j], dp[i][j-1])
+
+dp[i][j] = dp[i+1][j-1] + 2 其中  s[i] == s[j]
+*/
+func LongestPalindromeSubseq(s string) int {
+	N := len(s)
+	dp := make([][]int, N)
+	for i := 0; i < N; i++ {
+		dp[i] = make([]int, N)
+		dp[i][i] = 1
+	}
+
+	for j := 1; j < N; j++ {
+		for i := 0; i < j; i++ {
+			if s[i] == s[j] {
+				dp[i][j] = max(dp[i][j], dp[i+1][j-1]+2)
+			} else {
+				dp[i][j] = max(dp[i+1][j], dp[i][j-1])
+			}
+		}
+	}
+
+	return dp[0][N-1]
+}

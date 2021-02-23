@@ -34,3 +34,11 @@ func TestLengthLIS(t *testing.T) {
 	case1 := []int{10, 9, 2, 5, 7, 101, 18}
 	t.Log(case1, "LIS", LengthLIS2(case1))
 }
+
+func TestMinCutCost(t *testing.T) {
+	n := 7
+	cuts := []int{1, 3, 4, 5}
+	t.Log("cost", MinCutCost(n, cuts), "real", 16)
+
+	t.Log("LPS", LongestPalindromeSubseq("bbbab"), "real", 4)
+}
