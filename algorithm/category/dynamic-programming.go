@@ -689,3 +689,58 @@ func MaxCoins(nums []int) int {
 	}
 	return dfs(0, N-1, memo)
 }
+
+/*
+813. 最大平均值和的分组
+
+将一个数组切割成 K 个子数组, 求解子数组平均值和的最大值
+*/
+
+// LSA
+func LargestSumOfAverages(nums []int, K int) float64 {
+	N := len(nums)
+	dp := make([][]float64, N+1)
+	for i := 0; i <= N; i++ {
+		dp[i] = make([]float64, N+1)
+	}
+
+	// k=1 的状况
+	sum := 0
+	for i := 0; i < N; i++ {
+		sum += nums[i]
+		dp[i+1][1] = float64(sum) / float64(i+1)
+	}
+
+	max := func(i, j float64) float64 {
+		if i > j {
+			return i
+		}
+		return j
+	}
+
+	// dp[n][k] 表示长度为 n 的数组切割成 k 个部分, 最大的平均和
+	// dp[n][k] = max(dp[i][k-1] + avg),  0 <= i < n
+
+	var dfs func(n, k int, memo [][]float64) float64
+	dfs = func(n, k int, memo [][]float64) float64 {
+		if n < k {
+			return 0
+		}
+		if memo[n][k] != 0 {
+			return memo[n][k]
+		}
+
+		var ans float64
+		var sum int
+		for i := n - 1; i >= 0; i-- {
+			sum += nums[i]
+			ans = max(ans, dfs(i, k-1, memo)+float64(sum)/float64(n-i))
+		}
+
+		memo[n][k] = ans
+
+		return ans
+	}
+
+	return dfs(N, K, dp)
+}
