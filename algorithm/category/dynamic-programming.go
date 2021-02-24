@@ -615,9 +615,9 @@ func MinCutCost(n int, cuts []int) int {
 /*
 516: 最长回文子序列
 
-dp[i][j] = max(dp[i+1][j], dp[i][j-1])
+dp[i][j] = max(dp[i+1][j], dp[i][j-1]), s[i] != s[j]
 
-dp[i][j] = dp[i+1][j-1] + 2 其中  s[i] == s[j]
+dp[i][j] = max(dp[i][j], dp[i+1][j-1] + 2), s[i] == s[j]
 */
 func LongestPalindromeSubseq(s string) int {
 	N := len(s)
@@ -638,4 +638,54 @@ func LongestPalindromeSubseq(s string) int {
 	}
 
 	return dp[0][N-1]
+}
+
+/*
+312. 戳气球
+
+有 n 个气球, 编号为0 到 n - 1, 每个气球上都标有一个数字, 这些数字存在数组 nums 中.
+
+现在要求戳破所有的气球. 戳破第 i 个气球, 可以获得 nums[i-1] * nums[i] * nums[i+1] 积分. 如果 i-1 或 i+1 超出了
+数组的边界, 那么就当它是一个数字为 1 的气球.
+
+dp[i][j] 表示 [i..j] 之间获得的积分
+
+dp[i][j] = max( nums[i-1]*nums[k]*nums[j+1] + dp[i][k-1] + dp[k+1][j] ) 其中 i <= k <= j, 代表戳中[i..j]
+之间的一个气球.
+*/
+
+func MaxCoins(nums []int) int {
+	get := func(i int) int {
+		if i < 0 || i >= len(nums) {
+			return 1
+		}
+		return nums[i]
+	}
+
+	var dfs func(i, j int, memo [][]int) int
+	dfs = func(i, j int, memo [][]int) int {
+		if i > j {
+			return 0
+		}
+		if memo[i][j] != 0 {
+			return memo[i][j]
+		}
+
+		var ans int
+		for k := i; k <= j; k++ {
+			left := dfs(i, k-1, memo)
+			right := dfs(k+1, j, memo)
+			ans = max(ans, left+right+get(i-1)*get(k)*get(j+1))
+		}
+
+		memo[i][j] = ans
+		return ans
+	}
+
+	N := len(nums)
+	memo := make([][]int, N)
+	for i := 0; i < N; i++ {
+		memo[i] = make([]int, N)
+	}
+	return dfs(0, N-1, memo)
 }
