@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/net/http2"
 )
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,13 +56,15 @@ func Server() {
 	config.BuildNameToCertificate()
 
 	server := &http.Server{
-		Addr:    ":1443",
-		Handler: mux,
-		//TLSConfig: config,
-		ErrorLog: log.New(os.Stdout, "", log.Lshortfile|log.Ldate|log.Ltime),
+		Addr:      ":1443",
+		Handler:   mux,
+		TLSConfig: config,
+		ErrorLog:  log.New(os.Stdout, "", log.Lshortfile|log.Ldate|log.Ltime),
 	}
 
-	err = server.ListenAndServe()
+	http2.ConfigureServer(server, &http2.Server{})
+
+	err = server.ListenAndServeTLS("", "")
 	if err != nil {
 		log.Println("ListenAndServeTLS err", err)
 		return

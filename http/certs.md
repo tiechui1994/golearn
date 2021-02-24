@@ -65,6 +65,25 @@ DER编码格式, PEM编码格式
 
 PKI标准分为第一代标准和第二代标准. 第一代PKI标准包括 `PKCS系列(公钥加密标准)`, `X.509(PKIX)` 等
 
+## 特殊格式的密钥
+
+### p12 
+
+- `p12 提取 certificate` 
+
+```bash
+openssl pkcs12 -in input.p12 -nokeys -out crt.pem
+```
+
+> `-nokeys` 不输出私钥
+
+- `p12 提取 private key`
+
+```bash
+openssl pkcs12 -in input.p12 -nodes -nocerts -out key.pem
+```
+
+> `-nocerts` 不输出证书, `-nodes` 不加密私钥
 
 ## 证书流程
 
