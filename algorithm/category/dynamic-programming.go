@@ -795,12 +795,19 @@ dp[i][j] = min( dp[i][k] + dp[k+1][j] ) // s[i] != s[j]
 
 dp[i][j] = min( dp[i][j], dp[i][j-1], dp[l+1][r] ) // s[i] == s[j]
 
-空狼先锋:
 
-dp[i][j] = min( dp[i][k-1] + dp[k+1][j] + nums[k]+buf[i-1]+buf[j+1]) // 最后干掉 k 时, 最小的代价
+
+恐狼先锋:
+
+攻击一头狼, 会受到该头狼的伤害和该头狼前后的余波伤害. nums 是每头狼的伤害, buf 是每头狼的余波伤害.
+
+dp[i][j] 表示 i..j 之间被消灭掉的伤害最小值.
+
+dp[i][j] = min( dp[i][k-1] + dp[k+1][j] + nums[k]+buf[i-1]+buf[j+1]) // 先干掉 [i..k-1] 狼, 然后干掉
+[k+1..j] 狼, 最后干掉第 k 头狼, 所产生的最小值.
 */
 
-func MinCost(nums []int, buf []int) int {
+func MinDamage(nums []int, buf []int) int {
 	N := len(nums)
 	nums = append([]int{0}, append(nums, 0)...)
 	buf = append([]int{0}, append(buf, 0)...)
@@ -829,6 +836,44 @@ func MinCost(nums []int, buf []int) int {
 
 		return dp[i][j]
 	}
-	
+
 	return dfs(1, N, dp)
 }
+
+
+//==================================================================================================
+
+/*
+动态规划: 背包问题
+
+0-1 背包
+
+N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品只有一个. 求解在大小为 V 的背包能获得的最大权益.
+
+dp[i][v] = max( dp[i-1][j], dp[i-1][j-cost[i]]+value[i] ) // (不取, 取)第i个物品
+
+
+完全背包
+
+N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品有无穷多个. 求解在大小为 V 的背包能获得的最大权益.
+
+dp[i][j] 表示考虑前 i 种物品, 背包大小为j 获取的最大值.
+
+dp[i][j] = max( dp[i][j], dp[i-1][j-n*cost[k]]+n*value[k] ) // 考虑第 i 个产品取了 k 个
+
+dp[i][j] = max( dp[i-1][j], dp[i][j-cost[i]]+value[i] ) // 要不要获取一个第 i 个产品
+
+多重背包:
+
+N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品 cnt[i]个. 求解在大小为 V 的背包能获得的最大权益.
+
+
+分组背包:
+
+N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品1个. 这N个物品被分为 M 组, 每组最多取一个. 求解在大小
+为 V 的背包能获得的最大权益.
+
+dp[i][j] 表示考虑前 i 组物品. 背包大小为 j 的最大价值.
+
+dp[i][j] = max( dp[i-1][j], dp[i-1][j-cost[k]]+value[k] ) // 不选 或 选择第 k 个.
+*/
