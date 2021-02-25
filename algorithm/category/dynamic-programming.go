@@ -693,7 +693,10 @@ func MaxCoins(nums []int) int {
 /*
 813. 最大平均值和的分组
 
-将一个数组切割成 K 个子数组, 求解子数组平均值和的最大值
+将一个数组切割成 K 个子数组, 求解子数组平均值和的最大值.
+
+dp[n][k] 表示长度为 n 的数组切割成 k 个部分, 最大的平均和
+dp[n][k] = max(dp[i][k-1] + avg),  0 <= i < n
 */
 
 // LSA
@@ -701,7 +704,7 @@ func LargestSumOfAverages(nums []int, K int) float64 {
 	N := len(nums)
 	dp := make([][]float64, N+1)
 	for i := 0; i <= N; i++ {
-		dp[i] = make([]float64, N+1)
+		dp[i] = make([]float64, K+1)
 	}
 
 	// k=1 的状况
