@@ -571,9 +571,40 @@ f(i, j) 表示将下标位置 i 到 j 的所有元素合并能获得的价值的
 */
 
 /*
+1)合并石头[链接](最小成本)
+
+dp(i, j) = min( dp(i, k) + dp(k+1, j) + sum[i..j] )  i < k < j
+
+
+2)合并石头[环](最小成本) => nums[0..N] + nums[0..N] 组成一堆链, 计算合并石头最小代价
+
+dp(i, j) = min( dp(i, k) + dp(k+1, j) + sum[i..j] )  i < k < j
+
+min( dp(i, i+N) ) 则是最终的代价
+
+
+3) 矩阵乘法最小成本:
+A[i] = nums[i]*nums[i+1]
+
+dp(i, j) = min( dp(i, k) + dp(k+1, j) + nums[i] * nums[k+1] * nums[j+1])
+*/
+
+/*
+1039. 多边形三角剖分的最低得分
+
+dp[i][j] 表示 i..j 节点切割的最小成本
+
+dp[i][j] = min( dp[i][k] + dp[k][j] + nums[i]*nums[k]*nums[j])  i < k < j
+
+注: i+2 > j 这个时候无法切割.
+*/
+
+/*
 1547. 切棍子的最小成本
 
 有一根长度为 n 的棍子, 需要按照 cuts 当中的节点进行切割. 每次切割的成本是当前棍子的长度. 求解切割棍子的最小成本.
+
+dp(i,j) 从 [i..j] 切割开的最小成本
 
 dp(i,j) = min( dp(i,k) + dp(k,j) + j-i ) 其中 k 是切割点.
 
@@ -613,34 +644,6 @@ func MinCutCost(n int, cuts []int) int {
 }
 
 /*
-516: 最长回文子序列
-
-dp[i][j] = max(dp[i+1][j], dp[i][j-1]), s[i] != s[j]
-
-dp[i][j] = max(dp[i][j], dp[i+1][j-1] + 2), s[i] == s[j]
-*/
-func LongestPalindromeSubseq(s string) int {
-	N := len(s)
-	dp := make([][]int, N)
-	for i := 0; i < N; i++ {
-		dp[i] = make([]int, N)
-		dp[i][i] = 1
-	}
-
-	for j := 1; j < N; j++ {
-		for i := 0; i < j; i++ {
-			if s[i] == s[j] {
-				dp[i][j] = max(dp[i][j], dp[i+1][j-1]+2)
-			} else {
-				dp[i][j] = max(dp[i+1][j], dp[i][j-1])
-			}
-		}
-	}
-
-	return dp[0][N-1]
-}
-
-/*
 312. 戳气球
 
 有 n 个气球, 编号为0 到 n - 1, 每个气球上都标有一个数字, 这些数字存在数组 nums 中.
@@ -650,7 +653,7 @@ func LongestPalindromeSubseq(s string) int {
 
 dp[i][j] 表示 [i..j] 之间获得的积分
 
-dp[i][j] = max( nums[i-1]*nums[k]*nums[j+1] + dp[i][k-1] + dp[k+1][j] ) 其中 i <= k <= j, 代表戳中[i..j]
+dp[i][j] = max( dp[i][k-1] + dp[k+1][j] + nums[i-1]*nums[k]*nums[j+1] ) 其中 i <= k <= j, 代表戳中[i..j]
 之间的一个气球.
 */
 
@@ -746,4 +749,86 @@ func LargestSumOfAverages(nums []int, K int) float64 {
 	}
 
 	return dfs(N, K, dp)
+}
+
+/*
+516: 最长回文子序列(Sequence) [***]
+
+dp[i][j] = max(dp[i+1][j], dp[i][j-1]), s[i] != s[j]
+
+dp[i][j] = max(dp[i][j], dp[i+1][j-1] + 2), s[i] == s[j]
+*/
+func LongestPalindromeSubseq(s string) int {
+	N := len(s)
+	dp := make([][]int, N)
+	for i := 0; i < N; i++ {
+		dp[i] = make([]int, N)
+		dp[i][i] = 1
+	}
+
+	for j := 1; j < N; j++ {
+		for i := 0; i < j; i++ {
+			if s[i] == s[j] {
+				dp[i][j] = max(dp[i][j], dp[i+1][j-1]+2)
+			} else {
+				dp[i][j] = max(dp[i+1][j], dp[i][j-1])
+			}
+		}
+	}
+
+	return dp[0][N-1]
+}
+
+/*
+删除回文子序列: 给定一个字符串, 每次可以删除一个回文子序列(SubSequence), 最少的删除次数
+
+dp[i][j] = min( dp[i][k]+dp[k+1][j] ) s[i] != s[j] // 无法同时删除 s[i], s[j]
+
+dp[i][j] = min( dp[i][j], dp[i+1][j-1]) s[i]==s[j] // 注: 这里不需要加1, 原因是删除倒数第2次就可以一次性删除
+
+
+木板染色:
+
+dp[i][j] 表示将 i..j 染成目标颜色最小次数
+
+dp[i][j] = min( dp[i][k] + dp[k+1][j] ) // s[i] != s[j]
+
+dp[i][j] = min( dp[i][j], dp[i][j-1], dp[l+1][r] ) // s[i] == s[j]
+
+空狼先锋:
+
+dp[i][j] = min( dp[i][k-1] + dp[k+1][j] + nums[k]+buf[i-1]+buf[j+1]) // 最后干掉 k 时, 最小的代价
+*/
+
+func MinCost(nums []int, buf []int) int {
+	N := len(nums)
+	nums = append([]int{0}, append(nums, 0)...)
+	buf = append([]int{0}, append(buf, 0)...)
+
+	dp := make([][]int, N+1)
+	for i := 0; i <= N; i++ {
+		dp[i] = make([]int, N+1)
+	}
+
+	var dfs func(i, j int, dp [][]int) int
+	dfs = func(i, j int, dp [][]int) int {
+		if i > j {
+			return 0
+		}
+
+		if dp[i][j] != 0 {
+			return dp[i][j]
+		}
+
+		var ans = int(1<<63 - 1)
+		for k := i; k <= j; k++ {
+			ans = min(ans, dfs(i, k-1, dp)+dfs(k+1, j, dp)+nums[k]+buf[i-1]+buf[j+1])
+		}
+
+		dp[i][j] = ans
+
+		return dp[i][j]
+	}
+	
+	return dfs(1, N, dp)
 }

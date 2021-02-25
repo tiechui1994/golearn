@@ -42,3 +42,7 @@ func TestMinCutCost(t *testing.T) {
 
 	t.Log("LPS", LongestPalindromeSubseq("bbbab"), "real", 4)
 }
+
+func TestMinCost(t *testing.T) {
+	t.Log(MinCost([]int{3, 5, 7}, []int{8, 2, 0}))
+}
