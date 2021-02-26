@@ -1,13 +1,55 @@
 package category
 
 import (
-	"sort"
 	"container/heap"
+	"sort"
 )
 
 /**
 滑动窗口:
+
+解决数组/字符串的子元素问题, 它可以将嵌套的循环问题转换为单循环问题, 降低时间复杂度.
+
+Easy: size fixed
+eg: max sum of size = k
+
+Median: size 可变, 单限制条件
+eg: 找到 subarray sum 比目标值大一点点
+
+Median: size 可变, 双限制条件
+eg: longest substring with K distinct char (159. 至多包含两个不同字符的最长子串)
+
+Hard: size fixed, 单限制条件
+eg: sliding window maxinum, 考察单调队列
 **/
+
+func LongSubstringKDistinct(s string, k int) int {
+	m := make(map[byte]int)
+
+	left := 0
+	res := 0
+
+	for i := 0; i < len(s); i++ {
+		cur := s[i]
+		m[cur] = m[cur] + 1 // 进: 当前遍历的i进入窗口
+
+		for len(m) > k { // 出: 当前窗口不符合条件时, left 持续退出窗口
+			c := s[left]
+			m[c] = m[c] - 1
+			if m[c] == 0 {
+				delete(m, c)
+			}
+
+			left++
+		}
+
+		if res < i-left+1 { // 算: 现在的窗口 valid, 计算结果
+			res = i - left + i
+		}
+	}
+
+	return res
+}
 
 //==================================================================================================
 
@@ -266,7 +308,6 @@ func minWindow(s, t string) string {
 
 			}
 		}
-
 
 		// l需要进行移动
 		if r >= N {

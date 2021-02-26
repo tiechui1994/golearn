@@ -604,7 +604,7 @@ dp[i][j] = min( dp[i][k] + dp[k][j] + nums[i]*nums[k]*nums[j])  i < k < j
 
 有一根长度为 n 的棍子, 需要按照 cuts 当中的节点进行切割. 每次切割的成本是当前棍子的长度. 求解切割棍子的最小成本.
 
-dp(i,j) 从 [i..j] 切割开的最小成本
+dp(i,j) 从 [i..j] 切割开的最小成本. (当前的长度就是 j-i)
 
 dp(i,j) = min( dp(i,k) + dp(k,j) + j-i ) 其中 k 是切割点.
 
