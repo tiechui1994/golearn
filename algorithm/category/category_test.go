@@ -7,7 +7,7 @@ import (
 )
 
 func TestMaxSlidingWindow(t *testing.T) {
-	maxSlidingWindow := maxSlidingWindowII
+	maxSlidingWindow := MaxSlidingWindowII
 	case1 := []int{1, 3, -1, -3, 5, 3, 6, 7}
 	casek := 3
 	ans := maxSlidingWindow(case1, casek)
@@ -43,6 +43,12 @@ func TestMinCutCost(t *testing.T) {
 	t.Log("LPS", LongestPalindromeSubseq("bbbab"), "real", 4)
 }
 
-func TestMinCost(t *testing.T) {
-	t.Log(MinCost([]int{3, 5, 7}, []int{8, 2, 0}))
+func TestMinDamage(t *testing.T) {
+	t.Log(MinDamage([]int{3, 5, 7}, []int{8, 2, 0}))
+}
+
+// 最小覆盖子串
+func TestMinWindow(t *testing.T) {
+	//t.Log("MinWindow", MinWindow("ADOBECODEBANC", "ABC"))
+	t.Log("MinWindow", MinWindow("BBA", "AB"))
 }

@@ -54,6 +54,68 @@ func LongSubstringKDistinct(s string, k int) int {
 //==================================================================================================
 
 /*
+76: 最小覆盖子串
+
+给你一个字符串 s, 一个字符串 t. 返回 s 中涵盖 t 所有字符的最小子串.
+
+如果 s 中不存在涵盖 t 所有字符的子串, 则返回空字符串 "".
+
+类型: 长度固定, 单个条件限制.
+
+map[char,int] (表示当前窗口, 字符的个数统计) + validcount(当前窗口合法字符串长度)
+
+进, 出必须得"保持统一".
+*/
+
+func MinWindow(s, t string) string {
+	var minLeft, minLen int
+
+	chars := make(map[byte]int)
+	for i := 0; i < len(t); i++ {
+		chars[t[i]] += 1
+	}
+
+	minLen = len(s) + 1
+	left := 0
+	validCount := 0
+	for i := 0; i < len(s); i++ {
+		cur := s[i]
+		if val, ok := chars[cur]; ok {
+			// valid++, chars--
+			if val > 0 {
+				validCount++
+			}
+			chars[cur] -= 1
+		}
+
+		// 当 validCount 和 t 的长度相等时, 说明此时是满足要求的, 要开始移动 right
+		for validCount == len(t) {
+			if minLen > i-left+1 {
+				minLeft = left
+				minLen = i - left + 1
+			}
+
+			ch := s[left]
+			if _, ok := chars[ch]; ok {
+				// valid--, chars++
+				chars[ch] += 1
+				if chars[ch] > 0 {
+					validCount--
+				}
+			}
+
+			left++
+		}
+	}
+
+	if minLen == len(s)+1 {
+		minLen = 0
+	}
+
+	return s[minLeft : minLeft+minLen]
+}
+
+/*
 53: 给定一个整数数组 nums, 找到一个具有最大和的连续子数组(子数组最少包含一个元素), 返回其最大和.
 
 1) 动态规划: f(i) 表示以第 i 个数结尾的 "连续子数组的最大和", 那么 result = max{ f(i) } 0<=i<=n-1
@@ -88,7 +150,7 @@ func LongSubstringKDistinct(s string, k int) int {
 
 */
 
-func maxSubArrayI(nums []int) int {
+func MaxSubArrayI(nums []int) int {
 	f := nums[0]
 	max := f
 	for i := 1; i < len(nums); i++ {
@@ -106,7 +168,7 @@ func maxSubArrayI(nums []int) int {
 	return max
 }
 
-func maxSubArrayII(nums []int) int {
+func MaxSubArrayII(nums []int) int {
 	var get func(nums []int, l, r int) (iSum, lSum, rSum, mSum int)
 	get = func(nums []int, l, r int) (iSum, lSum, rSum, mSum int) {
 		if l == r {
@@ -186,7 +248,7 @@ func (p *PriorityQueue) Pop() interface{} {
 	return v
 }
 
-func maxSlidingWindowI(nums []int, k int) []int {
+func MaxSlidingWindowI(nums []int, k int) []int {
 	// 注: PriorityQueue 存储的是 index, 实际比较的是 index 背后的值
 	q := &PriorityQueue{IntSlice: make([]int, k), arr: nums}
 	for i := 0; i < k; i++ {
@@ -209,7 +271,7 @@ func maxSlidingWindowI(nums []int, k int) []int {
 	return ans
 }
 
-func maxSlidingWindowII(nums []int, k int) []int {
+func MaxSlidingWindowII(nums []int, k int) []int {
 	queue := make([]int, 0, k)
 	push := func(idx int) {
 		// i < j && nums[i] <= nums[j], 剔除 i
@@ -276,53 +338,6 @@ func findAnagrams(s string, p string) []int {
 		if count == N {
 			ans = append(ans, l)
 		}
-	}
-
-	return ans
-}
-
-/*
-76. 最小覆盖子串
-*/
-func minWindow(s, t string) string {
-	hash := make([]byte, 128)
-	for _, v := range t {
-		hash[v-'a'] += 1
-	}
-
-	N := len(t)
-	var ans string
-	var count int
-	for l, r := 0, 0; r < len(s); r++ {
-		rval := s[r] - 'a'
-
-		// 当前的字符是其中之一, 统计数量
-		if hash[rval] > 0 {
-			hash[rval]--
-			count++
-		}
-
-		if count == N {
-			lval := s[l] - 'a'
-			for hash[lval]+1 <= 0 {
-
-			}
-		}
-
-		// l需要进行移动
-		if r >= N {
-			lval := s[l] - 'a'
-			hash[lval]++
-			if hash[lval] > 0 {
-				count--
-			}
-
-			if count == N {
-				ans = s[l:r]
-				l++
-			}
-		}
-
 	}
 
 	return ans
