@@ -52,3 +52,7 @@ func TestMinWindow(t *testing.T) {
 	//t.Log("MinWindow", MinWindow("ADOBECODEBANC", "ABC"))
 	t.Log("MinWindow", MinWindow("BBA", "AB"))
 }
+
+func TestLongestSubstring(t *testing.T) {
+	t.Log("LongestSubstring", LongestSubstring("ababbc", 2))
+}

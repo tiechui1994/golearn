@@ -23,6 +23,11 @@ Hard: size fixed, 单限制条件
 eg: sliding window maxinum, 考察单调队列
 **/
 
+/*
+在字符串当中, 出现 K 个 distinct 字符的 SubString 的最长长度. [Mid]
+
+要求: SubString 包含了 K 个字母, 然后求解最大长度.
+*/
 func LongSubstringKDistinct(s string, k int) int {
 	m := make(map[byte]int)
 
@@ -51,10 +56,8 @@ func LongSubstringKDistinct(s string, k int) int {
 	return res
 }
 
-//==================================================================================================
-
 /*
-76: 最小覆盖子串
+76: 最小覆盖子串 [Hard]
 
 给你一个字符串 s, 一个字符串 t. 返回 s 中涵盖 t 所有字符的最小子串.
 
@@ -114,6 +117,68 @@ func MinWindow(s, t string) string {
 
 	return s[minLeft : minLeft+minLen]
 }
+
+/*
+395. 至少有 K 个重复字符的最长子串 [Hard]
+
+给你一个字符串 s 和一个整数 k, 找出 s 中的最长子串, 要求该子串中的每一字符出现次数都不少于 k. 返回这一子串的长度.
+
+注: 所给的字符串全都是小写英文字母.
+
+要求: SubString 的每个字母出现最少是 K 次, 最长的长度.
+
+
+map: 当前窗口字符出现次数统计(该值取值范围是 1..26)
+vaildcount: 统计在当前的窗口, 字符出现次数>=k 的个数
+
+分析: 给定的字符串都行小写字母, 那么该字符串的 UNIQUE 长度最大是 26. 那么是否可以每次去统计 unique 个字符, 在这个
+unique 个字符当中, 计算每个字符的出现的次数, 当出现的次数==k, 则 validcount++, 该过程中使用 map 保存.
+
+当 map.length > unique (可能存在的误区是 map.length 和 validcount 进行比较.), 说明 mp 当中存在某些字符的次数未
+达到 k 次. 这个时候需要 left 移动了.
+
+理想状况: map.length == unique && map.length == validcount, 这说明当前窗口是满足要求的.
+*/
+func LongestSubstringKRepeat(s string, k int) int {
+	max := 0
+	for unique := 1; unique <= 26; unique++ {
+		validCount := 0
+		left := 0
+		mp := make(map[byte]int)
+		for i := 0; i < len(s); i++ {
+			cur := s[i]
+			mp[cur] += 1 // 进
+			if mp[cur] == k {
+				validCount++
+			}
+
+			for len(mp) > unique {
+				ch := s[left]
+				mp[ch] -= 1 // 出
+				if mp[ch] == k {
+					validCount--
+				}
+
+				// 移除那些次数为0的字符
+				if mp[ch] == 0 {
+					delete(mp, ch)
+				}
+
+				left++
+			}
+
+			if unique == len(mp) && validCount == len(mp) {
+				if max < i-left+1 {
+					max = i - left + 1
+				}
+			}
+		}
+	}
+
+	return max
+}
+
+//==================================================================================================
 
 /*
 53: 给定一个整数数组 nums, 找到一个具有最大和的连续子数组(子数组最少包含一个元素), 返回其最大和.
