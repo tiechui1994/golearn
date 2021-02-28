@@ -418,42 +418,44 @@ func MaxSlidingWindowII(nums []int, k int) []int {
 /*
 438. 找到字符串中所有字母异位词.
 
+hash<char, count> + validcount
+
 时间复杂度: O(N)
 */
-func findAnagrams(s string, p string) []int {
-	if s == "" || p == "" || len(s) < len(p) {
-		return nil
+func FindAnagrams(s string, p string) []int {
+	hash := make(map[byte]int)
+	for i := 0; i < len(p); i++ {
+		hash[p[i]] += 1
 	}
 
-	hash := make([]byte, 26)
-	for _, v := range p {
-		hash[v-'a'] += 1
-	}
+	left := 0
+	validCount := 0
+	ans := make([]int, 0)
 
-	N := len(p)
-	var ans []int
-	var count int
-	for l, r := 0, 0; r < len(s); r++ {
-		rval := s[r] - 'a'
+	for i := 0; i < len(s); i++ {
+		cur := s[i]
 
-		// 当前的字符是其中之一, 统计数量
-		if hash[rval] > 0 {
-			hash[rval]--
-			count++
-		}
-
-		// l需要进行移动
-		if r >= N {
-			lval := s[l] - 'a'
-			hash[lval]++
-			if hash[lval] > 0 {
-				count--
+		if _, ok := hash[cur]; ok {
+			if hash[cur] > 0 {
+				validCount++
 			}
-			l++
+			hash[cur] -= 1
 		}
 
-		if count == N {
-			ans = append(ans, l)
+		for validCount == len(p) {
+			if i-left+1 == len(p) {
+				ans = append(ans, left)
+			}
+
+			char := s[left]
+			if _, ok := hash[char]; ok {
+				hash[char] += 1
+				if hash[char] > 0 {
+					validCount--
+				}
+			}
+
+			left++
 		}
 	}
 
