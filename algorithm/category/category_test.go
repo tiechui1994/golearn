@@ -54,5 +54,13 @@ func TestMinWindow(t *testing.T) {
 }
 
 func TestLongestSubstring(t *testing.T) {
-	t.Log("LongestSubstring", LongestSubstring("ababbc", 2))
+	t.Log("LongestSubstring", LongestSubstringKRepeat("ababbc", 2))
+}
+
+func TestShortestSubarray(t *testing.T) {
+	t.Log("ShortestSubarray", ShortestSubarray([]int{1}, 1))
+}
+
+func TestConstrainedSubsetSum(t *testing.T) {
+	t.Log("", ConstrainedSubsetSum([]int{10,-2,-10,-5,20}, 2))
 }
