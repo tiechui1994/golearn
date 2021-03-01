@@ -18,7 +18,7 @@ package category
 
 1438:
 
-1696: 
+1696: u
 */
 
 func MonotonicQueue(nums []int, k int) []int {

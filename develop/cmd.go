@@ -28,8 +28,24 @@ type option struct {
 }
 
 /*
-使用 C 语言 getopt_long 函数解析命令行参数
- */
+
+getopt_long 函数定义:
+
+#include <getopt.h>
+
+struct option {
+    const char *name;
+    int         has_arg;
+    int        *flag;
+    int         val;
+};
+
+int getopt_long(int argc, char * const argv[], const char *optstring, const struct option *longopts,
+	int *longindex);
+
+
+使用 C 语言 getopt_long 函数解析命令行参数.
+*/
 
 func main() {
 	// t 表示选项 t 没有参数. 合法格式: -t
