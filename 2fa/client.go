@@ -1,13 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/user"
-	"fmt"
+	"strconv"
 	"time"
 	"unsafe"
-	"strconv"
-	"bytes"
 )
 
 /*
@@ -137,8 +137,6 @@ func maybe(msg string) int {
 	}
 }
 
-
-
 /*
 头文件: #include <string.h>
 声明: void* memcpy(void *dst, const void *src, size_t n);
@@ -241,16 +239,21 @@ func getParams() {
 	opts := (*C.struct_option)(C.malloc(C.size_t(size)))
 	optsptr := (*[1024]C.struct_option)(unsafe.Pointer(opts))[:N:N]
 	for i := range options {
-		name, ok := options[i][0].(string)
-		flag := options[i][2].(int)
+		arg1 := options[i][1].(int)
+		arg3 := options[i][3].(int32)
 		opt := option{
-			has_arg: C.int(options[i][1].(int)),
-			flag:    (*C.int)(unsafe.Pointer(&flag)),
-			val:     C.int(options[i][3].(int32)),
+			has_arg: C.int(arg1),
+			val:     C.int(arg3),
 		}
-		if ok {
-			opt.name = C.CString(name)
+
+		if arg2, ok := options[i][2].(int); ok && arg2 != 0 {
+			opt.flag = (*C.int)(unsafe.Pointer(&arg2))
 		}
+
+		if arg0, ok := options[i][0].(string); ok {
+			opt.name = C.CString(arg0)
+		}
+
 		optsptr[i] = *(*C.struct_option)(unsafe.Pointer(&opt))
 	}
 
@@ -595,7 +598,7 @@ func getParams() {
 		scratch = (scratch & 0x7FFFFFFF) % modules
 		if scratch < modules/10 {
 			idx := SECRET_BITS/8 + BYTES_PER_SCRATCHCODE*i
-			urandom(buf[idx:idx+BYTES_PER_SCRATCHCODE])
+			urandom(buf[idx : idx+BYTES_PER_SCRATCHCODE])
 			goto scratch_code
 		}
 
@@ -730,7 +733,7 @@ func Secret() (origin []byte, secret []byte) {
 		len(step) +
 		len(window) +
 		len(ratelimit) + 5 + // NN MMM (total of five digits)
-		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1 ) + // newline
+		SCRATCHCODE_LENGTH*(MAX_SCRATCHCODES+1) + // newline
 		1 // NUL termination character
 
 	secret = make([]byte, secretLen, secretLen)
