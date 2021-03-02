@@ -199,7 +199,7 @@ func LongestSubstringKRepeat(s string, k int) int {
 最多存在 K-1 个不同整数的子区间个数 + 恰好存在 K 个不同整数的子区间个数  = 最多存在 K 个不同整数子区间的个数
 */
 
-func KK(nums []int, k int) int {
+func CountSubArrayKDistinct(nums []int, k int) int {
 	AtMost := func(nums []int, k int) int {
 		ans := 0
 		left := 0
@@ -238,7 +238,7 @@ func KK(nums []int, k int) int {
 1) 动态规划: f(i) 表示以第 i 个数结尾的 "连续子数组的最大和", 那么 result = max{ f(i) } 0<=i<=n-1
 因此, 只需要求出每个位置的 f(i), 然后返回 f 数组中的最大值即可. 状态转移方程:
 
-	f(i) = max{ f(i-1)+a[i], ai }
+	f(i) = max( f(i-1)+a[i], a[i] )
 
 2) 分治: 定义一个操作 get(a, l, r) 表示查询 a 序列 [l,r] 区间内的最大子段和, 那么最终的答案是 get(nums, 0, len-1)
 对于一个区间 [l, r], 取 m = (l+r)/2, 对于区间 [l, m] 和 [m+1,r] 分治求解. 当递归逐层深入直到区间长度缩小为1时,

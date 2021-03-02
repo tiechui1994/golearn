@@ -64,3 +64,7 @@ func TestShortestSubarray(t *testing.T) {
 func TestConstrainedSubsetSum(t *testing.T) {
 	t.Log("", ConstrainedSubsetSum([]int{10,-2,-10,-5,20}, 2))
 }
+
+func TestLongestSubarray(t *testing.T) {
+	t.Log("", LongestSubarray([]int{8,2,4,7}, 4))
+}
