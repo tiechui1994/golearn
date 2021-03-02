@@ -840,7 +840,6 @@ func MinDamage(nums []int, buf []int) int {
 	return dfs(1, N, dp)
 }
 
-
 //==================================================================================================
 
 /*
@@ -848,9 +847,9 @@ func MinDamage(nums []int, buf []int) int {
 
 0-1 背包
 
-N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品只有一个. 求解在大小为 V 的背包能获得的最大权益.
+N 个物品, 第 i 个的代价是 cost[i], 价值是 value[i], 每种物品只有一个. 求解在大小为 w 的背包能获得的最大权益.
 
-dp[i][v] = max( dp[i-1][j], dp[i-1][j-cost[i]]+value[i] ) // (不取, 取)第i个物品
+dp[i][w] = max( dp[i-1][w], dp[i-1][w-cost[i]]+value[i] ) // (不取, 取)第i个物品
 
 
 完全背包
@@ -877,3 +876,39 @@ dp[i][j] 表示考虑前 i 组物品. 背包大小为 j 的最大价值.
 
 dp[i][j] = max( dp[i-1][j], dp[i-1][j-cost[k]]+value[k] ) // 不选 或 选择第 k 个.
 */
+
+/*
+416. 分割等和子集
+
+给定一个只包含正整数的非空数组. 是否可以将这个数组分割成两个子集, 使得两个子集的元素和相等.
+*/
+
+func CanPartition(nums []int) bool {
+	sum := 0
+	for i := 0; i < len(nums); i++ {
+		sum += nums[i]
+	}
+
+	if sum%2 == 1 {
+		return false
+	}
+
+	n := len(nums)
+
+	dp := make([][]bool, n+1)
+	for i := 0; i <= len(nums); i++ {
+		dp[i] = make([]bool, sum/2+1)
+		dp[i][0] = true // 不取任何物品即可.
+	}
+
+	for i := 1; i <= len(nums); i++ {
+		for j := 1; j <= sum/2; j++ {
+			dp[i][j] = dp[i-1][j]
+			if j-nums[i-1] >= 0 {
+				dp[i][j] = dp[i][j] || dp[i-1][j-nums[i-1]]
+			}
+		}
+	}
+
+	return dp[n][sum/2]
+}
