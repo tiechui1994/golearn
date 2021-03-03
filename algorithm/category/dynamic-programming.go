@@ -1125,4 +1125,76 @@ dp[i][j] 表示坐标从起点走到当前(i,j) 时的状态.
 但是坐标型不可以跳跃, 必须是一步一步走的.
 */
 
+/*
+120. 三角形最小路径和
+*/
+func MinimumTotal(triangle [][]int) int {
+	if len(triangle) == 1 {
+		return triangle[0][0]
+	}
 
+	m := len(triangle)
+	n := len(triangle[m-1])
+
+	dp := make([][]int, m)
+	for i := 0; i < m; i++ {
+		dp[i] = make([]int, n)
+	}
+
+	const max = int(1<<63 - 1)
+
+	ans := max
+	dp[0][0] = triangle[0][0]
+
+	for i := 1; i < m; i++ {
+		L := len(triangle[i])
+		for j := 0; j < L; j++ {
+			var left, right = max, max
+			if j == 0 {
+				right = dp[i-1][0]
+			} else if j == L-1 {
+				left = dp[i-1][L-2]
+			} else {
+				left = dp[i-1][j-1]
+				right = dp[i-1][j]
+			}
+
+			dp[i][j] = min(left, right) + triangle[i][j]
+			if i == m-1 {
+				ans = min(dp[i][j], ans)
+			}
+		}
+	}
+
+	return ans
+}
+
+/*
+931. 下降路径最小和
+
+给你一个 n x n 的 方形整数数组 matrix, 找出并返回通过 matrix 的下降路径的最小和.
+
+"下降路径" 可以从第一行中的任何元素开始, 并从每一行中选择一个元素. 在下一行选择的元素和当前行所选元素最多相隔一列(即位于
+正下方或者沿对角线向左或者向右的第一个元素)
+
+
+dp[i][j] = min(dp[i-1][j], dp[i-1][j-1], dp[i-1][j+1]) + matrix[i][j]
+
+DP本身不难, 主要是解题思路, 要换个方向. 从下向上开始计算, 这样会更加简单[逆向思维].
+*/
+
+/*
+221. 最大正方形
+
+求解矩阵当中, 全部是1的最大正方形面积.
+
+
+dp[i][j] 表示以 (i,j) 为右下角的最大正方形边长. 注: (i, j) 的值是 '1'
+
+dp[i][j] = min( dp[i-1][j], dp[i-1][j-1], dp[i][j-1] ) + 1 // 递归保证(当前的节点是'1'的状况下)
+*/
+
+/*
+85: 最大的长方形 [Hard]
+单调栈思路
+*/
