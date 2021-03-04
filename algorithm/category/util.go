@@ -34,6 +34,12 @@ func (d *Deque) peekFirst() int {
 	}
 	return 0
 }
+func (d *Deque) peekLast() int {
+	if !d.isEmpty() {
+		return d.data[len(d.data)-1]
+	}
+	return 0
+}
 
 func (d *Deque) pollFirst() int {
 	if !d.isEmpty() {
@@ -43,20 +49,6 @@ func (d *Deque) pollFirst() int {
 	}
 	return 0
 }
-
-func (d *Deque) offerFirst(data int) {
-	d.data = append(d.data, 0)
-	copy(d.data[1:], d.data[0:])
-	d.data[0] = data
-}
-
-func (d *Deque) peekLast() int {
-	if !d.isEmpty() {
-		return d.data[len(d.data)-1]
-	}
-	return 0
-}
-
 func (d *Deque) pollLast() int {
 	if !d.isEmpty() {
 		n := len(d.data)
@@ -66,6 +58,41 @@ func (d *Deque) pollLast() int {
 	}
 	return 0
 }
+
 func (d *Deque) offerLast(data int) {
 	d.data = append(d.data, data)
+}
+
+type Stack struct {
+	data []int
+}
+
+func (s *Stack) size()int  {
+	return len(s.data)
+}
+func (s *Stack) isEmpty() bool {
+	return len(s.data) == 0
+}
+func (s *Stack) peek() int {
+	if !s.isEmpty() {
+		n := len(s.data)
+		return s.data[n-1]
+	}
+
+	return 0
+}
+
+func (s *Stack) pop() int {
+	if !s.isEmpty() {
+		n := len(s.data)
+		ans := s.data[n-1]
+		s.data = s.data[:n-1]
+		return ans
+	}
+
+	return 0
+}
+
+func (s *Stack) push(data int) {
+	s.data = append(s.data, data)
 }
