@@ -54,8 +54,8 @@ func IncreseStacktempate(nums []int) []int {
 位置).
 
 思路:
-	统计字母最后一次出现的位置.
-	单调递减栈. 维持栈递减的条件 (当前的元素不是最后一次出现) => 元素出栈
+	计算字母最后一次出现的位置.
+	单调递减栈. 维持栈递减的条件 (当前的元素不是最后一次出现 && 当前元素非递减) => 元素出栈
 */
 
 func RemoveDuplicateLetters(s string) string {
@@ -70,7 +70,7 @@ func RemoveDuplicateLetters(s string) string {
 	for i := 0; i < len(s); i++ {
 		char := int(s[i])
 
-		// 统计加入栈的元素
+		// 统计当前加入栈的元素. 保证栈中的元素唯一.
 		if visit[char] {
 			continue
 		} else {
@@ -94,3 +94,59 @@ func RemoveDuplicateLetters(s string) string {
 
 	return string(ans)
 }
+
+/*
+402. 移掉K位数字[Mid]
+
+给定一个以字符串表示的非负整数 num, 移除这个数中的 k 位数字, 使得剩下的数字最小.
+
+思路: 单调递减栈[可以元素相等]. 这样使得小数字在前面(栈底), 大数字在栈尾巴
+*/
+
+func RemoveKDights(num string, k int) string {
+	n := len(num)
+	stack := Stack{}
+
+	for i := 0; i < n; i++ {
+		char := int(num[i])
+		for !stack.isEmpty() && k > 0 && char < stack.peek() {
+			stack.pop()
+			k--
+		}
+
+		stack.push(char)
+	}
+
+	for k > 0 {
+		stack.pop()
+		k--
+	}
+
+	zero := 0
+	n = stack.size()
+	ans := make([]rune, n)
+	for !stack.isEmpty() {
+		char := stack.pop()
+		ans[n-1] = rune(char)
+		n--
+		if char == '0' {
+			zero++
+		} else {
+			zero = 0
+		}
+	}
+
+	return string(ans[zero:])
+}
+
+/*
+42. 接雨水
+
+给定 n 个非负整数表示每个宽度为 1 的柱子的高度图, 计算按此排列的柱子, 下雨之后能接多少雨水.
+
+84: 条形图最大长方形面积.
+
+思路: 当图形处于上升期(h[i] < h[i+]), 不用计算面积. 因为这种状况下, 再往后移动一格(i -> i+1), 将获得更大的面积.
+     当图形处于下降期(h[i] > h[i+1]), 需要计算当前矩形的面积, 这个时候穷举 stack 里所有的高度, 由于 stack 是递增
+的, 从最高的高度开始不断下降, 随着高度的下降, 更多的竖条可以加入到大长方形面积来, 保持所生成的大长方形的最大面积.
+ */
