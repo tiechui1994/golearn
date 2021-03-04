@@ -1,8 +1,8 @@
 package qrcode
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestIter(t *testing.T) {
@@ -52,7 +52,7 @@ func BenchmarkQrcode(b *testing.B) {
 		code := MakeQrcode(1, ERROR_CORRECT_H, 2, 0)
 		code.AddData([]byte(data), 20)
 		code.PrintAscii(nil, true)
-		b.Log(code.version, code.count, /*size=*/ 21+(code.version-1)*4+2*4 /*border*/)
+		b.Log(code.version, code.count /*size=*/, 21+(code.version-1)*4+2*4 /*border*/)
 	}
 }
 

@@ -1,15 +1,15 @@
 package main
 
 import (
-	"strings"
-	"fmt"
 	"bytes"
-	"time"
-	"sort"
-	"unsafe"
-	"os"
+	"fmt"
 	"io"
+	"os"
 	"os/user"
+	"sort"
+	"strings"
+	"time"
+	"unsafe"
 )
 
 const (
@@ -735,7 +735,7 @@ func get(key string, buf []byte) []byte {
 			(line[idx] == 0 || line[idx] == ' ' || line[idx] == '\t' || line[idx] == '\r' || line[idx] == '\n') {
 			idx += strspn(line[idx:], " \t")
 			vallen := strcspn(line[idx:], "\r\n")
-			return []byte(line[idx:idx+vallen])
+			return []byte(line[idx : idx+vallen])
 		} else {
 			idx := strcspn(line, "\r\n")
 			line = line[idx:]
@@ -757,8 +757,7 @@ func set(key, val string, buf *[]byte) int {
 	line := string(*buf)
 	for len(line) > len(key) {
 		idx := 2 + keylen
-		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:idx]), key) == 0 && (
-			line[idx] == 0 || line[idx] == ' ' || line[idx] == '\t' || line[idx] == '\r' || line[idx] == '\n') {
+		if line[0] == '"' && line[1] == ' ' && strings.Compare(string(line[2:idx]), key) == 0 && (line[idx] == 0 || line[idx] == ' ' || line[idx] == '\t' || line[idx] == '\r' || line[idx] == '\n') {
 			offset := strcspn(line, "\r\n")
 			stop = start + offset
 			stop += strspn(line[offset:], "\r\n")
@@ -791,7 +790,7 @@ func set(key, val string, buf *[]byte) int {
 
 	*buf = append(
 		(*buf)[:start],
-		append(data, (*buf)[stop:]...)...
+		append(data, (*buf)[stop:]...)...,
 	)
 
 	return 0

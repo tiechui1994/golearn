@@ -1,12 +1,12 @@
 package main
 
 import (
-	"strings"
 	"crypto/hmac"
 	"crypto/sha1"
+	"fmt"
 	"os"
 	"os/user"
-	"fmt"
+	"strings"
 )
 
 const (

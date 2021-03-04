@@ -3,8 +3,8 @@ package qrcode
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -114,14 +114,14 @@ func (q *Qrdata) len() int {
 func (q *Qrdata) write(buffer *BitBuffer) {
 	if q.mode == MODE_NUMBER {
 		for i := 0; i < len(q.data); i += 3 {
-			chars := q.data[i:i+3]
+			chars := q.data[i : i+3]
 			bitlen := NUMBER_LENGTH[len(chars)]
 			val, _ := strconv.ParseInt(string(chars), 10, 64)
 			buffer.put(int(val), bitlen)
 		}
 	} else if q.mode == MODE_ALPHA_NUM {
 		for i := 0; i < len(q.data); i += 3 {
-			chars := q.data[i:i+2]
+			chars := q.data[i : i+2]
 			if len(chars) > 1 {
 				idx0 := bytes.IndexByte(ALPHA_NUM, chars[0])
 				idx1 := bytes.IndexByte(ALPHA_NUM, chars[1])
@@ -155,7 +155,7 @@ func (bit *BitBuffer) get(index uint) bool {
 
 func (bit *BitBuffer) put(num int, length int) {
 	for i := 0; i < length; i++ {
-		b := (num>>(uint(length - i - 1)))&1 == 1
+		b := (num>>(uint(length-i-1)))&1 == 1
 		bit.putbit(b)
 	}
 }
@@ -505,20 +505,19 @@ func lostPointLevel3(modules [][]Bool, modcount int) int {
 				thisRow[col+5] != True &&
 				thisRow[col+6] == True &&
 				thisRow[col+9] != True &&
-				(
-					thisRow[col+0] == True &&
-						thisRow[col+2] == True &&
-						thisRow[col+3] == True &&
-						thisRow[col+7] != True &&
-						thisRow[col+8] != True &&
-						thisRow[col+10] != True ||
+				(thisRow[col+0] == True &&
+					thisRow[col+2] == True &&
+					thisRow[col+3] == True &&
+					thisRow[col+7] != True &&
+					thisRow[col+8] != True &&
+					thisRow[col+10] != True ||
 
-						thisRow[col+0] != True &&
-							thisRow[col+2] != True &&
-							thisRow[col+3] != True &&
-							thisRow[col+7] == True &&
-							thisRow[col+8] == True &&
-							thisRow[col+10] == True) {
+					thisRow[col+0] != True &&
+						thisRow[col+2] != True &&
+						thisRow[col+3] != True &&
+						thisRow[col+7] == True &&
+						thisRow[col+8] == True &&
+						thisRow[col+10] == True) {
 				lostpoint += 40
 			}
 
@@ -538,20 +537,19 @@ func lostPointLevel3(modules [][]Bool, modcount int) int {
 				modules[row+5][col] != True &&
 				modules[row+6][col] == True &&
 				modules[row+9][col] != True &&
-				(
-					modules[row+0][col] == True &&
-						modules[row+2][col] == True &&
-						modules[row+3][col] == True &&
-						modules[row+7][col] != True &&
-						modules[row+8][col] != True &&
-						modules[row+10][col] != True ||
+				(modules[row+0][col] == True &&
+					modules[row+2][col] == True &&
+					modules[row+3][col] == True &&
+					modules[row+7][col] != True &&
+					modules[row+8][col] != True &&
+					modules[row+10][col] != True ||
 
-						modules[row+0][col] != True &&
-							modules[row+2][col] != True &&
-							modules[row+3][col] != True &&
-							modules[row+7][col] == True &&
-							modules[row+8][col] == True &&
-							modules[row+10][col] == True) {
+					modules[row+0][col] != True &&
+						modules[row+2][col] != True &&
+						modules[row+3][col] != True &&
+						modules[row+7][col] == True &&
+						modules[row+8][col] == True &&
+						modules[row+10][col] == True) {
 				lostpoint += 40
 			}
 

@@ -40,8 +40,8 @@ char *s = "Hello";
 import "C"
 import (
 	"fmt"
-	"unsafe"
 	"reflect"
+	"unsafe"
 )
 
 func main() {

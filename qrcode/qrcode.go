@@ -1,14 +1,14 @@
 package qrcode
 
 import (
+	"bytes"
+	"golang.org/x/image/bmp"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"os"
-	"image/color"
-	"image"
-	"image/png"
-	"bytes"
-	"image/jpeg"
-	"golang.org/x/image/bmp"
 )
 
 type Qrcode struct {
@@ -101,7 +101,7 @@ func (q *Qrcode) setupPositionProbePattern(row, col int) {
 			if col+c <= -1 || q.count <= col+c {
 				continue
 			}
-			if (0 <= r && r <= 6 && (c == 0 || c == 6 )) ||
+			if (0 <= r && r <= 6 && (c == 0 || c == 6)) ||
 				(0 <= c && c <= 6 && (r == 0 || r == 6)) ||
 				(2 <= r && r <= 4 && 2 <= c && c <= 4) {
 				q.modules[row+r][col+c] = True
@@ -311,7 +311,6 @@ func (q *Qrcode) make(fit bool) {
 		panic("the data is too large, the QR code cannot accommodate.")
 	}
 
-
 	if q.maskpattern == 0 {
 		q.makeImpl(false, q.bestMaskPattern())
 	} else {
@@ -425,10 +424,10 @@ func (q *Qrcode) PrintAscii(out io.Writer, invert bool) {
 	codes := make([]rune, 4)
 
 	/*
-	import "golang.org/x/text/encoding/charmap"
-	for i, ch := range []byte{255, 223, 220, 219} {
-		codes[i] = charmap.CodePage437.DecodeByte(ch)
-	}
+		import "golang.org/x/text/encoding/charmap"
+		for i, ch := range []byte{255, 223, 220, 219} {
+			codes[i] = charmap.CodePage437.DecodeByte(ch)
+		}
 	*/
 
 	for i, ch := range []uint{0xa0, 0x2580, 0x2584, 0x2588} {

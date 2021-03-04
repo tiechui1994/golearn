@@ -173,8 +173,8 @@ func StoneGameII(piles []int) int {
 	}
 
 	/*
-	游戏增加了一个限制: 每次取的数据可是是前一次的2倍, 因此当次取的最优策略是限制下一次取的值的最小, 那么这次获取就是最
-	大了.
+		游戏增加了一个限制: 每次取的数据可是是前一次的2倍, 因此当次取的最优策略是限制下一次取的值的最小, 那么这次获取就是最
+		大了.
 	*/
 	var dfs func(arr []int, i, M int, memo [][]int, sum []int) int
 	dfs = func(arr []int, i, M int, memo [][]int, sum []int) int {
