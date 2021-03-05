@@ -62,6 +62,8 @@ func CanIWin(n int) bool {
 接着使用 N-x 代替原来的 N, 直到玩家无法执行上述的操作. 能拿到最后一个数字的玩家获胜.
 
 dp[i] = !( dp[k] || dp[k] )   k 满足的条件是 N % x == 0
+
+理论参考 CanIWin
 */
 
 func DivisorGame(n int) bool {
@@ -105,7 +107,11 @@ memo[i][j] 表示在范围 i..j 之间双方最大分数差, 那么 memo[0][n-1]
 
 注: 只有当差值最大时(先手-后手), 才能判断先手在最好的状况下是否能赢.
 
+memo[i][j] A 先拿, A与B的差, 因为只能拿一个, 可以先拿 arr[i] 或 arr[j].
+
 memo[i][j] = max( arr[i] - memo[i+1][j], arr[j] - memo[i][j-1] )
+
+具体理论参考 StoneGameIII
 */
 
 func StoneGameI(piles []int) bool {
@@ -158,6 +164,8 @@ func StoneGameI(piles []int) bool {
 最初 M = 1. 在每个回合中, 该玩家可以拿走剩下的 "前X堆的所有石子", 其中 1 <= X <= 2M, 然后, M = max(M, X).
 
 游戏一直持续到所有 piles 当中的石子都被拿完. "返回先手拿到最大数量的石子".
+
+理论参考 StoneGameIII, 就是 X 收到限制
 **/
 
 func StoneGameII(piles []int) int {
@@ -220,6 +228,16 @@ func StoneGameII(piles []int) int {
 在每个回合中, 该玩家可以拿走剩下的 "前X堆的所有石子", X取值是1, 2, 3. 游戏一直持续到所有 piles 当中的石子都被拿完.
 
 A, B 玩这个游戏, 谁会赢(A是先手, 并且A,B都采用最优策略)?
+
+dp[i] 表示从 i 开始, A 先拿, A与B的最大差距
+dp[i] = max( sum[i:i+k] - dp[i+k+1] )  0 <= k < 3
+
+注: sum[i..i+k] 表示 Sa 先拿的和, dp[i+k+1] 表示 Sb - Sa' 的最大值(因为此时 B 先拿)
+
+Sum(A) = Sa + Sa'
+Sum(B) = Sb
+
+Sum(A) - Sum(B) = Sa + Sa' - Sb = Sa - (Sb - Sa')
 */
 
 func StoneGameIII(piles []int) string {
@@ -1207,4 +1225,33 @@ dp[i][j] = min( dp[i-1][j], dp[i-1][j-1], dp[i][j-1] ) + 1 // 递归保证(当�
 213: 打家劫舍II, [环] -> 线性[ 0-n-2, 1-n-1, 1-n-2 ] -> 纯粹0-1背包问题
 
 337: 打家劫舍III, [树] -> 递归线性 -> 纯粹0-1背包问题
+*/
+
+/*
+LCS: 最长公共子序列(SubSequence)
+
+dp[i][j] 表示 s1[1...i] 与 s2[1..j] 的最长公共子序列
+
+dp[0][0] = 0
+
+dp[i][j] = max(dp[i][j-1], dp[i-1][j]) // s1[i] != s2[j]
+dp[i][j] = dp[i-1][j-1]+1 // s1[i] == s2[j]
+*/
+
+/*
+划分型DP:
+
+给你一个序列, 你把它 "不重不漏" 的划分成若干个.
+
+直接思路 dp[i] 表示考虑了序列前 i 个元素的答案.
+
+转移, 先枚举一个状态 dp[i], 然后考虑将序列 [i+1, j] 接在后面自成一段, 转移到状态 dp[j]
+
+132: 拆分回文字符串 II
+
+dp[i] 表示以 i 结尾的回文段数.
+
+dp[0] = 0
+
+dp[i] = min{ dp[k]+1 }  k < i && s[i+1..k] 回文
 */
