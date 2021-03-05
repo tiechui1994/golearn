@@ -55,7 +55,7 @@ func IncreseStacktempate(nums []int) []int {
 
 思路:
 	计算字母最后一次出现的位置.
-	单调递减栈. 维持栈递减的条件 (当前的元素不是最后一次出现 && 当前元素非递减) => 元素出栈
+	单调递减栈. 维持栈递减的条件 (栈顶元素最后一次出现的位置大于当前位置 && 当前元素非递减) => 元素出栈
 */
 
 func RemoveDuplicateLetters(s string) string {
@@ -77,8 +77,8 @@ func RemoveDuplicateLetters(s string) string {
 			visit[char] = true
 		}
 
-		// 递减顺序, 栈顶元素最大
-		for !stack.isEmpty() && i < last[char] && char < stack.peek() {
+		// 递减顺序, 栈顶元素最大. 栈顶的元素最后一次出现的位置大于当前的位置
+		for !stack.isEmpty() && char < stack.peek() && i < last[stack.peek()] {
 			delete(visit, stack.pop())
 		}
 
@@ -144,9 +144,59 @@ func RemoveKDights(num string, k int) string {
 
 给定 n 个非负整数表示每个宽度为 1 的柱子的高度图, 计算按此排列的柱子, 下雨之后能接多少雨水.
 
+左边界, 中间, 右边界. 只有当出现 V 字型, 才能接到水. 因此需要一个单调递增栈
+
 84: 条形图最大长方形面积.
 
 思路: 当图形处于上升期(h[i] < h[i+]), 不用计算面积. 因为这种状况下, 再往后移动一格(i -> i+1), 将获得更大的面积.
      当图形处于下降期(h[i] > h[i+1]), 需要计算当前矩形的面积, 这个时候穷举 stack 里所有的高度, 由于 stack 是递增
 的, 从最高的高度开始不断下降, 随着高度的下降, 更多的竖条可以加入到大长方形面积来, 保持所生成的大长方形的最大面积.
- */
+*/
+
+func MaxSquaArea(height []int) int {
+	stack := Stack{}
+	ans := 0
+	for i := 0; i < len(height); i++ {
+		// 递增.
+		for !stack.isEmpty() && height[stack.peek()] > height[i] {
+			idx := stack.pop()
+			h := height[idx]
+			w := i - idx
+			ans = max(ans, h*w)
+		}
+
+		stack.push(i)
+	}
+
+	for !stack.isEmpty() {
+		idx := stack.pop()
+		h := height[idx]
+		w := len(height) - idx
+		ans = max(ans, h*w)
+	}
+
+	return 0
+}
+
+func CatachWater(height []int) int {
+	stack := Stack{}
+	ans := 0
+	for i := 0; i < len(height); i++ {
+		// 递增.
+		for !stack.isEmpty() && height[stack.peek()] < height[i] {
+			mid := stack.pop() // 中间
+			if !stack.isEmpty() {
+				left := stack.peek() // 左边
+				right := i           // 右边
+
+				h := min(height[left], height[right]) - height[mid]
+				w := right - left - 1
+				ans += h * w
+			}
+		}
+
+		stack.push(i)
+	}
+
+	return ans
+}
