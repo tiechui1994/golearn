@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
-	"strings"
 	"syscall"
 
 	"golang.org/x/net/ipv4"
@@ -19,29 +17,27 @@ func init() {
 	inters, _ := net.Interfaces()
 	for _, i := range inters {
 		name := i.Name
-		if strings.Contains(name,"") {
-
+		addrs, _ := i.Addrs()
+		if name != "lo" && name != "docker0" && len(addrs) > 0 {
+			inetname = name
+			break
 		}
 	}
 }
 
 func main() {
-	i, _ := net.Interfaces()
-	for _, ii := range i {
-		fmt.Println(ii.Name)
-	}
-	//multicast()
+	multicast()
 }
 
 func multicast() {
 	// 1. interface
-	inter, err := net.InterfaceByName("wlp2s0")
+	inter, err := net.InterfaceByName(inetname)
 	if err != nil {
 		log.Fatal("InterfaceByName:", err)
 	}
 
 	// 2. open PacketConn
-	pc, err := Open(net.IPv4zero, 2000, "wlp2s0")
+	pc, err := Open(net.IPv4zero, 2000, inetname)
 	if err != nil {
 		log.Fatal("mcastOpen:", err)
 	}
