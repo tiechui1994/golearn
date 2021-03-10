@@ -76,3 +76,10 @@ func TestMinimumTotal(t *testing.T) {
 func TestRemoveDuplicateLetters(t *testing.T) {
 	t.Log(RemoveDuplicateLetters("cbacdcbc"))
 }
+
+func TestLadderLength(t *testing.T) {
+	begin, end := "hit", "cog"
+
+	// hit hot lot log cog
+	t.Log(LadderLength(begin, end, []string{"hot", "dot", "dog", "lot", "log", "cog"}), "real:5")
+}
