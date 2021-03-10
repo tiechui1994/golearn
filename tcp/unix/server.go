@@ -1,36 +1,41 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
+	"time"
 )
 
 func handle(conn net.Conn) {
 	defer conn.Close()
 
-	var (
-		buffer bytes.Buffer
-	)
-
-	reader := bufio.NewReader(conn)
+	size := 1024
+	buf := make([]byte, size)
+	buffer := bytes.Buffer{}
 	for {
-		msg, err := reader.ReadString('\n')
-		if err == io.EOF {
-			buffer.WriteString(msg)
-			fmt.Println("send data", buffer.String())
-			conn.Write(buffer.Bytes())
-			buffer.Reset()
-		} else if err != nil {
+	read:
+		n, err := conn.Read(buf)
+		if err != nil && err != io.EOF {
 			fmt.Println("receive error: ", err)
 			break
 		}
 
-		buffer.WriteString(msg)
+		buffer.Write(buf[:n])
+		if n == size {
+			goto read
+		}
+
+
+		fmt.Println("receive data", buffer.String())
+		if buffer.Len() == 0 {
+			buffer.WriteString(time.Now().String())
+		}
+		conn.Write(buffer.Bytes())
+		buffer.Reset()
 	}
 }
 
