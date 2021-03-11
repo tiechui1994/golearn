@@ -196,5 +196,118 @@ func LadderLength2(begin string, end string, wordList []string) int {
 /*
 490: 迷宫. 小气球走迷宫(起点->终点)
 
-505: 迷宫II. 最短路径(SSSP单源最短路径算法[一个节点到其他所有节点的最短路径, Dijkstra的PQ实现)
+由空地和墙组成的迷宫中有一个球.
+球可以向上下左右四个方向滚动, 但在遇到墙壁前不会停止滚动.
+当球停下时, 可以选择下一个方向.
+
+给定球的起始位置, 目的地和迷宫, 判断球能否在目的地停下.
+
+505: 迷宫II. 最短路径.
+
+每次保存除了坐标之外, 还要保存到当前位置的最短路径.
+
+queue 使用优先级(根据最短路径进行排序).
+
+dp[x][y] = min(dp[i][j]+count)  表示从 i, j 到 x, y 的最小距离
+
+i, j 的开始起点是 start, 然后按照四个方向走, 之后都会到达 x,y (终点).
 */
+
+func HasPath(maze [][]int, start []int, end []int) bool {
+	dirs := [][2]int{{0, 1}, {0, -1}, {-1, 0}, {1, 0}}
+	queue := make([][2]int, 0)
+	visit := make(map[[2]int]bool)
+
+	queue = append(queue, [2]int{start[0], start[1]})
+	for len(queue) > 0 {
+		size := len(queue)
+
+		for i := 0; i < size; i++ {
+			point := queue[0]
+			queue = queue[1:]
+
+			if point[0] == end[0] && point[1] == end[1] {
+				return true
+			}
+
+			// 开始行走
+			for _, dir := range dirs {
+				point[0] += dir[0] // x
+				point[1] += dir[1] // y
+				// 开始行走, 直到撞墙
+				for point[0] >= 0 && point[1] >= 0 &&
+					point[0] < len(maze) && point[1] < len(maze[0]) &&
+					maze[point[0]][point[1]] == 0 {
+					point[0] += dir[0]
+					point[1] += dir[1]
+				}
+				// 撞墙回退
+				point[0] -= dir[0]
+				point[1] -= dir[1]
+
+				if !visit[point] {
+					visit[point] = true
+					queue = append(queue, point) // 进入队列
+				}
+			}
+		}
+
+	}
+
+	return false
+}
+
+/*
+拓扑排序:
+
+每次选择入度为0的节点, 加入当前的 queue. 在遍历的时候, 会将下一个节点的入度减1.
+
+indegree []int 节点的入度
+
+grap map[node][]node // 节点node, node后的node
+
+207. 课程表.(上课顺序)
+*/
+
+func CanFinish(numCourses int, prerequisites [][]int) {
+	graph := make(map[int][]int)
+	indgree := make([]int, numCourses)
+	for i := 0; i < len(prerequisites); i++ {
+		start := prerequisites[i][1] // 开始节点
+		end := prerequisites[i][0]   // 结束节点
+		if val, ok := graph[start]; ok {
+			graph[start] = append(val, end)
+		} else {
+			graph[start] = []int{end}
+		}
+
+		indgree[end]++ // 节点入度
+	}
+
+	// 注: 如果是环, 则不存在入度为0的点
+	queue := make([]int, 0)
+	// 入度为0的点, 进入队列
+	for i := 0; i < len(indgree); i++ {
+		if indgree[i] == 0 {
+			queue = append(queue, i)
+		}
+	}
+
+	count := 0
+	for len(queue) > 0 {
+		size := len(queue)
+		for i := 0; i < size; i++ {
+			cur := queue[0]
+			queue = queue[1:]
+			count++
+
+			nexts := graph[cur] // 遍历当前节点的下一个节点
+			for _, next := range nexts {
+				indgree[next]--
+				if indgree[next] == 0 {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+}

@@ -2,6 +2,7 @@ package category
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -82,4 +83,9 @@ func TestLadderLength(t *testing.T) {
 
 	// hit hot lot log cog
 	t.Log(LadderLength(begin, end, []string{"hot", "dot", "dog", "lot", "log", "cog"}), "real:5")
+}
+
+func TestHasPath(t *testing.T) {
+	max := math.NaN()
+	t.Log(max+100, max)
 }
