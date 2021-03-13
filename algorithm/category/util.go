@@ -1,5 +1,11 @@
 package category
 
+type TreeNode struct {
+	val   int
+	left  *TreeNode
+	right *TreeNode
+}
+
 func max(args ...int) int {
 	max := args[0]
 	for i := 1; i < len(args); i++ {
@@ -67,7 +73,7 @@ type Stack struct {
 	data []int
 }
 
-func (s *Stack) size()int  {
+func (s *Stack) size() int {
 	return len(s.data)
 }
 func (s *Stack) isEmpty() bool {

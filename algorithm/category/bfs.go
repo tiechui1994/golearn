@@ -31,12 +31,6 @@ BFS 最擅长搜索最短路径的解是比较合适的.
      树纵向打印(思路: DFS[node, height, x], 其中 height 表示哪一行, x 表示当前行偏离根节点的正负偏移量)
 */
 
-type TreeNode struct {
-	val   int
-	left  *TreeNode
-	right *TreeNode
-}
-
 func LevelOrder(root *TreeNode) {
 	queue := make([]*TreeNode, 0)
 	if root != nil {

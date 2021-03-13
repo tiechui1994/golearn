@@ -89,3 +89,11 @@ func TestHasPath(t *testing.T) {
 	max := math.NaN()
 	t.Log(max+100, max)
 }
+
+func TestPermute(t *testing.T) {
+	nums := []int{1, 2, 1, 3}
+	ans := Permute(nums)
+	for _, val := range ans {
+		t.Log(val)
+	}
+}
