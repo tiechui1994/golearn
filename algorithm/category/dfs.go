@@ -7,6 +7,8 @@ import (
 /*
 DFS=Depth First Search
 
+解决遍历和求解所有问题有效.
+
 深度优先遍历思想: 以一个未被访问的节点作为起始节点, 沿当定点的边走到未访问过的节点; 当没有未访问的节点时, 则回退到上一个
 节点, 继续访问别的节点.
 
@@ -59,7 +61,9 @@ cur数组当中, 遍历结束后, 将该元素删除掉.
 func SubSets(nums []int) [][]int {
 	var dfs func(tmp []int, index int, ans *[][]int)
 	dfs = func(tmp []int, index int, ans *[][]int) {
-		*ans = append(*ans, tmp[:]) // 将当前的 tmp 加入到结果
+		t := make([]int, len(tmp))
+		copy(t, tmp)
+		*ans = append(*ans, t) // 将当前的 tmp 加入到结果
 
 		for i := index; i < len(nums); i++ {
 			// 这样保证对于重复的元素只是添加一次
