@@ -72,4 +72,6 @@ func (zkw *zkw) Sum(i, j int) int {
 		i /= 2
 		j /= 2
 	}
+
+	return ans
 }
