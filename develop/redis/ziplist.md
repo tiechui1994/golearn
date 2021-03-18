@@ -6,9 +6,9 @@
 <zlbytes><zltail><zllen><entry1>...<entryN><zlend>
 ```
 
-zlbytes 4字节, 整个 ziplist 占用的内存字节数.
+zlbytes 4字节, 整个 ziplist 占用的内存字节数. **这个变量在扩容的时候使用**
 
-zltail 4字节, 到达 ziplist 表尾节点的偏移量. 通过这个偏移量, 可以直接找到表尾节点
+zltail 4字节, 到达 ziplist 表最后一个entry(的头部)的偏移量. **通过这个偏移量, 可以直接找到表尾节点.**
 
 zllen  2字节, ziplist 当中 entry 的数量. 当这个值小于 2^16-1 时, 这个值就是 ziplist 中节点的数量; 当值是 2^16-1
 时, 节点的数量需要遍历才能获得.
@@ -21,12 +21,12 @@ zlend, 1字节, 值是 0xFF, 用于标记 ziplist 的末端.
 - entry 的数据结构:
 
 ```
-<prerawlen><len><data>
+<prevlen><len><data>
 ```
 
-prerawlen 表示前一个节点的长度, 通过这个值, 可以进行指针计算, 从而跳转到上一个节点. 从而达到倒序遍历的目的.
+prevlen 表示前一个节点的长度, 通过这个值, 可以进行指针计算, 从而跳转到上一个节点. 从而达到倒序遍历的目的.
 
-prerawlen 占用1个字节或5个字节:
+prevlen 占用1个字节或5个字节:
 
 1字节: 如果前一个节点长度小于 254 字节, 使用一个字节保存它的值.
 
@@ -53,22 +53,32 @@ data: 真实的数据.
 例如: `hello` 案例
 
 ```
-prerawlen: ?
+prelen: ?
 len: 1字节 (00000101)
 data: 5字节, 内容是 hello 
 ```
 
 
-- 将新节点插入到 ziplist 的末端过程:
+- 将新节点插入到 ziplist 节点 p 的过程:
 
-1). 记录到达 ziplist 末端所需的偏移量
+1) 计算 prelen 和 prelensize (如果 p 指向列表末端 `p[0] == 0xFF`, 则需要根据 `zltail` 获取 ptail 节点, 否则
+直接获取 p 节点的 prelen); 尝试将插入节点的值转换为整数, 从而计算出新插入节点的编码方式 encoding 和 len, 最终计算出
+新插入节点所需的空间大小 reqlen.
 
-2). 根据新保存的值, 计算编码方式和长度(len), 以及编码前一个节点的长度所需的空间大小(prerawlen), 然后进行内存重新
-分配.
+2) 计算 nextdiff, p节点的 prelensize 和 新节点的 prelensize 的差(可能值: 0,4,-4)
 
-3) 设置新节点的各项属性 prerawlen, len, data
+> 注: 新插入的节点位置是 p, 原来p节点(包括p)之后的所有节点都要后移一位. 因此 p 节点的 prelen 的值是当前节点的长度. 但
+是这个值可能发生内存字节大小的变化.
 
-4) 更新 ziplist 的相关属性, zlbytes, zltail, zllen
+3) 记录到达 ziplist 到达 p 的偏移量 (因为后续需要重新分配内存)
+
+4) 重新进行内存重新分配(zlbytes+reqlen+nextdiff).
+
+5) 将 p-nextdiff, 移动到 p+reqlen, 重新设置 zltail. 以及进行可能的级联更新.
+
+6) 设置新节点的各项属性 prelen, len, data
+
+7) 更新 ziplist 的相关属性, zlbytes, zllen
 
 
 > 带参数的宏和函数很相似, 但有本质上的区别: 宏展开仅仅是字符串的替换, 不会对表达式进行计算; 宏在编译之前就被处理掉了, 
@@ -122,24 +132,24 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     zlentry entry, tail;
 
     /* Find out prevlen for the entry that is inserted. */
+    // 计算 prelen, 前一个节点的长度.
     if (p[0] != ZIP_END) {
         // 如果 p[0] 不指向列表末端, 说明列表非空, 并且 p 正指向列表的其中一个节点
         // 然后直接取出当前节点的上一个节点的 prevlen 和 prevlensize
         ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
     } else {
-        // 如果 p 指向表尾末端, 那么程序需要检查列表是否为:
-        // 1) 如果 ptail 也指向 ZIP_END, 那么列表为空;
-        // 2) 如果 ptail 不是 ZIP_END, 那么 ptail 将指向列表的最后一个节点.
-        unsigned char *ptail = ZIPLIST_ENTRY_TAIL(zl);
+        // 如果 p 指向表尾末端, 那么需要检查列表是否为空:
+        // 1) 如果 ptail 指向 ZIP_END, 那么列表为空;
+        // 2) 如果 ptail 没有指向 ZIP_END, 那么 ptail 将指向列表的最后一个节点.
+        // ptail 是最后一个 entry (的起始位置) 的指针
+        unsigned char *ptail = ZIPLIST_ENTRY_TAIL(zl); // z1+zltail
         if (ptail[0] != ZIP_END) {
-            // 表尾节点为新节点的前置节点
-            // 取出表尾节点的长度
-            prevlen = zipRawEntryLength(ptail);
+            // 表尾节点为新节点的前置节点, 计算该节点的长度: prerawlensize+lensize+len
+            prevlen = zipRawEntryLength(ptail); 
         }
     }
-
-    /* See if the entry can be encoded */
-    // 尝试看能否将输入字符串转换为整数, 如果成功的话:
+    
+    // 尝试将字符串 s 转换为整数 value, 如果成功:
     // 1) value 将保存转换后的整数值. 
     // 2) encoding 则保存适用于 value 的编码方式
     // 无论使用什么编码, reqlen 都保存节点值的长度.
@@ -151,20 +161,20 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
         reqlen = slen;
     }
     
-    // 计算编码前置节点的长度所需的大小
+    // 计算编码 prevlen 所需的大小(1或5).
     // T = O(1)
-    reqlen += zipPrevEncodeLength(NULL,prevlen);
-    // 计算编码当前节点值所需的大小
+    reqlen += zipPrevEncodeLength(NULL, prevlen);
+    // 计算编码 slen 所需的大小.( 它是由 encoding 和 slen 决定的)
     // T = O(1)
     reqlen += zipEncodeLength(NULL,encoding,slen);
 
     // 只要新节点不是被添加到列表末端, 检查看 p 所指向的节点能否编码新节点的长度.
     // nextdiff 保存了新旧编码之间的字节大小差, 如果这个值大于 0 那么说明需要对 p 所指向的节点进行扩展.
-    // prerawlen 占用内存长度只能是 1 和 5, 可能的结果是 0, 4, -4
+    // prelen 占用字节长度只能是 1 和 5, 可能的结果是 0, 4
     nextdiff = (p[0] != ZIP_END) ? zipPrevLenByteDiff(p, reqlen) : 0;
 
     // 由于重分配空间可能会改变 zl 的地址. 所以在分配之前, 需要记录 zl 到 p 的偏移量, 然后在分配之后依靠偏移量
-    // 还原 p 
+    // 还原 p .
     offset = p-zl;
     
     // curlen 是 ziplist 原来的长度
@@ -173,7 +183,8 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     // T = O(N)
     zl = ziplistResize(zl,curlen+reqlen+nextdiff); // 调用 realloc 方法重新分配内存
     p = zl+offset; // 恢复 p 节点
-
+    
+    // 计算尾节点的偏移量
     if (p[0] != ZIP_END) {
         // 新元素之后还有节点, 因为新元素的加入, 需要对这些原有节点进行调整: 移动现有元素, 为新元素的插入空间腾出位置
         // 将 p - nextdiff 之后的内容, 移动到 p + reqlen 之后
@@ -215,7 +226,7 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
         p = zl+offset;
     }
 
-    // 一切搞定, 将前置节点的长度写入新节点的 header
+    // 将前置节点的长度写入新节点的 header
     p += zipPrevEncodeLength(p, prevlen);
     // 将节点值的长度写入新节点的 header
     p += zipEncodeLength(p,encoding, slen);

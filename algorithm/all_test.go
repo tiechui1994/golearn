@@ -3,15 +3,18 @@ package algorithm
 import (
 	"math/rand"
 	"testing"
-	"time"
 )
 
 func TestNewSkipList(t *testing.T) {
-	skiplist := NewSkipList()
-	seed := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 100; i > 0; i-- {
-		skiplist.Insert(seed.Intn(100))
+	sk := NewSkipList()
+	seed := rand.New(rand.NewSource(100))
+	for i := 10; i > 0; i-- {
+		sk.Insert(seed.Intn(100))
 	}
 
-	skiplist.PrintSkipList()
+	sk.PrintSkipList()
+
+	sk.Remove(60)
+
+	sk.PrintSkipList()
 }

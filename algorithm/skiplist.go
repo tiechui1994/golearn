@@ -89,10 +89,8 @@ func (skipList *SkipList) Random_level() int {
 
 func (skipList *SkipList) PrintSkipList() {
 
-	fmt.Println("\nSkipList-------------------------------------------")
 	for i := skipList.Level - 1; i >= 0; i-- {
-
-		fmt.Println("level:", i)
+		fmt.Println("level:", i+1)
 		node := skipList.Header.Next[i]
 		for {
 			if node.Value != nil {
@@ -115,22 +113,16 @@ func (skipList *SkipList) Search(key int) *Node {
 			if node.Next[i].Value == nil {
 				break
 			}
-
-			//fmt.Printf("  %d ", node.Next[i].Value)
 			if node.Next[i].Value.(int) == key {
-				//fmt.Println("\nFound level=", i, " key=", key)
 				return &node.Next[i]
-			}
-
-			if node.Next[i].Value.(int) < key {
+			} else if node.Next[i].Value.(int) < key {
 				node = &node.Next[i]
-				continue
-			} else { // > key
+			} else {
 				break
 			}
-		} //end for find
+		}
+	}
 
-	} //end level
 	return nil
 }
 
@@ -138,29 +130,21 @@ func (skipList *SkipList) Remove(key int) {
 	update := make(map[int]*Node) // level - key的前一个节点
 	node := skipList.Header
 	for i := skipList.Level - 1; i >= 0; i-- {
-
 		for {
-
 			if node.Next[i].Value == nil {
 				break
 			}
 
 			if node.Next[i].Value.(int) == key {
-				//fmt.Println("Remove() level=", i, " key=", key)
 				update[i] = node
 				break
-			}
-
-			if node.Next[i].Value.(int) < key {
+			} else if node.Next[i].Value.(int) < key {
 				node = &node.Next[i]
-				continue
-			} else { // > key
+			} else {
 				break
 			}
-
-		} //end for find
-
-	} //end level
+		}
+	}
 
 	for i, v := range update {
 		if v == skipList.Header {
