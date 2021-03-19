@@ -137,7 +137,7 @@ func (p *Proxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if ctx.abort {
 		return
 	}
-
+	fmt.Println(ctx.Req.Method, ctx.Req.Header)
 	switch {
 	case ctx.Req.Method == http.MethodConnect && p.decryptHTTPS:
 		p.forwardHTTPS(ctx, rw)
@@ -210,13 +210,14 @@ func (p *Proxy) forwardHTTPS(ctx *Context, rw http.ResponseWriter) {
 		return
 	}
 	defer clientConn.Close()
+	// response CONNECT to client
 	_, err = clientConn.Write(tunnelResponseLine)
 	if err != nil {
 		p.delegate.ErrorLog(fmt.Errorf("%s - HTTPS, connect fail: %s", ctx.Req.URL.Host, err))
 		return
 	}
 
-	// cert
+	// cert and tls conn
 	tlsConfig, err := p.cert.GenerateTlsConfig(ctx.Req.URL.Host)
 	if err != nil {
 		p.delegate.ErrorLog(fmt.Errorf("%s - HTTPS, generate cert fail: %s", ctx.Req.URL.Host, err))
@@ -224,11 +225,13 @@ func (p *Proxy) forwardHTTPS(ctx *Context, rw http.ResponseWriter) {
 		return
 	}
 
-	// tlsconn
+	// tls handshark
 	tlsClientConn := tls.Server(clientConn, tlsConfig)
 	tlsClientConn.SetDeadline(time.Now().Add(defaultClientReadWriteTimeout))
 	defer tlsClientConn.Close()
-	if err := tlsClientConn.Handshake(); err != nil {
+
+	err = tlsClientConn.Handshake()
+	if err != nil {
 		p.delegate.ErrorLog(fmt.Errorf("%s - HTTPS, handshark fail: %s", ctx.Req.URL.Host, err))
 		return
 	}
@@ -273,6 +276,8 @@ func (p *Proxy) forwardTunnel(ctx *Context, rw http.ResponseWriter) {
 		return
 	}
 	defer clientConn.Close()
+
+	// parent proxy
 	parentProxyURL, err := p.delegate.ParentProxy(ctx.Req)
 	if err != nil {
 		p.delegate.ErrorLog(fmt.Errorf("%s - Tunnel, parse parent proxy: %s", ctx.Req.URL.Host, err))
@@ -280,7 +285,7 @@ func (p *Proxy) forwardTunnel(ctx *Context, rw http.ResponseWriter) {
 		return
 	}
 
-	// conn, if exist parentProxyURL forward to proxy host, otherwise forward to target host
+	// tcp conn, if exist parentProxyURL forward to proxy host, otherwise forward to target host
 	targetAddr := ctx.Req.URL.Host
 	if parentProxyURL != nil {
 		targetAddr = parentProxyURL.Host
@@ -295,6 +300,8 @@ func (p *Proxy) forwardTunnel(ctx *Context, rw http.ResponseWriter) {
 	clientConn.SetDeadline(time.Now().Add(defaultClientReadWriteTimeout))
 	targetConn.SetDeadline(time.Now().Add(defaultTargetReadWriteTimeout))
 
+	// if parent proxy exist, CONNECT to parent proxy,
+	// otherwise response client connect success to establish.
 	if parentProxyURL == nil {
 		_, err = clientConn.Write(tunnelResponseLine)
 		if err != nil {
@@ -305,7 +312,7 @@ func (p *Proxy) forwardTunnel(ctx *Context, rw http.ResponseWriter) {
 		targetConn.Write(tunnelRequestLine(ctx.Req.URL.Host)) // send CONNECT to proxy
 	}
 
-	// send
+	// traffic forwarding
 	p.transfer(clientConn, targetConn)
 }
 

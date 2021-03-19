@@ -40,6 +40,9 @@ func (h *Intercept) BeforeRequest(ctx *goproxy.Context) {
 	}
 
 	ctx.Data["request"] = data
+
+	log.Println("Method", ctx.Req.Method)
+	log.Println("Scheme", ctx.Req.URL.Scheme)
 }
 
 func (h *Intercept) BeforeResponse(ctx *goproxy.Context, response *http.Response, err error) {
