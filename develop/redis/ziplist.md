@@ -1,6 +1,6 @@
 ## ziplist
 
-- ziplist 的数据结构:
+### ziplist 的数据结构
 
 ```
 <zlbytes><zltail><zllen><entry1>...<entryN><zlend>
@@ -58,6 +58,8 @@ len: 1字节 (00000101)
 data: 5字节, 内容是 hello 
 ```
 
+
+### ziplist api
 
 - 将新节点插入到 ziplist 节点 p 的过程:
 
@@ -243,4 +245,25 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     return zl;
 }
 ```
+
+
+### ziplist 与 hash
+
+hash 是 redis 中可以用来存储一个对象结构的比较理想的数据类型. 一个对象的各个属性, 正好对于hash结构的各个 field.
+
+实际上, hash 随着数据的增大, 其底层数据结构的实现是会发生变化的, 当然存储效率也就不想同. 在 field 比较少, 各个 value
+值也比较小时, hash 采用 ziplist 实现; 随着 field 增多和 value 值增大, hash 可能会变成 dict 来实现.
+
+当随着数据的插入, hash 底层数据结构的这个 ziplist 就可能转换为 dict. 到底插入多少才会转换呢?
+
+```
+hash-max-ziplist-entries 512
+hash-max-ziplist-value
+```
+
+上述的两个配置, 在如果满足下面两个条件之一, ziplist 会转换成 dict:
+
+- 当 hash 当中是数据项 (即field-value对) 的数目超过 512 时, 也就是 ziplist 的数据项超过 1024 时候.
+
+- 当 hash 中插入的任意一个 value (这里的插入的value是hash的 field 或 value 的长度) 的长度超过 64 的时候.
 
