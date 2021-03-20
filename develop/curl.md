@@ -28,12 +28,33 @@
 
 `--data-raw DATA`, POST 请求的 body 数据.
 
-> 注: 默认状况下, `-d` 和 `--data-raw` 的 `Content-Type` 是 `application/x-www-form-urlencoded`. 可以手
-动指定 Header
-
-
 `--data-binary DATA` POST 请求二进制数据.
 
+> 注: 在默认状况下, `--data`, `--data-raw`, `--data-binary` 的 `Content-Type` 是 
+`application/x-www-form-urlencoded`. 当然可以手动指定 `Content-Type` 的值.
+> `--data`, `--data-raw`, `--data-binary` 可以使用字符串, 也可以使用特殊分隔符(参考下面的案例)
+
+案例:
+
+```
+# 使用特殊的分隔符
+curl -X POST https://reqbin.com/echo/post/json --data-raw @- <<DATA
+{             
+  "Id": 78912,
+  "Customer": "Jason Sweet",
+  "Quantity": 1,
+  "Price": 18.00
+}
+DATA
+
+# 使用字符串的形式
+curl -X POST https://reqbin.com/echo/post/json --data-raw '{             
+  "Id": 78912,
+  "Customer": "Jason Sweet",
+  "Quantity": 1,
+  "Price": 18.00
+}'
+```
 
 `--data-urlencode DATA` POST 请求使用 urlencode 编码, 格式为 `key1=value1&key2=value2`, 其中 key 和 value 
 会进行 urlencode 编码. 在此种方式下, 其 `Content-Type` 值为 `application/x-www-form-urlencoded`.
@@ -41,7 +62,16 @@
 
 `-F, --form CONTENT`, POST方式请求资源, CONTENT 的格式是 `key=value`, 该参数和 `-H` 一样, 可以出现多次. 对于
 上传文件格式为 `-F file=@/path/to/file`, 即 value 使用 `@PATH` 的方式设置文件上传.
-在此种方式下, 其 `Content-Type` 值为 `multipart/form-data; boundary=-----xxxx`.
+在此种方式下, 其 `Content-Type` 值为 `multipart/form-data; boundary=xxx`.
+
+> 常见的 Content-Type:
+> `application/x-www-form-urlencoded`, form表单数据被编码为key/value格式发送到服务器
+> `multipart/form-data`, form 表单数据 (表单中进行文件上传)
+> `text/plain`, 纯文本格式
+> `text/html`, html 格式
+> `text/xml`, xml 格式
+> `application/json`, JSON 格式
+> `application/octet-stream`, 二进制格式
 
 
 - 响应内容
@@ -91,20 +121,21 @@
 
 1) TLS/SSL 版本 
 ```
-`-2, --sslv2` 使用SSLv2
-`-3, --sslv3` 使用SSLv3
-`-l, --tlsv1` TLSv1 以上的版本
-`--tlsv1.0` 使用 TLSv1.0
-`--tlsv1.1` 使用 TLSv1.1
-`--tlsv1.2` 使用 TLSv1.2
-`--tlsv1.3` 使用 TLSv1.3
+-2, --sslv2 使用SSLv2
+-3, --sslv3 使用SSLv3
+
+-l, --tlsv1 TLSv1 以上的版本
+--tlsv1.0 使用 TLSv1.0
+--tlsv1.1 使用 TLSv1.1
+--tlsv1.2 使用 TLSv1.2
+--tlsv1.3 使用 TLSv1.3
 ```
    
 2) HTTP 版本
 ``` 
-`-0, --http1.0` 使用 HTTP 1.0
-`--http1.1` 使用 HTTP 1.1
-`--http2` 使用 HTTP 2 
+-0, --http1.0 使用 HTTP 1.0
+--http1.1 使用 HTTP 1.1
+--http2   使用 HTTP 2 
 ```
 
 > 目前经常使用到是 `HTTP 1.1` 和 `HTTP 1.0`
