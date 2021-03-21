@@ -8,4 +8,4 @@ set: intset 或 dict
 
 sortedset: ziplist 或 skiplist
 
-string: int 或 embstr 或 raw
+string: int(可以使用整数表示的字符串) 或 embstr(小于等于44字符串) 或 raw(大于44的字符串)
