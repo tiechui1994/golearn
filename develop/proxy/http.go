@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/tls"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -61,11 +63,17 @@ curl --proxy http://localhost:1433 --cacert ca.cert https://www.baidu.com
 */
 
 func main() {
+	p := flag.Int("p",80, "port")
+	flag.Parse()
+	/*
+	// DecryptHTTPS and Delegate
 	proxy := goproxy.New(goproxy.WithDecryptHTTPS(&Cache{}),
 		goproxy.WithDelegate(&Intercept{}))
+	*/
 
+	proxy := goproxy.New(goproxy.WithDisableKeepAlive(true))
 	server := &http.Server{
-		Addr:         ":1433",
+		Addr:         fmt.Sprintf(":%d", *p),
 		Handler:      proxy,
 		ReadTimeout:  1 * time.Minute,
 		WriteTimeout: 1 * time.Minute,

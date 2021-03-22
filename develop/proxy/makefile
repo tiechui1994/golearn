@@ -1,6 +1,6 @@
-https:
-	go build -o https -ldflags='-w -s' https.go
+proxy:
+	go build -o proxy -ldflags='-w -s' http.go
 
 .PHYON: clean
 clean:
-	rm -rf https
+	rm -rf proxy

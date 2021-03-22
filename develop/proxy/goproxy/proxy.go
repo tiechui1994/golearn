@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultTargetConnectTimeout   = 5 * time.Second
+	defaultTargetConnectTimeout   = 10 * time.Second
 	defaultTargetReadWriteTimeout = 30 * time.Second
 	defaultClientReadWriteTimeout = 30 * time.Second
 )
@@ -83,8 +83,8 @@ func New(opt ...Option) *Proxy {
 			}).DialContext,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ExpectContinueTimeout: 15 * time.Second,
 		}
 	}
 
@@ -333,11 +333,11 @@ func (p *Proxy) transfer(src net.Conn, dst net.Conn) {
 func hijacker(rw http.ResponseWriter) (net.Conn, error) {
 	hijacker, ok := rw.(http.Hijacker)
 	if !ok {
-		return nil, fmt.Errorf("web server不支持Hijacker")
+		return nil, fmt.Errorf("web server not support Hijacker")
 	}
 	conn, _, err := hijacker.Hijack()
 	if err != nil {
-		return nil, fmt.Errorf("hijacker错误: %s", err)
+		return nil, fmt.Errorf("hijacker faield: %s", err)
 	}
 
 	return conn, nil
