@@ -258,7 +258,7 @@ hash 是 redis 中可以用来存储一个对象结构的比较理想的数据�
 
 ```
 hash-max-ziplist-entries 512
-hash-max-ziplist-value
+hash-max-ziplist-value 64
 ```
 
 上述的两个配置, 在如果满足下面两个条件之一, ziplist 会转换成 dict:

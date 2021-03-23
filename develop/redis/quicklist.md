@@ -1,13 +1,6 @@
 ## quicklist
 
-涉及的两个参数:
-
-```
-list-max-ziplist-size -2
-list-compress-depth 0
-```
-
-quicklist 概述:
+### quicklist 数据结构:
 
 list 具有这样的特点: 它是一个有序列表, 便于在表的两端追加和删除数据, 而对于中间位置的存取具有 O(N) 的时间复杂度. 这就
 是一个双向链表具有的特点.
@@ -78,4 +71,23 @@ typedef struct quicklistLZF {
     char compresss[];
 } quicklistLZF;
 ```
+
+### list 与 quicklist
+
+- 在数据量比较小的时候, list 底层使用 ziplist 实现 list
+
+- 当数据量增大的时候, list 开始使用 quicklist 来实现 list
+
+涉及的两个参数:
+
+```
+list-max-ziplist-size -2
+```
+
+list 由 ziplist 转向 quicklist 需要满足下面的条件:
+
+- 当 ziplist 的长度或者内存大小超过 `list-max-ziplist-size` 时, ziplist 就会产生节点分裂, 变成一个双向链表.
+
+> 注: 上述的条件在 quicklist 时 ziplist 分裂的条件.
+
 
