@@ -128,17 +128,19 @@ func bmap(t *types.Type) *types.Type {
 	field := make([]*types.Field, 0, 5)
 
     // BUCKETSIZE=8
-	// The first field is: uint8 topbits[BUCKETSIZE].
+	// 1st field: topbits uint8[BUCKETSIZE].
 	arr := types.NewArray(types.Types[TUINT8], BUCKETSIZE)
 	field = append(field, makefield("topbits", arr))
 
 	arr = types.NewArray(keytype, BUCKETSIZE)
 	arr.SetNoalg(true)
+	// 2nd filed: keys keytype[BUCKETSIZE]
 	keys := makefield("keys", arr)
 	field = append(field, keys)
 
 	arr = types.NewArray(elemtype, BUCKETSIZE)
 	arr.SetNoalg(true)
+	// 3rd field: elems elemtype[BUCKETSIZE]
 	elems := makefield("elems", arr)
 	field = append(field, elems)
 	
@@ -151,12 +153,15 @@ func bmap(t *types.Type) *types.Type {
     // 但是, 在nacl/amd64p32上, 最大对齐方式是64位, 但是溢出指针只会添加一个32位字段, 因此, 如果该结构需要64位填充
     // (由于key或elem的原因), 则它将最后带有一个额外的32位填充字段.
     // 通过在此处发出填充.
+    // Widthptr 是与CPU架构相关的值, 即最大对齐值, 取值是 8 (amd64, arm64) 和 4(i386, amd64p32, arm)
 	if int(elemtype.Align) > Widthptr || int(keytype.Align) > Widthptr {
+	    // 可能存在的 pad
 		field = append(field, makefield("pad", types.Types[TUINTPTR]))
 	}
 	
-	// 如果keys和elems没有指针, 则map实现可以在侧面保留一个 overflow 指针列表, 以便可以将 buckets 标记为没有指针.
+	// 如果key和elem都没有指针, 则map实现可以在侧面保留一个 overflow 指针列表, 以便可以将 buckets 标记为没有指针.
     // 在这种情况下, 通过将 overflow 字段的类型更改为 uintptr, 使存储桶不包含任何指针.
+	// last field: overflow *struct 或 uintptr, 都是 8 字节
 	otyp := types.NewPtr(bucket)
 	if !types.Haspointers(elemtype) && !types.Haspointers(keytype) {
 		otyp = types.Types[TUINTPTR]
