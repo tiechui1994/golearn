@@ -25,7 +25,7 @@ type hmap struct {
 	                          
 	nevacuate  uintptr        // 表示扩容进度, 小于此地址的buckets代表已搬迁完成.
 
-	extra *mapextra // 这个字段是为了优化GC扫描而设计的. 当key和value均不包含指针, 并且都可以inline时使用.
+	extra *mapextra // 可选字段. 优化GC(当key和value均不包含指针, 并且都可以inline时使用); 存储 overflow 指针
 	                // extra是指向mapextra类型的指针.
 }
 
@@ -34,8 +34,10 @@ type mapextra struct {
     // 就使用 hmap 的 extra 字段来存储 overflow buckets, 
 	
 	// 如果 key 和 value 都不包含指针, 并且可以被 inline(<=128 字节), 则将 bucket type 标记为不包含指针 (使用
-	// ptrdata 字段, 为0表示不包含指针). 这样可以避免 GC 扫描整个 map. 但是 bmap.overflow 是一个指针. 这时候我
-	// 们只能把这些 overflow 的指针都放在 hmap.extra.overflow 和 hmap.extra.oldoverflow 中了.
+	// ptrdata 字段, 为0表示不包含指针). 这样可以避免 GC 扫描整个 map. 
+	// 由于 bmap.overflow 是一个指针. 为了保证 overflow bucket 指针一直是 alive, 这时候只能把这些 overflow 
+	// 的指针都放在 hmap.extra.overflow 和 hmap.extra.oldoverflow 中了. 注意, 此时的 bmap.overflow 是一个
+	// uintptr 类型(整数类型), 不会被扫描.
 	//  
 	// 当 key 和 elem 不包含指针时, 才使用 overflow 和 oldoverflow. 
 	// overflow 包含的是 hmap.buckets 的 overflow bucket, 
@@ -160,7 +162,7 @@ func bmap(t *types.Type) *types.Type {
 	}
 	
 	// 如果key和elem都没有指针, 则map实现可以在侧面保留一个 overflow 指针列表, 以便可以将 buckets 标记为没有指针.
-    // 在这种情况下, 通过将 overflow 字段的类型更改为 uintptr, 使存储桶不包含任何指针.
+    // 在这种情况下, 通过将 overflow 字段的类型更改为 uintptr, 使存储桶不包含任何指针.(与前面当中是解释呼应)
 	// last field: overflow *struct 或 uintptr, 都是 8 字节
 	otyp := types.NewPtr(bucket)
 	if !types.Haspointers(elemtype) && !types.Haspointers(keytype) {
@@ -198,10 +200,10 @@ func hmap(t *types.Type) *types.Type {
 	//    B          uint8
 	//    noverflow  uint16
 	//    hash0      uint32
-	//    buckets    *bmap
-	//    oldbuckets *bmap
+	//    buckets    *bmap        
+	//    oldbuckets *bmap          
 	//    nevacuate  uintptr
-	//    extra      unsafe.Pointer // *mapextra
+	//    extra      unsafe.Pointer // 实际指向的是 *mapextra
 	// }
 	// must match runtime/map.go:hmap.
 	fields := []*types.Field{
@@ -213,7 +215,7 @@ func hmap(t *types.Type) *types.Type {
 		makefield("buckets", types.NewPtr(bmap)), // Used in walk.go for OMAKEMAP.
 		makefield("oldbuckets", types.NewPtr(bmap)),
 		makefield("nevacuate", types.Types[TUINTPTR]),
-		makefield("extra", types.Types[TUNSAFEPTR]),
+		makefield("extra", types.Types[TUNSAFEPTR]), 
 	}
 
 	hmap := types.New(TSTRUCT)
@@ -352,8 +354,9 @@ func makemap(t *maptype, hint int, h *hmap) *hmap {
 	// 如果B为0，那么buckets字段后续会在mapassign方法中lazily分配
 	if h.B != 0 {
 		var nextOverflow *bmap
-		// makeBucketArray创建一个map的底层保存buckets的数组，它最少会分配h.B^2的大小。
+		// makeBucketArray创建一个map的底层保存buckets的数组, 它最少会分配h.B^2的大小.
 		h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
+		// 存储 overflow bucket, 当 h.B >= 4 才有(即bucket的数量超过16).
 		if nextOverflow != nil {
 			h.extra = new(mapextra)
 			h.extra.nextOverflow = nextOverflow
@@ -455,11 +458,12 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	if h.flags&hashWriting != 0 {
 		throw("concurrent map writes")
 	}
-	// 通过key和哈希种子, 算出对应哈希值
+	// 哈希值
 	hash := t.hasher(key, uintptr(h.hash0))
 
 	// 将flags的值与hashWriting做按位 "异或" 运算, 移除 hashWriting 的相应标记位
 	// 因为在当前goroutine可能还未完成key的写入, 再次调用t.hasher会发生panic.
+	// 设置 flags 为正在写入.
 	h.flags ^= hashWriting
 
 	if h.buckets == nil {
@@ -557,7 +561,7 @@ bucketloop:
 	// 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一, 则进行扩容
 	// 操作. 
 	// hashGrow()实际并未完成扩容, 对哈希表数据的搬迁(复制)操作是通过growWork()来完成的. 
-	// 重新跳入again逻辑, 在进行完growWork()操作后, 再次遍历新的桶. 
+	// 重新跳入again逻辑, 执行两次growWork()操作后, 再次遍历新的桶. 
 	// 分别分析情况1(装载因子) 和 情况2(buckets与overflow buckets)
 	if !h.growing() && (overLoadFactor(h.count+1, h.B) || tooManyOverflowBuckets(h.noverflow, h.B)) {
 		hashGrow(t, h)
