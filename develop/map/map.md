@@ -302,6 +302,31 @@ func (b *bmap) overflow(t *maptype) *bmap {
 func (b *bmap) setoverflow(t *maptype, ovf *bmap) {
 	*(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)) = ovf
 }
+
+
+// key 存储 ptr
+func (mt *maptype) indirectkey() bool { 
+	return mt.flags&1 != 0
+}
+// ele 存储 ptr
+func (mt *maptype) indirectelem() bool { 
+	return mt.flags&2 != 0
+}
+
+// 所有的 key 都满足 key == key 
+func (mt *maptype) reflexivekey() bool { 
+	return mt.flags&4 != 0
+}
+
+// 如果需要更新 key, 则 overwrite 
+func (mt *maptype) needkeyupdate() bool { 
+	return mt.flags&8 != 0
+}
+
+// hash 函数会 panic
+func (mt *maptype) hashMightPanic() bool { 
+	return mt.flags&16 != 0
+}
 ```
 
 
@@ -357,7 +382,7 @@ func makemap(t *maptype, hint int, h *hmap) *hmap {
 	h.B = B
 
 	// 分配初始哈希表
-	// 如果B为0，那么buckets字段后续会在mapassign方法中lazily分配
+	// 如果B为0, 那么buckets字段后续会在mapassign方法中lazily分配
 	if h.B != 0 {
 		var nextOverflow *bmap
 		// makeBucketArray创建一个map的底层保存buckets的数组, 它最少会分配h.B^2的大小.
@@ -477,7 +502,7 @@ func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
 	}
 
 again:
-    // bucketMask返回值是2的B次方减1
+    // bucketMask返回值是 2^B-1
     // 因此,通过hash值与bucketMask返回值做按位与操作,返回的在buckets数组中的第几号桶
 	bucket := hash & bucketMask(h.B) // 获取bucket的位置
 	// 如果map正在扩容(即h.oldbuckets != nil)中, 则先进行搬移工作(当前的bucket). 
@@ -535,7 +560,7 @@ bucketloop:
 			if t.indirectkey() {
 				k = *((*unsafe.Pointer)(k))
 			}
-			// 注意: 即使当前cell位的tophash值相等,不一定它对应的key也是相等的,所以还要做一个key值判断
+			// 注意: 即使当前cell位的tophash值相等, 不一定它对应的key也是相等的,所以还要做一个key值判断
 			if !t.key.equal(key, k) {
 				continue
 			}
