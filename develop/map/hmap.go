@@ -13,7 +13,7 @@ const (
 )
 
 func main() {
-
+	Pointer()
 }
 
 func Num() {
@@ -50,4 +50,21 @@ func BitOp() {
 	}
 	fmt.Println(unsafe.Alignof(p))
 	fmt.Println(unsafe.Sizeof(p))
+}
+
+type bmap struct {
+	tophash  [8]uint
+	overflow *bmap
+}
+
+//go:nosplit
+func add(p unsafe.Pointer, x uintptr) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(p) + x)
+}
+func (b *bmap) setoverflow(ovf *bmap) {
+	*(**bmap)(add(unsafe.Pointer(b), uintptr(16)-8)) = ovf
+}
+func Pointer() {
+	b := &bmap{}
+	b.setoverflow(&bmap{})
 }

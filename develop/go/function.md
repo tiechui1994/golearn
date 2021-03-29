@@ -29,7 +29,7 @@ func bulkBarrierPreWriteSrcOnly(dst, src, size uintptr)
 bulkBarrierPreWrite 使用 `[dst, dst + size)` 的 pointer/scalar 信息对内存范围 `[src, src + size)` 中的每
 个指针 slot 执行写屏障. 这会在执行 memmove 之前执行必要的写屏障.
 
-1. src, dst 和 size 必须是 pointer-aligned. 
+1. src, dst 和 size 必须是 pointer-aligned(内存对齐). 
 
 2. 范围 `[dst, dst+size)` 必须位于单个对象内. 
 
@@ -50,12 +50,12 @@ bulkBarrierPreWrite 的任何调用者都必须首先确保基础分配包含指
 func typeBitsBulkBarrier(typ *_type, dst, src, size uintptr)
 ```
 
-typeBitsBulkBarrier 对将由 memmove 使用 bitmap 类型定位这些指针slot的每个指针从[src, src+size) 复制到
+typeBitsBulkBarrier 对将由 memmove 使用 bitmap 类型定位这些指针slot的每个指针从 `[src, src+size)` 复制到
 `[dst, dst+size)` 的每个指针执行写屏障.
 
 1. 类型 typ 必须与 `[src, src+size)` 和 `[dst, dst + size)` 完全对应.
 
-2. dst, src 和 size必须是 pointer-aligned.
+2. dst, src 和 size必须是 pointer-aligned(内存对齐).
 
 3. 类型typ必须具有plain bitmap, 而不是GC程序.
 

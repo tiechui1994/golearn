@@ -9,7 +9,8 @@ map 中的数据被存放在一个数组中的, 数组的元素是桶(bucket), �
 
 源码位于 `src/runtime/map.go`.
 
-// 结构体
+- 结构体
+
 ```cgo
 // A header for a Go map.
 type hmap struct {
@@ -57,7 +58,8 @@ type bmap struct {
 }
 ```
 
-// 常量值
+- 常量值
+
 ```cgo
 const (
 	// 一个桶中最多能装载的键值对(key-value)的个数为8
@@ -104,7 +106,8 @@ const (
 ```
 
 
-// bmap(即map中的bucket)内存结构
+- bmap(即map中的bucket)内存结构
+
 ```cgo
 // src/cmd/compile/internal/gc/reflect.go:bmap
 // bucket 内存结构 
@@ -183,7 +186,8 @@ func bmap(t *types.Type) *types.Type {
 }
 ```
 
-// hmap(即map)内存结构
+- hmap(即map)内存结构
+
 ```cgo
 // src/cmd/compile/internal/gc/reflect.go:hmap
 // map 内存结构
@@ -248,10 +252,11 @@ bmap 也就是 bucket(桶)的内存模型图解如下(代码逻辑就是上述�
 ![image](/images/develop_map_mapstruct.jpeg)
 
 
-## 辅助函数
+## 相关辅助计算函数
 
 ```cgo
-// 地址偏移(内存地址连续, 这是map内存操作的一个基础)
+// 地址偏移(基于内存地址连续, 这是map内存操作的一个基础)
+// 注: 进行 add 操作, 都会创建一个指向指针的指针.
 func add(p unsafe.Pointer, x uintptr) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(p) + x)
 }
@@ -278,17 +283,18 @@ func tophash(hash uintptr) uint8 {
 // 获取 bucket 的状态是否在 evacuated (迁移状态)
 func evacuated(b *bmap) bool {
 	h := b.tophash[0]
-	return h > emptyOne && h < minTopHash
+	return h > emptyOne && h < minTopHash // X:2, Y:3, Empty:4 满足条件
 }
 
 // 检测给定的tophash所对于的cell是否为空.
 func isEmpty(x uint8) bool {
-	return x <= emptyOne
+	return x <= emptyOne // emptyRest:0, emptyOne:1
 }
 
 // 获取 b 的 overflow 指针
 func (b *bmap) overflow(t *maptype) *bmap {
     // 很巧妙, bucketsize 的最后一个 sys.PtrSize 即是 overflow 指针
+    // 注: unsafe.Pointer(b) -> bmap 的指针, add操作创建了一个指向 "bmap 的指针" 的指针
 	return *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize))
 }
 
