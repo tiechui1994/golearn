@@ -1,32 +1,48 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
+	"context"
+	"log"
 	"net"
-	"strings"
+	"syscall"
+	"time"
 )
 
 func main() {
-	net.DialTCP("", nil, nil)
+	config := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var err error
+			c.Control(func(fd uintptr) {
+				err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+				err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+				log.Println(syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR))
+			})
+			return err
+		},
+	}
 
-	// ReadFrom
-	_ = bytes.Buffer{}
+	addr := &net.TCPAddr{Port: 1234, IP: net.ParseIP("0.0.0.0")}
+	listen, err := config.Listen(context.Background(), "tcp4", addr.String())
+	if err != nil {
+		log.Println("Listen", err)
+		return
+	}
 
-	_ = bufio.Writer{}
-	_ = bufio.ReadWriter{}
+	listener := listen.(*net.TCPListener)
+	for {
+		conn, err := listener.AcceptTCP()
+		if err != nil {
+			log.Println("Accept", err)
+			continue
+		}
 
-	_ = net.TCPConn{}
+		log.Println("remote addr", conn.RemoteAddr())
 
-	// WriteTo
-	_ = bytes.Reader{}
-	_ = bytes.Buffer{}
-
-	_ = bufio.Reader{}
-	_ = bufio.ReadWriter{}
-
-	_ = strings.Reader{}
-
-	_ = net.Buffers{}
-
+		go func(conn *net.TCPConn) {
+			select {
+			case <-time.After(15 * time.Second):
+				conn.Close()
+			}
+		}(conn)
+	}
 }
