@@ -177,32 +177,20 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 		return nil, err
 	}
 	
-	// 设置 socket 的选项, 系统调用 setsockopt
+	// 设置 IPV6_V6ONLY, SO_BROADCAST(UDP), 系统调用 setsockopt
 	if err = setDefaultSockopts(s, family, sotype, ipv6only); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
 	}
 	
-	// 创建文件描述符 FD (通用), 并且绑定 socket 
+	// 创建文件描述符 FD (通用)
 	if fd, err = newFD(s, family, sotype, net); err != nil {
 		poll.CloseFunc(s)
 		return nil, err
 	}
-
-	// 此函数为以下应用程序创建 "网络文件描述符" :
-    //
-    //- 打开一个被动 stream connection 的 endpoint 持有者, 称为stream listener
-    //
-    //- 打开一个目标无关的 datagram connection 的 endpoint 持有者, 称为datagram listener
-    //
-    //- 打开 active stream 或特定于目标的 datagram connection 的 endpoint 持有者, 称为 dialer.
-    //
-    //- 打开另一个连接的 endpoint 持有者, 例如: 与内核内部的协议栈通信
-    //
-    // 对于 stream 和 datagram listener, 它们仅需要named socket, 因此当laddr不是nil, 而raddr为nil时, 
-    // 我们可以假设这只是来自 stream 或 datagram listener 的 request. 否则, 我们假定它仅适用于 dialer 或其他连接持有者.
-    
-    // stream, datagram
+	
+    // stream, datagram(TCP和UDP的listen)
+    // listen的操作: 设置默认属性, 执行 ctrlFn 回调, 系统调用 bind, 系统调用listen(只有TCP才有), netFD初始化
 	if laddr != nil && raddr == nil {
 		switch sotype {
 		case syscall.SOCK_STREAM, syscall.SOCK_SEQPACKET:
@@ -221,6 +209,7 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 	}
 	
 	// dialer
+	// dial的操作: 执行 ctrlFn 回调, 系统调用 bind(可选操作, 仅当laddr 存在), 系统调用 connect
 	if err := fd.dial(ctx, laddr, raddr, ctrlFn); err != nil {
 		fd.Close()
 		return nil, err
@@ -232,7 +221,10 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 ```
 
 
-`sysSocket()` 进行系统调用创建 socket, 设置 socket 为非阻塞.
+`sysSocket()` 进行系统调用创建 socket, socket属性为: SOCK_NONBLOCK | SOCK_CLOEXEC
+
+> SOCK_NONBLOCK 本质是文件fd属性 O_NONBLOCK
+> SOCK_CLOEXEC 本质上是文件fd属性 FD_CLOEXEC
 
 ```cgo
 func sysSocket(family, sotype, proto int) (int, error) {
@@ -251,7 +243,7 @@ func sysSocket(family, sotype, proto int) (int, error) {
 	case syscall.EPROTONOSUPPORT, syscall.EINVAL:
 	}
 
-	// 不支持 SOCK_NONBLOCK, SOCK_CLOEXEC 选项的的 socket, 年代久远的 Linux 内核
+	// 不支持 SOCK_NONBLOCK, SOCK_CLOEXEC 选项的的 socket.
 	syscall.ForkLock.RLock()
 	s, err = socketFunc(family, sotype, proto)
 	if err == nil {
@@ -277,7 +269,7 @@ func sysSocket(family, sotype, proto int) (int, error) {
 
 ```cgo
 func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, string, syscall.RawConn) error) error {
-	// 设置 socket 的 SO_REUSEADDR 属性. setsockopt
+	// 设置 SO_REUSEADDR.
 	var err error
 	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {
 		return err
@@ -289,7 +281,7 @@ func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, s
 		return err
 	}
 	
-	// 调用控制函数
+	// 回调函数
 	if ctrlFn != nil {
 		c, err := newRawConn(fd)
 		if err != nil {
@@ -300,12 +292,12 @@ func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, s
 		}
 	}
 	
-	// 调用底层 bind()
+	// 系统调用 bind()
 	if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
 		return os.NewSyscallError("bind", err)
 	}
 	
-	// 调用底层 listen() 
+	// 系统调用 listen() 
 	if err = listenFunc(fd.pfd.Sysfd, backlog); err != nil {
 		return os.NewSyscallError("listen", err)
 	}

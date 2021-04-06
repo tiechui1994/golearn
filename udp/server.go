@@ -2,15 +2,15 @@ package main
 
 import (
 	"fmt"
+	"golang.org/x/net/ipv4"
 	"log"
 	"net"
-
-	"golang.org/x/net/ipv4"
 )
 
 func init() {
 	log.SetFlags(log.Ltime)
 }
+
 // 文档: https://colobu.com/2016/10/19/Go-UDP-Programming/
 
 // 多播
@@ -130,7 +130,7 @@ func BroadCast() {
 }
 
 func UDPServer() {
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("192.168.50.14"), Port: 8899})
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 8899})
 	if err != nil {
 		log.Println("ListenUDP", err)
 		return
@@ -138,6 +138,7 @@ func UDPServer() {
 
 	buf := make([]byte, 1024)
 	for {
+		// 注: ReadFromUDP 要记录 remoteAddr, 方便后面进行 WriteToUDP
 		n, remoteAddr, err := listener.ReadFromUDP(buf)
 		if err != nil {
 			fmt.Println("ReadFromUDP", err)

@@ -1,4 +1,4 @@
-## udp 解读
+## UDP
 
 ### `ListenUDP` vs `DialUDP`
 
@@ -37,7 +37,7 @@ automatically assign a free local port out of the range defined by
 1. 因为 `unconnected` 的 `*UDPConn` 还没有目标地址, 所以需要把目标地址当作参数传入到 `WriteToUDP` 的方法中, 但是
 `unconnected` 的 `*UDPConn` 可以调用 `Read` 方法吗?
 
-**可以**, 但是在这种状况下, 客户端的地址信息被忽略了.(也就是说客户端的地址信息提前确定, 才能王客户端写入)
+**可以**, 但是在这种状况下, 客户端的地址信息被忽略了.(也就是说客户端的地址信息提前确定, 才能往客户端写入)
 
 2. `unconnected` 的 `*UDPConn` 可以调用 `Write` 方法吗?
 
