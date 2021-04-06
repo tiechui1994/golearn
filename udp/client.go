@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"log"
 	"net"
 	"time"
@@ -54,10 +53,9 @@ func BroadCastClient() {
 		log.Println(err)
 	}
 
+	data := []byte("Hello world")
 	buf := make([]byte, 10240)
 	for i := 0; i < 10; i++ {
-		origin := "5aa5aa555aa5aa55000000000000000000000000000000000000000000000000b1c20000000006000000000000000000"
-		data, _ := hex.DecodeString(origin)
 		n, err := conn.WriteToUDP(data, dstAddr)
 		if err != nil {
 			log.Println(err)
@@ -67,7 +65,7 @@ func BroadCastClient() {
 		if err != nil {
 			log.Println(err)
 		}
-		log.Printf("Read [%s] from <%v>. Length:%v", hex.EncodeToString(buf[:n])[:10], addr.String(), n)
+		log.Printf("Read [%s] from <%v>. Length:%v", string(buf[:n]), addr.String(), n)
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -98,6 +96,31 @@ func MulticastClient() {
 	log.Printf("read from <%v> data [%v]", addr.String(), n)
 }
 
+func UDPClient()  {
+	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+	dstAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8899}
+	conn, err := net.DialUDP("udp", srcAddr, dstAddr)
+	if err != nil {
+		log.Println(err)
+	}
+
+	data := []byte("Hello world")
+	buf := make([]byte, 10240)
+	for i := 0; i < 10; i++ {
+		n, err := conn.Write(data)
+		if err != nil {
+			log.Println(err)
+		}
+
+		n, addr, err := conn.ReadFrom(buf)
+		if err != nil {
+			log.Println(err)
+		}
+		log.Printf("Read [%s] from <%v>. Length:%v", string(buf[:n]), addr.String(), n)
+		time.Sleep(3 * time.Second)
+	}
+}
+
 func main() {
-	MulticastClient()
+	UDPClient()
 }

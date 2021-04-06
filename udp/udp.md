@@ -43,13 +43,13 @@ automatically assign a free local port out of the range defined by
 
 **不可以**, 因为不知道目标地址.
 
-3. `connected` 的 `*UDPConn` 可以调用 `WriteToUDP` 方法吗?
+3. **`connected` 的 `*UDPConn` 可以调用 `WriteToUDP` 方法吗?**
 
 **不可以**, 因为目标地址已经设置. 即使是相同的目标地址也不可以.
 
 4. `connected` 的 `*UDPConn` 如果调用 `Closed` 以后可以调用 `WriteToUDP` 方法吗?
 
-**不可以**
+**不可以**, 调用 `Closed` 之后, 
 
 5. `connected` 的 `*UDPConn` 可以调用 `ReadFromUDP` 方法吗?
 
@@ -61,6 +61,16 @@ automatically assign a free local port out of the range defined by
 a) 如果 `UDPConn` 还未连接, 那么会发送数据到addr
 
 b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这种状况下会忽略 addr
+
+### 广播
+
+
+### socket 编程的相关选项
+
+- `SOCK_NONBLOCK`(非阻塞IO), `SOCK_CLOEXEC`(fork子进程之后), 这两个是fd的属性
+
+- `SO_REUSEPORT` 端口重用
+
 
 
 ### 通用多播编程
@@ -90,3 +100,4 @@ b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这�
 
 
 同一个应用可以加入多个组中, 多个应用也可以加入到同一个组中.
+

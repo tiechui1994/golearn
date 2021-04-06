@@ -108,7 +108,11 @@ func MulticastSimple() {
 }
 
 func BroadCast() {
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 9981})
+	listener, err := net.ListenUDP("udp",
+		&net.UDPAddr{
+			IP:   net.ParseIP("255.255.255.255"),
+			Port: 80},
+	)
 	if err != nil {
 		log.Println(err)
 		return
@@ -122,7 +126,7 @@ func BroadCast() {
 			log.Printf("error during read: %s", err)
 		}
 		log.Printf("<%s> %s\n", remoteAddr, data[:n])
-		_, err = listener.WriteToUDP([]byte("world"), remoteAddr)
+		_, err = listener.WriteToUDP(data[:n], remoteAddr)
 		if err != nil {
 			log.Printf(err.Error())
 		}
