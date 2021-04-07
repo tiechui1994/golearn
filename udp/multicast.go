@@ -94,7 +94,6 @@ func Open(bindAddr net.IP, port int, ifname string) (*ipv4.PacketConn, error) {
 		log.Fatal("Socket:", err)
 	}
 
-	// allow multiple sockets to use the same PORT number
 	err = syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
 	if err != nil {
 		log.Fatal("SetsockoptInt:", err)

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"golang.org/x/net/ipv4"
 	"log"
 	"net"
+	"syscall"
 )
 
 func init() {
@@ -111,7 +113,8 @@ func BroadCast() {
 	listener, err := net.ListenUDP("udp",
 		&net.UDPAddr{
 			IP:   net.ParseIP("255.255.255.255"),
-			Port: 80},
+			Port: 80,
+		},
 	)
 	if err != nil {
 		log.Println(err)
@@ -134,11 +137,18 @@ func BroadCast() {
 }
 
 func UDPServer() {
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 8899})
+	config := net.ListenConfig{
+		// 设置 UDP 选项(socket, udp, ip)
+		Control: func(network, address string, c syscall.RawConn) error {
+			return nil
+		},
+	}
+	listen, err := config.ListenPacket(context.Background(), "udp4", "0.0.0.0:8899")
 	if err != nil {
 		log.Println("ListenUDP", err)
 		return
 	}
+	listener := listen.(*net.UDPConn)
 
 	buf := make([]byte, 1024)
 	for {

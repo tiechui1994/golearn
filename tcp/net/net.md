@@ -220,6 +220,34 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 }
 ```
 
+说明: socket() 在创建 socket 的时候, 设置的选项
+
+```
+# 通用选项
+IPV6_V6ONLY(family是AF_INET6情况下, IPPROTO_IPV6)
+SO_BROADCAST
+
+# TCP选项
+SO_REUSEADDR
+
+# UDP(多播地址)
+SO_REUSEADDR
+SO_REUSEPORT
+```
+
+设置的 socket 选项的 level 包含:
+
+```
+协议:
+IPPROTO_IP (IP层面选项)
+
+IPPROTO_TCP (TCP层面选项)
+IPPROTO_UDP (UDP层面选项, 没有的)
+
+socket:
+SOL_SOCKET (SOCKET层面选项)
+```
+
 
 `sysSocket()` 进行系统调用创建 socket, socket属性为: SOCK_NONBLOCK | SOCK_CLOEXEC
 
@@ -263,7 +291,8 @@ func sysSocket(family, sotype, proto int) (int, error) {
 }
 ```
 
-`listenStream()` 设置 socket 的属性 SO_REUSEADDR. 
+
+`listenStream()` 设置 socket SO_REUSEADDR. 
 
 > 系统调用 bind() 和 listen() 函数
 
