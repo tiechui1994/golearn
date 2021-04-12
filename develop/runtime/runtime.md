@@ -24,7 +24,7 @@ G, M, P
 #endif
 ```
 
-```plan9_x86
+```
 // runtime/asm_amd64.s
 
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
@@ -69,5 +69,139 @@ ok:
 
 > M0 是什么? 程序会启动多个 M, 第一个启动的是 M0
 >
-> G0 是什么? G 分为三种, 第一种是用户任务的叫做 G. 第二种是执行 runtime 下调度工作的叫 G0, 每一个 M 都绑定一个 G0.
-> 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
+> G0 是什么? G 分为三种, 第一种是用户任务的叫做 G. 第二种是执行 runtime 下调度工作的叫 G0, 每一个 M 都绑定一个 
+> G0. 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
+
+
+### runtime·osinit(SB) 针对系统环境的初始化
+
+### runtime·schedinit(SB) 调度相关的初始化
+
+### runtime·mainPC(SB) 启动监控任务
+
+
+### runtime.mstart(SB) 启动调动循环
+
+```cgo
+func mstart() {
+	_g_ := getg()
+
+	...
+	
+	mstart1()
+
+	...
+	
+	mexit(osStack)
+}
+```
+
+```cgo
+func mstart1() {
+	_g_ := getg()
+
+	if _g_ != _g_.m.g0 {
+		throw("bad runtime·mstart")
+	}
+
+	// Record the caller for use as the top of stack in mcall and
+	// for terminating the thread.
+	// We're never coming back to mstart1 after we call schedule,
+	// so other calls can reuse the current frame.
+	save(getcallerpc(), getcallersp())
+	asminit()
+	minit()
+
+	// Install signal handlers; after minit so that minit can
+	// prepare the thread to be able to handle the signals.
+	if _g_.m == &m0 {
+		mstartm0()
+	}
+
+	if fn := _g_.m.mstartfn; fn != nil {
+		fn()
+	}
+
+	if _g_.m != &m0 {
+		acquirep(_g_.m.nextp.ptr())
+		_g_.m.nextp = 0
+	}
+	schedule()
+}
+```
+
+
+### 相关数据结构
+
+````cgo
+type g struct{
+    stack     stack   // g自身的栈 
+    m         *m      // 隶属于哪个m 
+    sched     gobuf   // 保存了g的现场，goroutine切换时通过它来恢复
+    atomicstatus uint32 // G的状态
+    schedlink guintptr // 下一个 G, 链表
+    lockedm   muintptr  // 锁定的M, G中断恢复指定M执行
+    gopc      uintptr   // 创建 goroutine的指令地址
+    startpc   uintptr   // gorotine 函数指令地址
+    ... 
+}
+
+type m struct{
+    g0    *g        // g0， 每个M都有自己独有的 g0，负责调度
+    curg  *g        // 当前正在运行的 g
+    p     puintptr  // 绑定 P 执行代表(如果是nil, 则处于空闲状态)
+    nextp puintptr  // 当 M 被唤醒时,首先拥有这个 P
+    oldp  puintptr  // 之前执行 syscall 绑定的 P
+    
+    schedlink muintptr // 下一个m, 构成链表
+    lockedg   guintptr // 和 G 的 lockedm 对应
+    freelink  *m       // sched.freem  
+    
+    tls [6]uintptr 
+    mstartfn func()    // m 启动执行的函数
+    ... 
+}
+
+type p struct{
+    status int32 // P 的状态
+    link   puintptr // 下一个P, 构成链表
+    m      muintptr // 拥有这个P的M
+    
+    // 一个比 runq 优先级更高的的 runable G
+    runnext guintptr
+    
+    // P 本地 runable G 队列, 无锁访问
+    runqhead uint32
+    runqtail uint32
+    runq     [256]guintptr 
+    
+    // 状态为 dead 的 G 链表, 获取 G 时会从这里获取.
+    gFree struct{
+        gList
+        n int32
+    }
+}
+
+// 全局的调度 sched
+type schedt struct{
+    midle muintptr // 空闲的 M 链表
+    
+    pidle puintptr // 空闲的 P 链表
+    
+    runq gQueue    // 全局 runnable 的 G 队列
+    runqsize int32 // 全局 runnable 的 G 队列大小
+    
+    // 全局 dead G
+    gFree struct{
+        lock    mutex
+        stack   gList // 带有 stack 的 G
+        noStack gList // 不带 stack 的 G
+        n int32
+    } 
+    
+    // 全局等待释放的 M (m.exited已经被设置), 链接到 m.freelink
+    freem *m 
+}
+
+````
+
