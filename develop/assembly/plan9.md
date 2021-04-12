@@ -6,7 +6,7 @@
 
 先看一个简单的例子:
 
-```go
+```cgo
 package pkg
 
 var ID = 9527
@@ -59,7 +59,7 @@ GLOBL ·ID, $8
 现在将上述的工作完整的展示一遍:
 
 // pkg.go, 声明变量 ID
-```go
+```cgo
 package pkg
 
 var ID int
@@ -83,7 +83,7 @@ DATA ·ID+7(SB)/1,$0x00
 文件名 `pkg_amd64.s` 的后缀名表示 AMD64 环境下的汇编代码文件.
 
 // main.go, 测试代码
-```go
+```cgo
 package main
 
 import "golearn/develop/assembly/pkg"
@@ -101,7 +101,7 @@ func main() {
 
 先看一个简单的例子:
 
-```go
+```cgo
 package pkg
 
 var Name = "gopher"
@@ -153,7 +153,7 @@ DATA  ·Name+8(SB)/8, $6
 
 测试代码:
 
-```go
+```cgo
 package main
 
 import "golearn/develop/assembly/pkg"
@@ -187,7 +187,7 @@ DATA  ·Name+8(SB)/8,$6
 
 方式二: 通过给 `NameData` 变量在 Go 语言中增加一个不包含指针并且大小为8个字节的类型来修复该错误.
 
-```go
+```cgo
 package pkg
 
 var NameData [8]byte
@@ -202,7 +202,7 @@ var Name string
 
 // main.go
 
-```go
+```cgo
 package main
 
 var hello = "hello world"
