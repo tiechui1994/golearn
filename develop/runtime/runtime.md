@@ -73,14 +73,54 @@ ok:
 > G0. 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
 
 
-### runtime·osinit(SB) 针对系统环境的初始化
+### runtime.osinit(SB) 针对系统环境的初始化
 
-### runtime·schedinit(SB) 调度相关的初始化
+### runtime.schedinit(SB) 调度相关的初始化
 
-### runtime·mainPC(SB) 启动监控任务
+```cgo
+func schedinit() {
+	_g_ := getg()
+    
+    // 设置 M 最大数量
+	sched.maxmcount = 10000
 
+	tracebackinit()
+	moduledataverify()
+	stackinit()
+	mallocinit()
+	mcommoninit(_g_.m) // 初始化当前 M, 全局的 M0
+	cpuinit()       // must run before alginit
+	alginit()       // 初始化哈希算法, 在此之前不能使用 map
+	modulesinit()   // provides activeModules
+	typelinksinit() // uses maps, activeModules
+	itabsinit()     // uses activeModules
+
+	msigsave(_g_.m)
+	initSigmask = _g_.m.sigmask
+
+	goargs()
+	goenvs()
+	parsedebugvars()
+	gcinit()
+
+	sched.lastpoll = uint64(nanotime())
+	procs := ncpu
+	if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
+		procs = n
+	}
+	if procresize(procs) != nil {
+		throw("unknown runnable goroutine during bootstrap")
+	}
+    
+    ....	
+}
+```
+
+### runtime.mainPC(SB) 启动监控任务
 
 ### runtime.mstart(SB) 启动调动循环
+
+mstart() 函数是启动 M, 调用的链: `mstart()` -> `mstart1()` -> `schedule()`
 
 ```cgo
 func mstart() {
@@ -137,7 +177,7 @@ func mstart1() {
 type g struct{
     stack     stack   // g自身的栈 
     m         *m      // 隶属于哪个m 
-    sched     gobuf   // 保存了g的现场，goroutine切换时通过它来恢复
+    sched     gobuf   // 保存了g的现场, goroutine切换时通过它来恢复
     atomicstatus uint32 // G的状态
     schedlink guintptr // 下一个 G, 链表
     lockedm   muintptr  // 锁定的M, G中断恢复指定M执行
@@ -202,6 +242,5 @@ type schedt struct{
     // 全局等待释放的 M (m.exited已经被设置), 链接到 m.freelink
     freem *m 
 }
-
 ````
 
