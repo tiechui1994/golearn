@@ -410,7 +410,7 @@ func makechan(chanType *byte, size int) (hchan chan any)
 上它们都是通过标识符映射一个内存地址.
 
 ```
-TEXT symbol(SB), [flags,] $framesizze[-argsize]
+TEXT symbol(SB), [flags,] $framesize[-argsize]
 ```
 
 函数定义由5个部分组成: TEXT指令, 函数名(symbol), 可选的flag标记, 函数帧大小和可选的函数参数大小.
