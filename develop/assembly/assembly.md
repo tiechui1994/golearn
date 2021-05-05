@@ -177,10 +177,11 @@ TEXT ·add(SB), NOSPLIT, $8-24
 | CALL | 转移 | 调用函数 | CALL ·Sum(SB) |
 | JMP | 转移 | 无条件转移指令 | JMP LOOP // 无条件转至LOOP标签处, goto语句 |
 | JE | 转移 | 等于则跳转 | JE LOOP // 等于则跳转, 跳转到 LOOP 地址处 |
-| JZ | 转移 | 为0则跳转 | JZ LOOP // 为0则跳转, 则跳转到 LOOP 地址处, 一般前面都有一个 CMPQ 指令 |
+| JZ | 转移 | 为0则跳转 | JZ LOOP // 为0则跳转, 跳转到 LOOP 地址处, 一般前面都有一个 CMPQ 指令 |
+| JS | 转移 | 负数跳转 | JS LOOP // 负数则跳转, 跳转到 LOOP 地址处 |
 | JL | 转移 | 有符号小于则跳转 | JL LOOP // 有符号小于则跳转, 跳转到 LOOP 地址处 |
-| JB | 转移 | 无符号小于则跳转 | JB LOOP // 无符号小于则跳转, 跳转到 LOOP 地址处 |
 | JG | 转移 | 有符号大于则跳转 | JG LOOP // 有符号大于则跳转, 跳转到 LOOP 地址处 |
+| JB | 转移 | 无符号小于则跳转 | JB LOOP // 无符号小于则跳转, 跳转到 LOOP 地址处 |
 | JA | 转移 | 无符号大于则跳转 | JA LOOP // 无符号大于则跳转, 跳转到 LOOP 地址处 |
 
 
