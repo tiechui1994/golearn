@@ -1,4 +1,4 @@
-package tool
+package main
 
 import (
 	"bytes"
@@ -14,16 +14,6 @@ import (
 	"testing"
 	"time"
 )
-
-func TestConfig(t *testing.T) {
-	config := New()
-	u := config.GetGoogleCode()
-	t.Log(u)
-	err := config.getAccessToken("4/1AGkOZWoCf4leuSIhP9VDf50X4MD2OJkDJY5zdA5N0uDpqM8Hu5AUnqKTt7GfGJL6UnQa-FKhsLw3qXOX2yYGbI")
-	if err == nil {
-		config.Task()
-	}
-}
 
 func init() {
 	gob.Register(Speech{})
