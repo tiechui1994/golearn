@@ -44,7 +44,7 @@ func writeCode(code, file string) {
 	}
 	defer fd.Close()
 
-	code = "<certificate-key>" + code
+	code = "<certificate-key>\n" + code
 	data := []byte{0xff, 0xff}
 	for _, b := range []byte(code) {
 		data = append(data, []byte{b, 0x00}...)
