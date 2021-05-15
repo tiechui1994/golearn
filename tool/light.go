@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -21,10 +23,10 @@ import (
 // method="POST"
 func Signature(version, ts, method string) string {
 	salt, _ := base64.StdEncoding.DecodeString("cG5oMkNMQTJNcFhFdkxkenNWbXE4RjJMR0t6VUhOOVc=")
+	fmt.Println(string(salt))
+
 	strs := []string{"v3", "LightYearApp", ts, method, string(salt)}
 	data := []byte(strings.Join(strs, "|"))
-
-	fmt.Println(string(data))
 
 	i, j := 0, len(data)-1
 	for i <= j {
@@ -44,21 +46,30 @@ func Signature(version, ts, method string) string {
 
 var api = "https://api.lightcloudai.com"
 
-func SignupOne(id, email string) {
+func SignupOne(id, email string) error {
 	ts := fmt.Sprintf("%v", time.Now().UnixNano()/1000000)
 	u := api + "/api/v3/auth/signup/one?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
 		Signature("v2.1", ts, "POST"))
-	log.Println(u)
-	body := fmt.Sprintf(`{"deviceId":"%v","deviceName":"web","devicePlatform":"web","email":"%v"}`, id, email)
+	var body struct {
+		DeviceId       string `json:"deviceId"`
+		DeviceName     string `json:"deviceName"`
+		DevicePlatform string `json:"devicePlatform"`
+		Email          string `json:"email"`
+	}
+	body.DeviceId = id
+	body.DeviceName = "web"
+	body.DevicePlatform = "web"
+	body.Email = email
+	bin, _ := json.Marshal(body)
 
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
+	request, _ := http.NewRequest("POST", u, bytes.NewBuffer(bin))
 	request.Header.Set("content-type", "application/json;charset=UTF-8")
 	request.Header.Set("user-agent", "AppleWebKit/537.36 (KHTML, like Gecko)")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		log.Println(err)
-		return
+		return err
 	}
 
 	var result struct {
@@ -73,18 +84,17 @@ func SignupOne(id, email string) {
 	err = json.Unmarshal(data, &result)
 	if err != nil {
 		log.Println(err)
-		return
+		return err
 	}
 
 	if result.StatusCode != 200 {
-		log.Println(result.StatusCode, result.Messsage)
-		return
+		return errors.New(result.Messsage)
 	}
 
-	log.Println(result.Messsage, result.Data)
+	return nil
 }
 
-func SignupTwo(id, email, pwd, code string) {
+func SignupTwo(id, email, pwd, code string) error {
 	ts := fmt.Sprintf("%v", time.Now().UnixNano()/1000000)
 	u := api + "/api/v3/auth/signup/two?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
 		Signature("v2.1", ts, "POST"))
@@ -113,7 +123,7 @@ func SignupTwo(id, email, pwd, code string) {
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		log.Println(err)
-		return
+		return err
 	}
 
 	var result struct {
@@ -128,15 +138,14 @@ func SignupTwo(id, email, pwd, code string) {
 	err = json.Unmarshal(data, &result)
 	if err != nil {
 		log.Println(err)
-		return
+		return err
 	}
 
 	if result.StatusCode != 200 {
-		log.Println(result.StatusCode, result.Messsage)
-		return
+		return errors.New(result.Messsage)
 	}
 
-	log.Println(result.Messsage, result.Data)
+	return nil
 }
 
 func SingIn(id, email, pwd string) {
@@ -190,6 +199,21 @@ func SingIn(id, email, pwd string) {
 
 	log.Println(result.Messsage, result.Data)
 }
+
 func main() {
-	SignupOne("a29a716fc5efefdc8d1394707323b4c2", "2o4e80eq@chapedia.org")
+	id := "129a716fc5efefdc8d1394707323b4c1"
+	email := "oxwcybklburqjwf@supersave.net"
+
+try:
+	err := SignupOne(id, email)
+	if err != nil {
+		return
+	}
+
+	var code string
+	fmt.Fscanf(os.Stdin, "%s", &code)
+	err = SignupTwo(id, email, "0214.abc", code)
+	if err != nil {
+		goto try
+	}
 }
