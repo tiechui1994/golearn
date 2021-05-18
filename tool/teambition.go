@@ -11,14 +11,19 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
-const teambition = "https://tcs.teambition.net"
+const (
+	tcs = "https://tcs.teambition.net"
+	www = "https://www.teambition.com"
+)
 
 var (
 	escape = func() func(name string) string {
@@ -29,7 +34,10 @@ var (
 	}()
 )
 
+var cookies = "TEAMBITION_SESSIONID=xxx;TEAMBITION_SESSIONID.sig=xxx;TB_ACCESS_TOKEN=xxx"
+
 func init() {
+	jar, _ := cookiejar.New(nil)
 	http.DefaultClient = &http.Client{
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
@@ -41,6 +49,7 @@ func init() {
 				InsecureSkipVerify: true,
 			},
 		},
+		Jar: jar,
 	}
 }
 
@@ -63,6 +72,36 @@ func POST(u string, body io.Reader, header map[string]string) (raw json.RawMessa
 	}
 
 	return ioutil.ReadAll(response.Body)
+}
+
+func GET(u string, header map[string]string) (raw json.RawMessage, err error) {
+	request, _ := http.NewRequest("GET", u, nil)
+	if header != nil {
+		for k, v := range header {
+			request.Header.Set(k, v)
+		}
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return raw, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode >= 400 {
+		return raw, errors.New(response.Status)
+	}
+
+	return ioutil.ReadAll(response.Body)
+}
+
+type UploadInfo struct {
+	FileKey      string `json:"fileKey"`
+	FileName     string `json:"fileTame"`
+	FileType     string `json:"fileType"`
+	FileSize     int    `json:"fileSize"`
+	FileCategory string `json:"fileCategory"`
+	Source       string `json:"source"`
 }
 
 func Upload(token, path string) (url string, err error) {
@@ -91,7 +130,7 @@ func Upload(token, path string) (url string, err error) {
 
 	w.Close()
 
-	u := teambition + "/upload"
+	u := tcs + "/upload"
 	header := map[string]string{
 		"Authorization": "Bearer " + token,
 		"Content-Type":  w.FormDataContentType(),
@@ -128,7 +167,7 @@ func UploadChunk(token, path string) (url string, err error) {
 
 	info, _ := fd.Stat()
 
-	u := teambition + "/upload/chunk"
+	u := tcs + "/upload/chunk"
 	header := map[string]string{
 		"Authorization": "Bearer " + token,
 		"Content-Type":  "application/json",
@@ -168,7 +207,7 @@ func UploadChunk(token, path string) (url string, err error) {
 			n, _ := fd.ReadAt(data, int64((idx-1)*result.ChunkSize))
 			data = data[:n]
 
-			u := teambition + fmt.Sprintf("/upload/chunk/%v?chunk=%v&chunks=%v", result.FileKey, idx, result.Chunks)
+			u := tcs + fmt.Sprintf("/upload/chunk/%v?chunk=%v&chunks=%v", result.FileKey, idx, result.Chunks)
 			header := map[string]string{
 				"Authorization": "Bearer " + token,
 				"Content-Type":  "application/octet-stream",
@@ -182,7 +221,7 @@ func UploadChunk(token, path string) (url string, err error) {
 
 	wg.Wait()
 
-	u = teambition + fmt.Sprintf("/upload/chunk/%v", result.FileKey)
+	u = tcs + fmt.Sprintf("/upload/chunk/%v", result.FileKey)
 	header = map[string]string{
 		"Content-Length": "0",
 		"Authorization":  "Bearer " + token,
@@ -204,5 +243,251 @@ func UploadChunk(token, path string) (url string, err error) {
 	return result.DownloadUrl, err
 }
 
+type Project struct {
+	ID               string `json:"_id"`
+	Name             string `json:"name"`
+	OrganizationId   string `json:"_organizationId"`
+	RootCollectionId string `json:"_rootCollectionId"`
+}
+
+func Projects(orgid string) (list []Project, err error) {
+	ts := 1621340651679
+	u := www + fmt.Sprintf("/api/v2/projects?_organizationId=%v&selectBy=joined&orderBy=name&pageToken=&pageSize=20&_=%v",
+		orgid, ts)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return list, err
+	}
+
+	var result struct {
+		Result []Project `json:"result"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return list, err
+	}
+
+	return result.Result, nil
+}
+
+type Collection struct {
+	ID              string `json:"_id"`
+	Pinyin          string `json:"pinyin"`
+	Title           string `json:"title"`
+	ParentId        string `json:"_parentId"`
+	ProjectId       string `json:"_projectId"`
+	ObjectType      string `json:"objectType"`
+	CollectionCount int    `json:"collectionCount"`
+	WorkCount       int    `json:"workCount"`
+}
+
+type Work struct {
+	FileKey     string `json:"fileKey"`
+	FileName    string `json:"fileName"`
+	DownloadUrl string `json:"downloadUrl"`
+	ProjectId   string `json:"_projectId"`
+	ParentId    string `json:"_parentId"`
+	ObjectType  string `json:"objectType"`
+}
+
+func Collections(rootcollid, projectid string) (list []Collection, err error) {
+	ts := 1621340651679
+	u := www + fmt.Sprintf("/api/collections?_parentId=%v&_projectId=%v&order=updatedDesc&count=50&page=1&_=%v",
+		rootcollid, projectid, ts)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return list, err
+	}
+
+	err = json.Unmarshal(data, &list)
+	if err != nil {
+		return list, err
+	}
+
+	return list, nil
+}
+
+func Works(rootcollid, projectid string) (list []Work, err error) {
+	ts := 1621340651679
+	u := www + fmt.Sprintf("/api/works?_parentId=%v&_projectId=%v&order=updatedDesc&count=50&page=1&_=%v",
+		rootcollid, projectid, ts)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return list, err
+	}
+
+	err = json.Unmarshal(data, &list)
+	if err != nil {
+		return list, err
+	}
+
+	return list, nil
+}
+
+func CreateWork(parentid string, upload UploadInfo) error {
+	type file struct {
+		UploadInfo
+		InvolveMembers []interface{} `json:"involveMembers"`
+		Visible        string        `json:"visible"`
+		ParentId       string        `json:"_parentId"`
+	}
+
+	var body struct {
+		Works    []file `json:"works"`
+		ParentId string `json:"_parentId"`
+	}
+
+	f := file{
+		UploadInfo: upload,
+		Visible:    "members",
+		ParentId:   parentid,
+	}
+
+	body.Works = []file{f}
+	body.ParentId = parentid
+	bin, _ := json.Marshal(body)
+
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+
+	u := www + "/api/works"
+
+	_, err := POST(u, bytes.NewBuffer(bin), header)
+
+	return err
+}
+
+func CreateCollection(parentid, projectid, name string) error {
+	var body struct {
+		CollectionType string        `json:"collectionType"`
+		Color          string        `json:"color"`
+		Created        string        `json:"created"`
+		Description    string        `json:"description"`
+		ObjectType     string        `json:"objectType"`
+		RecentWorks    []interface{} `json:"recentWorks"`
+		SubCount       interface{}   `json:"subCount"`
+		Title          string        `json:"title"`
+		Updated        string        `json:"updated"`
+		WorkCount      int           `json:"workCount"`
+		CreatorId      string        `json:"_creatorId"`
+		ParentId       string        `json:"_parentId"`
+		ProjectId      string        `json:"_projectId"`
+	}
+
+	body.Color = "blue"
+	body.ObjectType = "collection"
+	body.Title = name
+	body.ParentId = parentid
+	body.ProjectId = projectid
+	bin, _ := json.Marshal(body)
+
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+
+	u := www + "/api/collections"
+
+	_, err := POST(u, bytes.NewBuffer(bin), header)
+
+	return err
+}
+
+func FindDir(dir, orgid string) (collection Collection, err error) {
+	dir = strings.TrimSpace(dir)
+	if !strings.HasPrefix(dir, "/") {
+		return collection, errors.New("invalid path")
+	}
+
+	tokens := strings.Split(dir[1:], "/")
+	projects, err := Projects(orgid)
+	if err != nil {
+		return collection, err
+	}
+
+	var project Project
+	exist := false
+	for _, p := range projects {
+		if p.Name == tokens[0] {
+			exist = true
+			project = p
+			break
+		}
+	}
+
+	if !exist {
+		return collection, errors.New("no exist project")
+	}
+
+	tokens = tokens[1:]
+	rootid := project.RootCollectionId
+	for _, token := range tokens {
+		collections, err := Collections(rootid, project.ID)
+		if err != nil {
+			return collection, err
+		}
+
+		exist := false
+		for _, c := range collections {
+			if c.Title == token {
+				collection = c
+				rootid = c.ID
+				exist = true
+				break
+			}
+		}
+
+		if !exist {
+			return collection, errors.New("no exist path: " + token)
+		}
+	}
+
+	return
+}
+
+func FindFile(path, orgid string) (work Work, err error) {
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, "/") {
+		return work, errors.New("invalid path")
+	}
+
+	dir, name := filepath.Split(path)
+	dir = dir[:len(dir)-1]
+	c, err := FindDir(dir, orgid)
+	if err != nil {
+		return work, err
+	}
+
+	works, err := Works(c.ID, c.ProjectId)
+	if err != nil {
+		return work, err
+	}
+
+	for _, work := range works {
+		if work.FileName == name {
+			return work, nil
+		}
+	}
+
+	return work, errors.New("not exist file:" + name)
+}
+
 func main() {
+	dir, err := FindFile("/data/books/wwe/VeePN_2.1.4.0.zip", "000000000000000000000405")
+	fmt.Println(dir, err)
 }
