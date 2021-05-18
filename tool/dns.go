@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -17,14 +18,19 @@ dns查询
 网站:
 */
 
-var dns = &http.Client{
-	Transport: &http.Transport{
-		DisableKeepAlives: true,
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Minute)
+func init() {
+	http.DefaultClient = &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 5 * time.Minute,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
-	},
-	Timeout: time.Minute,
+	}
 }
 
 const (
@@ -84,7 +90,7 @@ func DNS(host, dnstype string) (ips []string, err error) {
 
 func (p *privateDNS) token() error {
 	u := "https://www.ping.cn/dns/" + p.host
-	response, err := dns.Get(u)
+	response, err := http.DefaultClient.Get(u)
 	if err != nil {
 		return err
 	}
@@ -121,7 +127,7 @@ func (p *privateDNS) check(taskid string, isCreate bool) (ips []string, task str
 	u := "https://www.ping.cn/check"
 	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(value.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-	response, err := dns.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return ips, task, err
 	}

@@ -18,16 +18,19 @@ import (
 网站: https://developer.baidu.com/vcast
 **/
 
-var bclient = &http.Client{
-	Transport: &http.Transport{
-		DisableKeepAlives: true,
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Second*10)
+func init() {
+	http.DefaultClient = &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 5 * time.Minute,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	},
+	}
 }
 
 // https://developer.baidu.com/vcast 登录百度账号, 获取 Cookie 信息
@@ -53,7 +56,7 @@ func ConvertText(text string, filename string) (err error) {
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	request.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	request.Header.Set("Cookie", COOKIE)
-	response, err := bclient.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		log.Printf("Do Failed: %v", err)
 		return err
@@ -88,7 +91,7 @@ func Download(u string, filename string) (err error) {
 		return err
 	}
 
-	response, err := bclient.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		log.Printf("Do Failed: %v", err)
 		return err

@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const lightyear = "https://api.lightcloudai.com"
+
 // n=1620826903465, r=v2.1, t=POST
 
 // version="v2.1"
@@ -44,11 +46,9 @@ func Signature(version, ts, method string) string {
 	return hex.EncodeToString(md.Sum(nil))
 }
 
-var api = "https://api.lightcloudai.com"
-
 func SignupOne(id, email string) error {
 	ts := fmt.Sprintf("%v", time.Now().UnixNano()/1000000)
-	u := api + "/api/v3/auth/signup/one?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
+	u := lightyear + "/api/v3/auth/signup/one?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
 		Signature("v2.1", ts, "POST"))
 	var body struct {
 		DeviceId       string `json:"deviceId"`
@@ -96,7 +96,7 @@ func SignupOne(id, email string) error {
 
 func SignupTwo(id, email, pwd, code string) error {
 	ts := fmt.Sprintf("%v", time.Now().UnixNano()/1000000)
-	u := api + "/api/v3/auth/signup/two?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
+	u := lightyear + "/api/v3/auth/signup/two?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
 		Signature("v2.1", ts, "POST"))
 	var body struct {
 		DeviceId       string `json:"deviceId"`
@@ -150,7 +150,7 @@ func SignupTwo(id, email, pwd, code string) error {
 
 func SingIn(id, email, pwd string) {
 	ts := fmt.Sprintf("%v", time.Now().UnixNano()/1000000)
-	u := api + "/api/v3/auth/signin?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
+	u := lightyear + "/api/v3/auth/signin?" + fmt.Sprintf("version=v2.1&timestamp=%v&sig=%v", ts,
 		Signature("v2.1", ts, "POST"))
 	var body struct {
 		DeviceId       string `json:"deviceId"`

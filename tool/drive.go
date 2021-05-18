@@ -34,17 +34,19 @@ func (e CodeError) Error() string {
 	return http.StatusText(int(e))
 }
 
-var dclient = &http.Client{
-	Transport: &http.Transport{
-		DisableKeepAlives: true,
-		DialContext: (&net.Dialer{
-			Timeout:   60 * time.Second,
-			KeepAlive: 5 * time.Minute,
-		}).DialContext,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+func init() {
+	http.DefaultClient = &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 5 * time.Minute,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
-	},
+	}
 }
 
 var config struct {
@@ -66,7 +68,7 @@ func httpPost(u string, header map[string]string, body string) (raw json.RawMess
 		}
 	}
 
-	response, err := dclient.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return raw, err
 	}
@@ -223,7 +225,7 @@ func main() {
 	for {
 		select {
 		case <-timer.C:
-			timer.Reset(30*time.Minute)
+			timer.Reset(30 * time.Minute)
 			cmd := fmt.Sprintf(`curl -C - -H 'Authorization: Bearer %v' \
 			-o /media/user/data/iso/www/macOSX.iso \
 			https://www.googleapis.com/drive/v3/files/18eeA54RApJf8Zt0M5oeNeXvX1VTQt7KC?alt=media`, config.AccessToken)
@@ -399,7 +401,7 @@ func (d FileDownloader) downloadPart(data []byte, from, to int) error {
 
 	log.Printf("download from:%d to:%d", from, to)
 	r.Header.Set("Range", fmt.Sprintf("bytes=%v-%v", from, to))
-	w, err := dclient.Do(r)
+	w, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return err
 	}

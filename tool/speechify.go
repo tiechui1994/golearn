@@ -26,14 +26,16 @@ import (
 文本/图片转语音
 */
 
-var scleint = &http.Client{
-	Transport: &http.Transport{
-		DisableKeepAlives: true,
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Minute)
+func init() {
+	http.DefaultClient = &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			Dial: func(network, addr string) (net.Conn, error) {
+				return net.DialTimeout(network, addr, time.Minute)
+			},
 		},
-	},
-	Timeout: time.Minute,
+		Timeout: time.Minute,
+	}
 }
 
 // voiceid
@@ -160,7 +162,7 @@ func (s *Speech) Identity() error {
 	request.Header.Set("x-amz-date", time.Now().Format(time_formate))
 	request.Header.Set("user-agent", user_agent)
 
-	response, err := scleint.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -297,7 +299,7 @@ func (s *Speech) Speech(text, dest string) error {
 	request.Header.Set("x-amz-security-token", s.SessionToken)
 	request.Header.Set("authorization", s.Signature(param, now))
 
-	response, err := scleint.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -357,7 +359,7 @@ func (s *Speech) TextSplit() error {
 	request.Header.Set("x-amz-security-token", s.SessionToken)
 	request.Header.Set("authorization", s.Signature(param, now))
 
-	response, err := scleint.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -398,7 +400,7 @@ func OCR(src, lan string) (msg string, err error) {
 	request.Header.Set("ocp-apim-subscription-key", ocr_key)
 	request.Header.Set("user-agent", "SpeechifyMobile/2.2.1 (com.cliffweitzman.speechifyMobile2; build:56918.5.26344858; iOS 13.5.1) Alamofire/4.8.2")
 
-	response, err := scleint.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return msg, err
 	}

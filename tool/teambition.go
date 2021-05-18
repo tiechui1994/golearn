@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,9 +18,9 @@ import (
 	"time"
 )
 
-var (
-	teambition = "https://tcs.teambition.net"
+const teambition = "https://tcs.teambition.net"
 
+var (
 	escape = func() func(name string) string {
 		replace := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 		return func(name string) string {
@@ -32,11 +33,14 @@ func init() {
 	http.DefaultClient = &http.Client{
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
-			Dial: func(network, addr string) (net.Conn, error) {
-				return net.DialTimeout(network, addr, time.Minute)
+			DialContext: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 5 * time.Minute,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
 			},
 		},
-		Timeout: time.Minute,
 	}
 }
 

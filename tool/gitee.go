@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -31,15 +32,17 @@ var (
 	grouppath string
 )
 
-var gitee *http.Client
-
 func init() {
 	jar, _ := cookiejar.New(nil)
-	gitee = &http.Client{
+	http.DefaultClient = &http.Client{
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
-			Dial: func(network, addr string) (net.Conn, error) {
-				return net.DialTimeout(network, addr, time.Minute)
+			DialContext: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 5 * time.Minute,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
 			},
 		},
 		Jar:     jar,
@@ -54,7 +57,7 @@ func csrfToken() (err error) {
 	request.Header.Set("Cookie", cookie)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := gitee.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -77,7 +80,7 @@ func resources() (err error) {
 	request.Header.Set("X-CSRF-Token", token)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := gitee.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -112,7 +115,7 @@ func forceSync(project string) (err error) {
 	request.Header.Set("X-CSRF-Token", token)
 	request.Header.Set("User-Agent", useraget)
 
-	response, err := gitee.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
 	}
