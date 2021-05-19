@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -62,23 +60,12 @@ func SignupOne(id, email string) error {
 	body.Email = email
 	bin, _ := json.Marshal(body)
 
-	request, _ := http.NewRequest("POST", u, bytes.NewBuffer(bin))
-	request.Header.Set("content-type", "application/json;charset=UTF-8")
-	request.Header.Set("user-agent", "AppleWebKit/537.36 (KHTML, like Gecko)")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
+	data, err := POST(u, bytes.NewBuffer(bin), map[string]string{"content-type": "application/json;charset=UTF-8"})
 	var result struct {
 		Data       interface{} `json:"data"`
 		Messsage   string      `json:"messsage"`
 		StatusCode int         `json:"statusCode"`
 	}
-
-	data, _ := ioutil.ReadAll(response.Body)
 
 	log.Println(string(data))
 	err = json.Unmarshal(data, &result)
@@ -116,23 +103,13 @@ func SignupTwo(id, email, pwd, code string) error {
 	body.VerifyCode = code
 	bin, _ := json.Marshal(body)
 
-	request, _ := http.NewRequest("POST", u, bytes.NewBuffer(bin))
-	request.Header.Set("content-type", "application/json;charset=UTF-8")
-	request.Header.Set("user-agent", "AppleWebKit/537.36 (KHTML, like Gecko)")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
+	data, err := POST(u, bytes.NewBuffer(bin), map[string]string{"content-type": "application/json;charset=UTF-8"})
 
 	var result struct {
 		Data       interface{} `json:"data"`
 		Messsage   string      `json:"messsage"`
 		StatusCode int         `json:"statusCode"`
 	}
-
-	data, _ := ioutil.ReadAll(response.Body)
 
 	log.Println(string(data))
 	err = json.Unmarshal(data, &result)
@@ -167,23 +144,13 @@ func SingIn(id, email, pwd string) {
 	body.Password = base64.StdEncoding.EncodeToString([]byte(pwd))
 	bin, _ := json.Marshal(body)
 
-	request, _ := http.NewRequest("POST", u, bytes.NewBuffer(bin))
-	request.Header.Set("content-type", "application/json;charset=UTF-8")
-	request.Header.Set("user-agent", "AppleWebKit/537.36 (KHTML, like Gecko)")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	data, err := POST(u, bytes.NewBuffer(bin), map[string]string{"content-type": "application/json;charset=UTF-8"})
 
 	var result struct {
 		Data       interface{} `json:"data"`
 		Messsage   string      `json:"messsage"`
 		StatusCode int         `json:"statusCode"`
 	}
-
-	data, _ := ioutil.ReadAll(response.Body)
 
 	log.Println(string(data))
 	err = json.Unmarshal(data, &result)

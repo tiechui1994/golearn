@@ -2,14 +2,11 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"mime"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -28,27 +25,6 @@ const (
 	google = "https://developers.google.com"
 )
 
-type CodeError int
-
-func (e CodeError) Error() string {
-	return http.StatusText(int(e))
-}
-
-func init() {
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second,
-				KeepAlive: 5 * time.Minute,
-			}).DialContext,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-}
-
 var config struct {
 	AccessToken  string
 	RefreshToken string
@@ -58,27 +34,6 @@ var config struct {
 
 func init() {
 	config.tokenuri = "https://oauth2.googleapis.com/token"
-}
-
-func httpPost(u string, header map[string]string, body string) (raw json.RawMessage, err error) {
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(body))
-	if header != nil {
-		for k, v := range header {
-			request.Header.Set(k, v)
-		}
-	}
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return raw, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= 400 {
-		return raw, CodeError(response.StatusCode)
-	}
-
-	return ioutil.ReadAll(response.Body)
 }
 
 func buildAuthorizeUri() (uri string, err error) {
@@ -98,7 +53,7 @@ func buildAuthorizeUri() (uri string, err error) {
 
 	bin, _ := json.Marshal(body)
 	u := google + "/oauthplayground/buildAuthorizeUri"
-	data, err := httpPost(u, nil, string(bin))
+	data, err := POST(u, bytes.NewBuffer(bin),nil)
 	if err != nil {
 		log.Println("Authorize:", err)
 		return uri, err
@@ -132,7 +87,7 @@ func exchangeAuthCode(code string) error {
 	bin, _ := json.Marshal(body)
 	u := google + "/oauthplayground/exchangeAuthCode"
 
-	data, err := httpPost(u, nil, string(bin))
+	data, err := POST(u, bytes.NewBuffer(bin),nil)
 	if err != nil {
 		log.Println("AuthCode:", err)
 		return err
@@ -172,7 +127,7 @@ func refreshAccessToken() error {
 	bin, _ := json.Marshal(body)
 	u := google + "/oauthplayground/refreshAccessToken"
 
-	data, err := httpPost(u, nil, string(bin))
+	data, err := POST(u, bytes.NewBuffer(bin),nil)
 	if err != nil {
 		log.Println("AuthCode:", err)
 		return err

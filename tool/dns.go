@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,20 +16,6 @@ dns查询
 网站:
 */
 
-func init() {
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second,
-				KeepAlive: 5 * time.Minute,
-			}).DialContext,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-}
 
 const (
 	DNS_A     = "A"

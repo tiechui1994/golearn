@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"context"
-	"crypto/tls"
 	"net"
 	"regexp"
 
@@ -67,19 +66,6 @@ type speechtotext struct {
 	JobID  string
 }
 
-var azure = &http.Client{
-	Transport: &http.Transport{
-		DisableKeepAlives: true,
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Minute)
-		},
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-		},
-	},
-	Timeout: time.Minute,
-}
-
 func (s *speechtotext) authorization(ctx context.Context, language string) (auth, region string, err error) {
 	u := "https://azure.microsoft.com/" + strings.ToLower(language) + "/services/cognitive-services/speech-to-text/?cdn=enable"
 	request, err := http.NewRequestWithContext(ctx, "GET", u, nil)
@@ -87,7 +73,7 @@ func (s *speechtotext) authorization(ctx context.Context, language string) (auth
 		return auth, region, err
 	}
 	request.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
-	response, err := azure.Do(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return auth, region, err
 	}

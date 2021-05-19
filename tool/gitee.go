@@ -2,14 +2,9 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"sync"
@@ -32,37 +27,10 @@ var (
 	grouppath string
 )
 
-func init() {
-	jar, _ := cookiejar.New(nil)
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second,
-				KeepAlive: 5 * time.Minute,
-			}).DialContext,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-		Jar:     jar,
-		Timeout: time.Minute,
-	}
-}
-
 // CSRF-Token
 func csrfToken() (err error) {
 	u := endpoint
-	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("Cookie", cookie)
-	request.Header.Set("User-Agent", useraget)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	data, _ := ioutil.ReadAll(response.Body)
+	data, _ := GET(u, map[string]string{"Cookie": cookie})
 	re := regexp.MustCompile(`meta content="(.*?)" name="csrf-token"`)
 	tokens := re.FindStringSubmatch(string(data))
 	if len(tokens) == 2 {
@@ -76,11 +44,8 @@ func csrfToken() (err error) {
 // groupath
 func resources() (err error) {
 	u := endpoint + "/api/v3/internal/my_resources"
-	request, _ := http.NewRequest("GET", u, nil)
-	request.Header.Set("X-CSRF-Token", token)
-	request.Header.Set("User-Agent", useraget)
 
-	response, err := http.DefaultClient.Do(request)
+	data, err := GET(u, map[string]string{"X-CSRF-Token": token})
 	if err != nil {
 		return err
 	}
@@ -88,8 +53,7 @@ func resources() (err error) {
 	var result struct {
 		GroupPath string `json:"groups_path"`
 	}
-
-	err = json.NewDecoder(response.Body).Decode(&result)
+	err = json.Unmarshal(data, &result)
 	if err != nil {
 		return err
 	}
@@ -111,16 +75,7 @@ func forceSync(project string) (err error) {
 	values.Set("authenticity_token", token)
 
 	u := endpoint + "/" + grouppath + "/" + project + "/force_sync_project"
-	request, _ := http.NewRequest("POST", u, bytes.NewBufferString(values.Encode()))
-	request.Header.Set("X-CSRF-Token", token)
-	request.Header.Set("User-Agent", useraget)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return err
-	}
-
-	data, _ := ioutil.ReadAll(response.Body)
+	data, err := POST(u, bytes.NewBufferString(values.Encode()), map[string]string{"X-CSRF-Token": token})
 	if len(data) == 0 {
 		fmt.Printf("sync [%v] .... \n", project)
 		time.Sleep(sleep * time.Second)

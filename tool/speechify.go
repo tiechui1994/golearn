@@ -15,7 +15,6 @@ import (
 	"io/ioutil"
 	"log"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -26,17 +25,6 @@ import (
 文本/图片转语音
 */
 
-func init() {
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			Dial: func(network, addr string) (net.Conn, error) {
-				return net.DialTimeout(network, addr, time.Minute)
-			},
-		},
-		Timeout: time.Minute,
-	}
-}
 
 // voiceid
 const (

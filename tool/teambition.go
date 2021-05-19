@@ -2,22 +2,16 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -35,65 +29,6 @@ var (
 )
 
 var cookies = "TEAMBITION_SESSIONID=xxx;TEAMBITION_SESSIONID.sig=xxx;TB_ACCESS_TOKEN=xxx"
-
-func init() {
-	jar, _ := cookiejar.New(nil)
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second,
-				KeepAlive: 5 * time.Minute,
-			}).DialContext,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-		Jar: jar,
-	}
-}
-
-func POST(u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
-	request, _ := http.NewRequest("POST", u, body)
-	if header != nil {
-		for k, v := range header {
-			request.Header.Set(k, v)
-		}
-	}
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return raw, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= 400 {
-		return raw, errors.New(response.Status)
-	}
-
-	return ioutil.ReadAll(response.Body)
-}
-
-func GET(u string, header map[string]string) (raw json.RawMessage, err error) {
-	request, _ := http.NewRequest("GET", u, nil)
-	if header != nil {
-		for k, v := range header {
-			request.Header.Set(k, v)
-		}
-	}
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return raw, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= 400 {
-		return raw, errors.New(response.Status)
-	}
-
-	return ioutil.ReadAll(response.Body)
-}
 
 type UploadInfo struct {
 	FileKey      string `json:"fileKey"`

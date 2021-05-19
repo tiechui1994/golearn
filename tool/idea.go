@@ -4,7 +4,6 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,13 +53,7 @@ func writeCode(code, file string) {
 }
 
 func getCode(u string) string {
-	response, err := http.DefaultClient.Get(u)
-	if err != nil {
-		log.Println(err)
-		return ""
-	}
-
-	data, err := ioutil.ReadAll(response.Body)
+	data, err := GET(u, nil)
 	if err != nil {
 		log.Println(err)
 		return ""
@@ -99,7 +92,7 @@ func searchFile(dir string) []string {
 }
 
 func main() {
-	dir := flag.String("path","/root", "jetbrains work dir")
+	dir := flag.String("path", "/root", "jetbrains work dir")
 	flag.Parse()
 
 	code := getCode("http://idea.94goo.com")

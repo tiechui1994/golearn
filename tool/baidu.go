@@ -2,15 +2,12 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 /**
@@ -18,20 +15,6 @@ import (
 网站: https://developer.baidu.com/vcast
 **/
 
-func init() {
-	http.DefaultClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second,
-				KeepAlive: 5 * time.Minute,
-			}).DialContext,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-}
 
 // https://developer.baidu.com/vcast 登录百度账号, 获取 Cookie 信息
 var COOKIE = ""
