@@ -38,8 +38,8 @@ func init() {
 	}
 }
 
-func POST(u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
-	request, _ := http.NewRequest("POST", u, body)
+func request(method, u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
+	request, _ := http.NewRequest(method, u, body)
 	if header != nil {
 		for k, v := range header {
 			request.Header.Set(k, v)
@@ -64,28 +64,14 @@ func POST(u string, body io.Reader, header map[string]string) (raw json.RawMessa
 	return raw, err
 }
 
+func POST(u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
+	return request("POST", u, body, header)
+}
+
+func PUT(u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
+	return request("PUT", u, body, header)
+}
+
 func GET(u string, header map[string]string) (raw json.RawMessage, err error) {
-	request, _ := http.NewRequest("GET", u, nil)
-	if header != nil {
-		for k, v := range header {
-			request.Header.Set(k, v)
-		}
-	}
-	request.Header.Set("user-agent", agent)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return raw, err
-	}
-
-	raw, err = ioutil.ReadAll(response.Body)
-	if err != nil {
-		return raw, err
-	}
-
-	if response.StatusCode >= 400 {
-		return raw, CodeError(response.StatusCode)
-	}
-
-	return raw, err
+	return request("GET", u, nil, header)
 }
