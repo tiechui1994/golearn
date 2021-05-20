@@ -28,9 +28,77 @@ var (
 			return replace.Replace(name)
 		}
 	}()
+	ext = map[string]string{
+		".bmp":  "image/bmp",
+		".gif":  "image/gif",
+		".ico":  "image/vnd.microsoft.icon",
+		".jpeg": "image/jpeg",
+		".jpg":  "image/jpeg",
+		".png":  "image/png",
+		".svg":  "image/svg+xml",
+		".tif":  "image/tiff",
+		".webp": "image/webp",
+
+		".bz":  "application/x-bzip",
+		".bz2": "application/x-bzip2",
+		".gz":  "application/gzip",
+		".rar": "application/vnd.rar",
+		".tar": "application/x-tar",
+		".zip": "application/zip",
+		".7z":  "application/x-7z-compressed",
+
+		".sh":  "application/x-sh",
+		".jar": "application/java-archive",
+		".pdf": "application/pdf",
+
+		".doc":  "application/msword",
+		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		".ppt":  "application/vnd.ms-powerpoint",
+		".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		".xls":  "application/vnd.ms-excel",
+		".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		".xml":  "application/xml",
+
+		".3gp":  "audio/3gpp",
+		".3g2":  "audio/3gpp2",
+		".wav":  "audio/wav",
+		".weba": "audio/webm",
+		".oga":  "audio/ogg",
+		".mp3":  "audio/mpeg",
+		".aac":  "audio/aac",
+
+		".mp4":  "video/mp4",
+		".avi":  "video/x-msvideo",
+		".mpeg": "video/mpeg",
+		".webm": "video/webm",
+
+		".htm":  "text/html",
+		".html": "text/html",
+		".js":   "text/javascript",
+		".json": "application/json",
+		".txt":  "text/plain",
+		".text": "text/plain",
+		".key":  "text/plain",
+		".pem":  "text/plain",
+		".cert": "text/plain",
+		".csr":  "text/plain",
+		".cfg":  "text/plain",
+		".go":   "text/plain",
+		".java": "text/plain",
+		".yml":  "text/plain",
+		".md":   "text/plain",
+		".s":    "text/plain",
+		".c":    "text/plain",
+		".cpp":  "text/plain",
+		".h":    "text/plain",
+		".bin":  "application/octet-stream",
+	}
 	extType = func() func(string) string {
 		return func(s string) string {
-			return ""
+			if val, ok := ext[s]; ok {
+				return val
+			}
+			return "application/octet-stream"
 		}
 	}()
 )
@@ -59,7 +127,7 @@ func Upload(token, path string) (url string, err error) {
 	w := multipart.NewWriter(&body)
 
 	w.WriteField("name", info.Name())
-	w.WriteField("type", "application/octet-stream")
+	w.WriteField("type", extType(filepath.Ext(info.Name())))
 	w.WriteField("size", fmt.Sprintf("%v", info.Size()))
 	w.WriteField("lastModifiedDate", info.ModTime().Format("Mon, 02 Jan 2006 15:04:05 GMT+0800 (China Standard Time)"))
 
@@ -67,7 +135,7 @@ func Upload(token, path string) (url string, err error) {
 	h.Set("Content-Disposition",
 		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
 			escape("file"), escape(info.Name())))
-	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Content-Type", extType(filepath.Ext(info.Name())))
 	writer, _ := w.CreatePart(h)
 	io.Copy(writer, fd)
 
