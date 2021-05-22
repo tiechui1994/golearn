@@ -16,7 +16,7 @@ import (
 // go build -o idea -ldflags '-w -s' idea.go
 
 func init() {
-	log.SetPrefix("tool ")
+	log.SetPrefix("idea ")
 }
 
 func writeCode(code, file string) {

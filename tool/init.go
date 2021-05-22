@@ -22,7 +22,10 @@ func (err CodeError) Error() string {
 	return http.StatusText(int(err))
 }
 
-var jar http.CookieJar
+var (
+	DEBUG = false
+	jar   http.CookieJar
+)
 
 func init() {
 	jar, _ = cookiejar.New(nil)
@@ -40,8 +43,6 @@ func init() {
 		Jar: jar,
 	}
 }
-
-var DEBUG = false
 
 func request(method, u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
 	request, _ := http.NewRequest(method, u, body)

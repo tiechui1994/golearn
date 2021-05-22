@@ -908,7 +908,7 @@ func Spaces(orgid, memberid string) (spaces []Space, err error) {
 
 func main() {
 	DEBUG = true
-	cookies = "TB_STICKY=xxx; TB_ACCESS_TOKEN=login_accesstoken; TEAMBITION_SESSIONID=sessionid; TEAMBITION_SESSIONID.sig=sig;"
+	cookies = "TB_ACCESS_TOKEN=login_accesstoken; TEAMBITION_SESSIONID=sessionid; TEAMBITION_SESSIONID.sig=sig;"
 	me, err := Roles()
 	fmt.Println(err)
 	fmt.Println(me)
@@ -940,5 +940,4 @@ func main() {
 		err = CreateFolder("osx", user.OrganizationId, nodes[0].NodeId, spaces[0].SpaceId, org.DriveId)
 		fmt.Println(err)
 	}
-
 }
