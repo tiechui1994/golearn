@@ -498,13 +498,44 @@ func FindFile(path, orgid string) (work Work, err error) {
 	return work, errors.New("not exist file:" + name)
 }
 
+type MeConfig struct {
+	IsAdmin bool   `json:"isAdmin"`
+	OrgId   string `json:"tenantId"`
+	User    struct {
+		ID     string `json:"id"`
+		Email  string `json:"email"`
+		Name   string `json:"name"`
+		OpenId string `json:"openId"`
+	}
+}
+
+func Batches() (me MeConfig, err error) {
+	u := www + "/uiless/api/sdk/batch?scope[]=me"
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return me, err
+	}
+	var result struct {
+		Result struct {
+			Me MeConfig `json:"me"`
+		} `json:"result"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	return result.Result.Me, err
+}
+
 // netdisk
 
 type Role struct {
 	ID             string   `json:"_id"`
 	OrganizationId string   `json:"_organizationId"`
 	Level          int      `json:"level"`
-	Permissions    []string `json:"permissions"`
+	Permissions    []string `json:"-"`
 }
 
 func Roles() (list []Role, err error) {
@@ -569,11 +600,31 @@ func Nodes(orgid, driveid, parentid string) (list []Node, err error) {
 	return result.Data, nil
 }
 
+func NodeArchive(orgid string, nodeids []string) (err error) {
+	u := pan + "/pan/api/nodes/archive"
+
+	var body struct {
+		NodeIds []string `json:"nodeIds"`
+		OrgId   string   `json:"orgId"`
+	}
+	body.NodeIds = nodeids
+	body.OrgId = orgid
+	bin, _ := json.Marshal(body)
+
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+
+	_, err = POST(u, bytes.NewBuffer(bin), header)
+	return err
+}
+
 func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
 	var body struct {
 		CcpParentId   string `json:"ccpParentId"`
 		CheckNameMode string `json:"checkNameMode"`
-		DriverId      string `json:"driverId"`
+		DriveId       string `json:"driveId"`
 		Name          string `json:"name"`
 		OrgId         string `json:"orgId"`
 		ParentId      string `json:"parentId"`
@@ -582,7 +633,7 @@ func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
 	}
 
 	body.CheckNameMode = "refuse"
-	body.DriverId = driverid
+	body.DriveId = driverid
 	body.Name = name
 	body.OrgId = orgid
 	body.CcpParentId = parentid
@@ -610,7 +661,7 @@ type PanFile struct {
 	UploadUrl []string `json:"uploadUrl"`
 	NodeId    string   `json:"nodeId"`
 	ParentId  string   `json:"parentId"`
-	DriverId  string   `json:"driverId"`
+	DriveId   string   `json:"driveId"`
 }
 
 func CreateFile(name, orgid, parentid, spaceid, driverid, path string) (files []PanFile, err error) {
@@ -620,7 +671,7 @@ func CreateFile(name, orgid, parentid, spaceid, driverid, path string) (files []
 		ChunkCount  int    `json:"chunkCount"`
 		Size        int64  `json:"size"`
 		CcpParentId string `json:"ccpParentId"`
-		DriverId    string `json:"driverId"`
+		DriveId     string `json:"driveId"`
 		Type        string `json:"type"`
 	}
 	var body struct {
@@ -637,7 +688,7 @@ func CreateFile(name, orgid, parentid, spaceid, driverid, path string) (files []
 		Name:        info.Name(),
 		ChunkCount:  1,
 		ContentType: extType(filepath.Ext(info.Name())),
-		DriverId:    driverid,
+		DriveId:     driverid,
 		Size:        info.Size(),
 		CcpParentId: parentid,
 		Type:        "file",
@@ -666,7 +717,7 @@ func CreateFile(name, orgid, parentid, spaceid, driverid, path string) (files []
 
 type PanUpload struct {
 	DomainId     string `json:"domainId"`
-	DriverId     string `json:"driverId"`
+	DriveId      string `json:"driveId"`
 	UploadId     string `json:"uploadId"`
 	FileId       string `json:"fileId"`
 	PartInfoList []struct {
@@ -677,14 +728,14 @@ type PanUpload struct {
 
 func UploadUrl(orgid string, panfile PanFile) (upload PanUpload, err error) {
 	var body struct {
-		DriverId        string `json:"driverId"`
+		DriveId         string `json:"driveId"`
 		OrgId           string `json:"orgId"`
 		UploadId        string `json:"uploadId"`
 		StartPartNumber int    `json:"startPartNumber"`
 		EndPartNumber   int    `json:"endPartNumber"`
 	}
 
-	body.DriverId = panfile.DriverId
+	body.DriveId = panfile.DriveId
 	body.OrgId = orgid
 	body.UploadId = panfile.UploadId
 	body.StartPartNumber = 1
@@ -735,7 +786,7 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 
 	var body struct {
 		CcpParentId string `json:"ccpParentId"`
-		DriverId    string `json:"driverId"`
+		DriveId     string `json:"driveId"`
 		NodeId      string `json:"nodeId"`
 		OrgId       string `json:"orgId"`
 		UploadId    string `json:"uploadId"`
@@ -743,7 +794,7 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 	body.CcpParentId = nodeid
 	body.OrgId = orgid
 	body.NodeId = nodeid
-	body.DriverId = upload.DriverId
+	body.DriveId = upload.DriveId
 	body.UploadId = upload.UploadId
 	bin, _ := json.Marshal(body)
 
@@ -792,14 +843,16 @@ func Orgs(orgid string) (org Org, err error) {
 }
 
 type User struct {
-	Email         string `json:"email"`
-	Name          string `json:"name"`
-	Phone         string `json:"phone"`
-	PhoneForLogin string `json:"phoneForLogin"`
-	ID            string `json:"_id"`
+	Email          string `json:"email"`
+	Name           string `json:"name"`
+	Phone          string `json:"phone"`
+	PhoneForLogin  string `json:"phoneForLogin"`
+	ID             string `json:"_id"`
+	OrganizationId string `json:"_organizationId"`
+	Roleid         string `json:"roleid"`
 }
 
-func Users(orgid string) (user User, err error) {
+func GetByUser(orgid string) (user User, err error) {
 	u := pan + fmt.Sprintf("/pan/api/orgs/%v/members/getByUser?orgId=%v", orgid, orgid)
 	header := map[string]string{
 		"cookie":       cookies,
@@ -811,12 +864,17 @@ func Users(orgid string) (user User, err error) {
 	}
 
 	var result struct {
-		UserInfo User `json:"userInfo"`
+		RoleId          string `json:"_roleId"`
+		BoundToObjectId string `json:"_boundToObjectId"`
+		UserInfo        User   `json:"userInfo"`
 	}
 	err = json.Unmarshal(data, &result)
 	if err != nil {
 		return user, err
 	}
+
+	result.UserInfo.OrganizationId = result.BoundToObjectId
+	result.UserInfo.Roleid = result.RoleId
 
 	return result.UserInfo, nil
 }
@@ -849,6 +907,38 @@ func Spaces(orgid, memberid string) (spaces []Space, err error) {
 }
 
 func main() {
-	dir, err := FindFile("/data/books/wwe/VeePN_2.1.4.0.zip", "000000000000000000000405")
-	fmt.Println(dir, err)
+	DEBUG = true
+	cookies = "TB_STICKY=xxx; TB_ACCESS_TOKEN=login_accesstoken; TEAMBITION_SESSIONID=sessionid; TEAMBITION_SESSIONID.sig=sig;"
+	me, err := Roles()
+	fmt.Println(err)
+	fmt.Println(me)
+
+	org, err := Orgs(me[0].OrganizationId)
+	fmt.Println(err)
+	fmt.Println(org)
+
+	user, err := GetByUser(me[0].OrganizationId)
+	fmt.Println(err)
+	fmt.Println(user)
+
+	spaces, err := Spaces(user.OrganizationId, user.ID)
+	fmt.Println(err)
+	fmt.Println(spaces)
+	if len(spaces) == 0 {
+		return
+	}
+
+	nodes, err := Nodes(user.OrganizationId, org.DriveId, spaces[0].RootId)
+	fmt.Println(err)
+	fmt.Println(nodes)
+
+	if len(nodes) > 0 && nodes[0].Kind == "folder" {
+		nodes, err := Nodes(user.OrganizationId, org.DriveId, nodes[0].NodeId)
+		fmt.Println(err)
+		fmt.Println(nodes)
+
+		err = CreateFolder("osx", user.OrganizationId, nodes[0].NodeId, spaces[0].SpaceId, org.DriveId)
+		fmt.Println(err)
+	}
+
 }

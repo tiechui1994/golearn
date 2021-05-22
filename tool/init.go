@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -21,8 +22,10 @@ func (err CodeError) Error() string {
 	return http.StatusText(int(err))
 }
 
+var jar http.CookieJar
+
 func init() {
-	jar, _ := cookiejar.New(nil)
+	jar, _ = cookiejar.New(nil)
 	http.DefaultClient = &http.Client{
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
@@ -38,6 +41,8 @@ func init() {
 	}
 }
 
+var DEBUG = false
+
 func request(method, u string, body io.Reader, header map[string]string) (raw json.RawMessage, err error) {
 	request, _ := http.NewRequest(method, u, body)
 	if header != nil {
@@ -46,7 +51,9 @@ func request(method, u string, body io.Reader, header map[string]string) (raw js
 		}
 	}
 	request.Header.Set("user-agent", agent)
-
+	if DEBUG {
+		log.Println(request.URL.Path, jar.Cookies(request.URL))
+	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return raw, err
@@ -55,6 +62,10 @@ func request(method, u string, body io.Reader, header map[string]string) (raw js
 	raw, err = ioutil.ReadAll(response.Body)
 	if err != nil {
 		return raw, err
+	}
+
+	if DEBUG {
+		log.Println(request.URL.Path, string(raw))
 	}
 
 	if response.StatusCode >= 400 {
