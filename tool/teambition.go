@@ -766,10 +766,7 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 
 	info, _ := fd.Stat()
 	chunk := uint64(info.Size() / int64(len(upload.PartInfoList)))
-	pading := uint64(8192)
-	if chunk&(pading-1) != 0 {
-		chunk += pading - chunk&(pading-1)
-	}
+	chunk = 8192 + (^(8192-1))&chunk /// 8192对其
 
 	var wg sync.WaitGroup
 	wg.Add(len(upload.PartInfoList))

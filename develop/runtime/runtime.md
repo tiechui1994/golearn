@@ -1,5 +1,29 @@
 # go 调度
 
+内核堆系统线程的调度可以归纳为:**在执行操作系统代码时, 内核调度器按照一定的算法挑选处一个线程并把该线程保存在内存之中的寄
+存器值放入CPU对于的寄存器从而恢复该线程的运行.**
+
+万变不离其宗, 系统线程对 goroutine 的调度与内核对系统线程的调度原理是一样的, `实质都是通过保存和修改CPU寄存器的值来达
+到切换线程/gorotine的目的.`
+
+因此, 为了实现对 gorotine 的调度, 需要引入一个数据结构来保存CPU寄存器的值以及goroutine的其他一些状态信息, 这个数据结
+构就是 g, 它保存了 goroutine 的所有信息, 该结构体的每一个实例对象都代表了一个 goroutine, 调度器代码可以通过 g 对象来
+对 goroutine 进行调度, 当 goroutine 被调离 CPU 时, 调度器代码负责把 CPU 寄存器的值保存在 g 对象的成员变量当中, 当
+goroutine 被调度起来运行时, 调度器代码负责把 g 对象的成员变量所保存的寄存器的值恢复到 CPU 寄存器.
+
+任何一个由编译型语言所编写的程序在被操作系统加载起来运行时都会顺序经过如下几个阶段:
+
+1. 从磁盘上把可执行程序读入内存;
+
+2. 创建进程和主线程; 
+
+3. 为主线程分配栈空间;
+
+4. 把由用户在命令行输入的参数拷贝到主线程的栈;
+
+5. 把主线程放入操作系统的运行队列等待被调度执行起来运行.
+
+
 G, M, P
 
 - G: 代表一个 goroutine, 每个 goroutine 都有自己独立的栈存放当前运行内存及状态. 可以认为一个 G 就是一个任务.
@@ -14,6 +38,9 @@ G, M, P
 
 ### 进程启动都做了什么?
 
+通过 gdb 的 `info files` 可以查找到go编译文件的函数入口地址, 通过单步调试 `si`, 最终到 `runtime.rt0_go` 这个汇编
+函数当中开始进行调度器的初始化.
+
 ```cgo
 // runtime/go_tls.h
 
@@ -24,35 +51,62 @@ G, M, P
 #endif
 ```
 
-```
+```cgo
 // runtime/asm_amd64.s
 
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
     ....
+    
+    # 给 g0 分配栈空间, 大约是64k
+    MOVQ	$runtime·g0(SB), DI  # DI=g0 
+    LEAQ	(-64*1024+104)(SP), BX # 预分配大约64k的栈
+    MOVQ	BX, g_stackguard0(DI) # g0.stackguard0=BX
+    MOVQ	BX, g_stackguard1(DI) # g0.stackguard1=BX
+    MOVQ	BX, (g_stack+stack_lo)(DI) # g0.stack.lo=BX
+    MOVQ	SP, (g_stack+stack_hi)(DI) # g0.stack.hi=SP
+    
+   ....
+   
+    # 开始初始化tls, settls本质上是通过系统调用 arch_prctl 实现的.
+    LEAQ	runtime·m0+m_tls(SB), DI # DI=&m0.tls
+   	CALL	runtime·settls(SB) # 调用 settls 设置本地存储, settls 的参数在 DI 当中
+   	
+   	# 测试settls 是否可以正常工作
+    get_tls(BX) # 获取fs段寄存器地址并放入 BX 寄存器, 其实就是 m0.tls[1] 的地址
+    MOVQ	$0x123, g(BX) # 将 0x123 拷贝到 fs 段寄存器的地址偏移-8的内存位置, 也就是 m0.tls[0]=0x123 
+    MOVQ	runtime·m0+m_tls(SB), AX # AX=m0.tls[0]
+    CMPQ	AX, $0x123 # 检查 m0.tls[0] 是否是通过本地存储存入的 0x123 来验证功能是否正常
+    JEQ 2(PC) # 相等
+    CALL	runtime·abort(SB) # 线程本地存储功能不正常, 退出程序
 ok:
 	// set the per-goroutine and per-mach "registers"
-	get_tls(BX) // 宏定义函数, "go_tls.h" 文件中, 获取 TLS 变量, tls
-	LEAQ	runtime·g0(SB), CX // CX = runtime.g0
-	MOVQ	CX, g(BX)  // tls = g0
-	LEAQ	runtime·m0(SB), AX // AX = runtime.m0
+	get_tls(BX) // 获取fs段基地址BX寄存器
+	LEAQ	runtime·g0(SB), CX // CX=&g0
+	MOVQ	CX, g(BX)  // 把g0的地址保存到线程本地存储,即 m0.tls[0]=&g0
+	LEAQ	runtime·m0(SB), AX // AX=&m0
     
-    // 全局 m0 与 g0 进行绑定
-	// save m0->g0 = g0
-	MOVQ	CX, m_g0(AX)
-	// save g0->m = m0
-	MOVQ	AX, g_m(CX)
-
+    // 全局 m0 与 g0 进行关联
+	MOVQ	CX, m_g0(AX) # m0.g0=&g0 
+	MOVQ	AX, g_m(CX) # g0.m=&m0
+    
+    # 到此位置, m0与g0绑定在一起, 之后主线程可以通过 get_tls 获取到 g0, 通过 g0 又获取到 m0 
+    # 这样就实现了 m0, g0 与主线程直接的关联. 
+        
 	CLD				// convention is D is always left cleared
 	CALL	runtime·check(SB)
-
+    
+    # 命令行参数拷贝
 	MOVL	16(SP), AX		// copy argc
 	MOVL	AX, 0(SP)
 	MOVQ	24(SP), AX		// copy argv
-	MOVQ	AX, 8(SP)
+	MOVQ	AX, 8(SP) 
 	CALL	runtime·args(SB)   // 解析命令行
-	CALL	runtime·osinit(SB) // 初始化CPU核数
-	CALL	runtime·schedinit(SB) // 内存分配器, 栈, P, GC 回收等初始化
-
+	
+	// 对于 linux, osinit 唯一功能就是获取CPU核数并放到变量 ncpu 中
+	CALL	runtime·osinit(SB) 
+	CALL	runtime·schedinit(SB) // 调度系统初始化
+    
+    # 创建 main goroutine, 也是系统的第一个 goroutine 
 	// create a new goroutine to start program
 	MOVQ	$runtime·mainPC(SB), AX
 	PUSHQ	AX
@@ -60,8 +114,8 @@ ok:
 	CALL	runtime·newproc(SB) // 创建一个新的 G 来启动 runtime.main
 	POPQ	AX
 	POPQ	AX
-
-	// start this M
+    
+	# 开启调度循环
 	CALL	runtime·mstart(SB) // 启动 m0, 开始等待空闲 G, 正式进入调度循环
 	
 	....
@@ -75,39 +129,40 @@ ok:
 
 ### runtime.osinit(SB) 针对系统环境的初始化
 
-### runtime.schedinit(SB) 调度相关的初始化
+唯一的作用的就是初始化全局变量 ncpu
+
+### runtime.schedinit(SB) 调度初始化
 
 ```cgo
 func schedinit() {
-	_g_ := getg()
+    // getg 最终是插入代码, 格式如下:
+    // gettls(CX)
+    // MOVQ g(CX), BX; BX 当中就是当前 g 的结构体对象的地址
+	_g_ := getg() // _g_ = &g0
     
-    // 设置 M 最大数量
+    // 设置最多启动 10000 个操作系统线程, 即最多 10000 个M
 	sched.maxmcount = 10000
 
 	tracebackinit()
 	moduledataverify()
 	stackinit()
 	mallocinit()
-	mcommoninit(_g_.m) // 初始化当前 M, 全局的 M0
-	cpuinit()       // must run before alginit
-	alginit()       // 初始化哈希算法, 在此之前不能使用 map
-	modulesinit()   // provides activeModules
-	typelinksinit() // uses maps, activeModules
-	itabsinit()     // uses activeModules
+	mcommoninit(_g_.m) // 初始化 m0, 因为 g0.m = &m0
+	
+	......  
 
 	msigsave(_g_.m)
 	initSigmask = _g_.m.sigmask
 
-	goargs()
-	goenvs()
-	parsedebugvars()
-	gcinit()
-
+    ...... 
+    
 	sched.lastpoll = uint64(nanotime())
-	procs := ncpu
+	procs := ncpu // 系统有多少个核, 就创建多少个 p 对象
 	if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
-		procs = n
+		procs = n // 通过修改环境变量 GOMAXPROCS, 指定创建p的数量 
 	}
+	
+	// 创建和初始化全局变量 allp
 	if procresize(procs) != nil {
 		throw("unknown runnable goroutine during bootstrap")
 	}
@@ -116,13 +171,179 @@ func schedinit() {
 }
 ```
 
+前面汇编当中, g0的地址已经被设置到了本地存储之中, schedinit通过 getg 函数(getg函数是编译器实现的, 源码当中找不到其定
+义的)从本地存储中获取当前正在运行的 g, 这里获取的是 g0, 然后调用 mcommoninit() 函数对 m0 进行必要的初始化, 对 m0 
+初始化完成之后, 调用 procresize() 初始化系统需要用到的 p 结构体对象. 它的数量决定了最多同时有多少个 goroutine 同时
+并行运行. 
+
 sched.maxmcount 设置了 M 最大数量, 而 M 代表系统内核线程, 因此一个进程最大只能启动10000个系统内核线程. 
 
 procresize 初始化P的数量, procs 参数为初始化的数量, 而在初始化之前先做数量的判断, 默认是ncpu(CPU核数). 也可以通过
 GOMAXPROCS来控制P的数量. _MaxGomaxprocs 控制了最大数量只能是1024.
 
+重点关注一下 mcommoninit 如何初始化 m0 以及 procresize 函数如何创建和初始化 p 结构体对象.
 
-### runtime.mainPC(SB) 启动监控任务
+````cgo
+func mcommoninit(mp *m, id int64) {
+	_g_ := getg() // 初始化过程中 _g_ = &g0
+
+	// g0 stack won't make sense for user (and is not necessary unwindable).
+	// 函数调用栈 traceback
+	if _g_ != _g_.m.g0 {
+		callers(1, mp.createstack[:])
+	}
+
+	lock(&sched.lock)
+    
+    // 初始化过程中, 这里 id 是 -1, 生成 m 的 id
+	if id >= 0 {
+		mp.id = id
+	} else {
+		mp.id = mReserveID()
+	}
+
+	mp.fastrand[0] = uint32(int64Hash(uint64(mp.id), fastrandseed))
+	mp.fastrand[1] = uint32(int64Hash(uint64(cputicks()), ^fastrandseed))
+	if mp.fastrand[0]|mp.fastrand[1] == 0 {
+		mp.fastrand[1] = 1
+	}
+    
+    // 创建用于信号处理的 gsignal, 只是简单从堆上分配一个 g 对象, 绑定到 mp.
+	mpreinit(mp)
+	if mp.gsignal != nil {
+		mp.gsignal.stackguard1 = mp.gsignal.stack.lo + _StackGuard
+	}
+
+    // 将 m 挂入全局链表 allm 之中, 在这里 allm[0]=&m0
+	// Add to allm so garbage collector doesn't free g->m
+	// when it is just in a register or thread-local storage.
+	mp.alllink = allm
+
+	// NumCgoCall() iterates over allm w/o schedlock,
+	// so we need to publish it safely.
+	atomicstorep(unsafe.Pointer(&allm), unsafe.Pointer(mp))
+	unlock(&sched.lock)
+
+	// Allocate memory to hold a cgo traceback if the cgo call crashes.
+	if iscgo || GOOS == "solaris" || GOOS == "illumos" || GOOS == "windows" {
+		mp.cgoCallers = new(cgoCallers)
+	}
+}
+````
+
+此函数就是将 m0 放入到全局链表 allm 之中, 然后就返回了.
+
+
+```cgo
+func procresize(nprocs int32) *p {
+	old := gomaxprocs // 系统初始化时, gomaxprocs = 0
+	if old < 0 || nprocs <= 0 {
+		throw("procresize: invalid arg")
+	}
+	
+	...... 
+
+    // 初始化时 len(allp) == 0
+	// Grow allp if necessary.
+	if nprocs > int32(len(allp)) {
+		// Synchronize with retake, which could be running
+		// concurrently since it doesn't run on a P.
+		lock(&allpLock)
+		if nprocs <= int32(cap(allp)) {
+			allp = allp[:nprocs]
+		} else {
+		    // 初始化, 进入次分支, 创建 allp 切片
+			nallp := make([]*p, nprocs)
+			// Copy everything up to allp's cap so we
+			// never lose old allocated Ps.
+			copy(nallp, allp[:cap(allp)])
+			allp = nallp
+		}
+		unlock(&allpLock)
+	}
+
+	// 初始化 nprocs 个 p
+	for i := old; i < nprocs; i++ {
+		pp := allp[i]
+		if pp == nil {
+			pp = new(p) // 直接从堆上分配一个 p
+		}
+		pp.init(i) // 初始化(status,deferpool,mcache等)
+		atomicstorep(unsafe.Pointer(&allp[i]), unsafe.Pointer(pp)) // 存储到allp对应的位置
+	}
+
+	_g_ := getg() // 这里 _g_ = g0
+	// 初始化时, m0.p 还未初始化
+	if _g_.m.p != 0 && _g_.m.p.ptr().id < nprocs {
+		_g_.m.p.ptr().status = _Prunning
+		_g_.m.p.ptr().mcache.prepareForSweep()
+	} else {
+		// release the current P and acquire allp[0].
+		//
+		// We must do this before destroying our current P
+		// because p.destroy itself has write barriers, so we
+		// need to do that from a valid P.
+		if _g_.m.p != 0 {
+			if trace.enabled {
+				// Pretend that we were descheduled
+				// and then scheduled again to keep
+				// the trace sane.
+				traceGoSched()
+				traceProcStop(_g_.m.p.ptr())
+			}
+			_g_.m.p.ptr().m = 0
+		}
+		_g_.m.p = 0 // 初始化时的 m0.p 
+		p := allp[0]
+		p.m = 0
+		p.status = _Pidle
+		acquirep(p) // 将 p 和 m0 关联起来, 此时 p 的状态为  _Prunning
+		if trace.enabled {
+			traceGoStart()
+		}
+	}
+
+	// g.m.p is now set, so we no longer need mcache0 for bootstrapping.
+	mcache0 = nil
+
+	// 释放未使用的 p, 初始化时 old 是0
+	for i := nprocs; i < old; i++ {
+		p := allp[i]
+		p.destroy()
+		// can't free P itself because it can be referenced by an M in syscall
+	}
+
+	// 重新进行切分
+	if int32(len(allp)) != nprocs {
+		lock(&allpLock)
+		allp = allp[:nprocs]
+		unlock(&allpLock)
+	}
+    
+    // 把所有空闲的p放入空闲链表
+	var runnablePs *p
+	for i := nprocs - 1; i >= 0; i-- {
+		p := allp[i]
+		if _g_.m.p.ptr() == p { // 当前关联的 p
+			continue
+		}
+		p.status = _Pidle
+		if runqempty(p) {
+			pidleput(p)
+		} else {
+			p.m.set(mget())
+			p.link.set(runnablePs)
+			runnablePs = p
+		}
+	}
+	stealOrder.reset(uint32(nprocs))
+	var int32p *int32 = &gomaxprocs // make compiler check that gomaxprocs is an int32
+	atomic.Store((*uint32)(unsafe.Pointer(int32p)), uint32(nprocs))
+	return runnablePs
+}
+```
+
+### runtime.mainPC(SB) main goroutine
 
 ```cgo
 func main() {
@@ -154,7 +375,7 @@ func main() {
 
 在 runtime 下启动一个全程运行的监控任务, 该任务用于标记抢占时间过长的 G, 以及检测 epoll 里面有没有可执行的G. 
 
-### runtime.mstart(SB) 启动调度循环
+### runtime.mstart(SB) 调度循环开始
 
 调度循环:
 
@@ -1131,12 +1352,44 @@ func reentersyscall(pc, sp uintptr) {
 
 // g, Groutine
 ```cgo
+// CPU寄存器相关内容保存, 非常核心.
+type gobuf struct {
+    sp   uintptr  // 保存CPU的rsp寄存器的值
+    pc   uintptr  // 保存CPU的rip寄存器的值
+    g    guintptr // 记录当前这个gobuf对象属于哪个goroutine
+    
+    // ctxt 可能是一个在堆上分配的 funcval, GC本应要追踪它. 但是, 它只是在汇编代码当中进行设置和清楚,
+    // 这种状况下, 很难出现写屏障.
+    // 并且, ctxt 是实时保存在寄存器当中, 并且我们只在真实的寄存器当中交换它, 它也可以看做一个根节点, 这意味着ctxt
+    // 的保存和恢复不存在写屏障.
+    ctxt unsafe.Pointer 
+ 
+    // 保存系统调用的返回值, 因为从系统调用返回之后, 如果 p 被其它工作线程抢占，
+    // 则这个 goroutine 会被放入全局运行队列被其它工作线程调度, 其它线程需要知道系统调用的返回值.
+    ret  sys.Uintreg  
+    lr   uintptr
+ 
+    // 保存CPU的rbp寄存器的值
+    bp   uintptr // for GOEXPERIMENT=framepointer
+}
+
 type g struct{
-    stack     stack   // g自身的栈 
-    m         *m      // 隶属于哪个m 
-    sched     gobuf   // 保存了g的现场, goroutine切换时通过它来恢复
+    stack     stack   // 记录 gorutine 使用的栈
+    
+    // 栈溢出检查, 实现栈的自动伸缩, 抢占调度也会用到 stackguard0
+    stackguard0 uintptr // Go的栈
+    stackguard1 uintptr // C的栈
+     
+    m         *m      // 此goroutine正在被哪个工作线程执行
+    sched     gobuf   // 保存调度信息, 主要就是几个CPU寄存器的值
     atomicstatus uint32 // G的状态
-    schedlink guintptr // 下一个 G, 链表
+    
+    // schedlink 指向全局运行队列中的下一个 g, 所有位于全局运行队列中的 g 形成一个链表.
+    schedlink guintptr
+    
+    // 抢占标志, 如果需要抢占调度, 设置为 true
+    preempt   bool
+    
     lockedm   muintptr  // 锁定的M, G中断恢复指定M执行
     gopc      uintptr   // 创建 goroutine的指令地址
     startpc   uintptr   // gorotine 函数指令地址
@@ -1144,26 +1397,43 @@ type g struct{
 }
 ```
 
-// m, 系统线程
+// m, 系统线程(工作线程), 保存了 m 自身使用的栈信息, 当前正在运行的 goroutine 以及与 m 绑定的 p 等信息.
 ```cgo
 type m struct{
-    g0    *g        // g0， 每个M都有自己独有的 g0，负责调度
+    // g0 主要用来记录工作线程使用的栈信息, 在执行调度代码时需要使用这个栈,
+    // 执行用户 goroutine 代码时, 使用用户 goroutine 自己的栈, 调度时发生栈的切换.
+    g0    *g  
+    
+    // 执行工作线程正在运行的 goroutine 的 g 的结构体对象.
     curg  *g        // 当前正在运行的 g
     p     puintptr  // 绑定 P 执行代表(如果是nil, 则处于空闲状态)
     nextp puintptr  // 当 M 被唤醒时,首先拥有这个 P
-    oldp  puintptr  // 之前执行 syscall 绑定的 P
+    oldp  puintptr  // 执行系统调用时的 p
     
-    schedlink muintptr // 下一个m, 构成链表
-    lockedg   guintptr // 和 G 的 lockedm 对应
-    freelink  *m       // sched.freem  
-    
+    // 通过 TLS 实现 m 结构体与工作线程之间的绑定. 第1个元素保存的是当前运行的 g, 
+    // 通过 g 可以找到 m, 然后通过 m 再找到 p
     tls [6]uintptr 
-    mstartfn func()    // m 启动执行的函数
+    mstartfn func() 
+    
+    // spinning 状态: 表示当前工作线程正在视图从其他工作线程的本地运行队列偷取 goroutine
+    spinning bool
+    blocked  bool // m is blocked on a note
+    
+    // 没有 goroutine 需要运行时, 工作线程休眠在这个 park 成员上, 其他线程通过这个 park 唤醒
+    // 该工作线程
+    park note 
+    // 记录所有工作线程的一个链表
+    alllink *m 
+    schedlink muintptr // 下一个m, 构成链表
+    
+    // Linux 平台 thread 值就是操作系统线程 ID
+    thread    uintptr
+    freelink  *m       // on sched.freem  
     ... 
 }
 ```
 
-// p, Procs
+// p, Procs, 用于保存工作线程执行 go 代码时所必需的资源, 比如 goroutine 的运行队列, 内存分配使用到的缓存等
 ```cgo
 type p struct{
     status int32 // P 的状态
@@ -1208,4 +1478,18 @@ type schedt struct{
     // 全局等待释放的 M (m.exited已经被设置), 链接到 m.freelink
     freem *m 
 }
+
+
+// 全局变量
+allgs []*g // 保存所有的 g
+allm  *m   // 保存的 m 构成一个链表, 包括 m0
+allp  []*p // 保存所有的p, len(allp) == gomaxprocs
+
+ncpu int32 // 系统中cpu核的数量,程序启动时由 runtime 代码初始化
+gomaxprocs int32 // p 的最大值, 默认等于 ncpu, 但是可以通过 GOMAXPROCS 修改
+
+sched schedt // 调度器对象, 记录调度器工作状态
+
+m0 m // 代表进程的主线程
+g0 g // m0 的 g0, 即 m0.g0 = &g0
 ```
