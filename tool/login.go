@@ -111,8 +111,7 @@ func Login(clientid, pubkey, token, email, phone, pwd string) (access string, er
 	}
 	oeap.init()
 
-	basepwd := base64.StdEncoding.EncodeToString([]byte(pwd))
-	password := oeap.Encrypt([]byte(basepwd))
+	password := oeap.Encrypt([]byte(pwd))
 
 	body := map[string]string{
 		"password":      password,
@@ -200,6 +199,7 @@ func TwoFactor(clientid, token, verify string) error {
 }
 
 func main() {
+	DEBUG = true
 	data, err := GET("https://account.teambition.com/login", nil)
 	if err != nil {
 		return
@@ -233,6 +233,5 @@ func main() {
 	pub, _ := url.QueryUnescape(p[0][1])
 	json.Unmarshal([]byte(pub), &public)
 
-
-	Login(config.CLIENT_ID, public.Fsm.Config.Pub.PublicKey, config.TOKEN, "", "", "")
+	Login(config.CLIENT_ID, public.Fsm.Config.Pub.PublicKey, config.TOKEN, "tiechui1994@163.com", "", "0214Abcd")
 }

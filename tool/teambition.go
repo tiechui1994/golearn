@@ -766,7 +766,8 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 
 	info, _ := fd.Stat()
 	chunk := uint64(info.Size() / int64(len(upload.PartInfoList)))
-	chunk = 8192 + (^(8192-1))&chunk /// 8192对其
+	k8 := uint64(8192)
+	chunk = k8 + (^(k8-1))&chunk /// 8192对其
 
 	var wg sync.WaitGroup
 	wg.Add(len(upload.PartInfoList))
@@ -905,7 +906,7 @@ func Spaces(orgid, memberid string) (spaces []Space, err error) {
 
 func main() {
 	DEBUG = true
-	cookies = "TB_ACCESS_TOKEN=login_accesstoken; TEAMBITION_SESSIONID=sessionid; TEAMBITION_SESSIONID.sig=sig;"
+	cookies = ""
 	me, err := Roles()
 	fmt.Println(err)
 	fmt.Println(me)
