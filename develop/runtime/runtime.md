@@ -51,9 +51,9 @@ G, M, P
 #endif
 ```
 
-```cgo
 // runtime/asm_amd64.s
 
+```cgo
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
     ....
     
@@ -105,20 +105,6 @@ ok:
 	// 对于 linux, osinit 唯一功能就是获取CPU核数并放到变量 ncpu 中
 	CALL	runtime·osinit(SB) 
 	CALL	runtime·schedinit(SB) // 调度系统初始化
-    
-    # 创建 main goroutine, 也是系统的第一个 goroutine 
-	// create a new goroutine to start program
-	MOVQ	$runtime·mainPC(SB), AX
-	PUSHQ	AX
-	PUSHQ	$0			// arg size
-	CALL	runtime·newproc(SB) // 创建一个新的 G 来启动 runtime.main
-	POPQ	AX
-	POPQ	AX
-    
-	# 开启调度循环
-	CALL	runtime·mstart(SB) // 启动 m0, 开始等待空闲 G, 正式进入调度循环
-	
-	....
 ```
 
 > M0 是什么? 程序会启动多个 M, 第一个启动的是 M0
@@ -272,8 +258,7 @@ func procresize(nprocs int32) *p {
 		atomicstorep(unsafe.Pointer(&allp[i]), unsafe.Pointer(pp)) // 存储到allp对应的位置
 	}
 
-	_g_ := getg() // 这里 _g_ = g0
-	// 初始化时, m0.p 还未初始化
+	_g_ := getg() // 当前处于初始化状况下 _g_ = g0, 并且此时 m0.p 还未初始化, 因此在这里会初始化 m0.p
 	if _g_.m.p != 0 && _g_.m.p.ptr().id < nprocs {
 		_g_.m.p.ptr().status = _Prunning
 		_g_.m.p.ptr().mcache.prepareForSweep()
@@ -294,10 +279,10 @@ func procresize(nprocs int32) *p {
 			_g_.m.p.ptr().m = 0
 		}
 		_g_.m.p = 0 // 初始化时的 m0.p 
-		p := allp[0]
+		p := allp[0] // 第一个 p 
 		p.m = 0
 		p.status = _Pidle
-		acquirep(p) // 将 p 和 m0 关联起来, 此时 p 的状态为  _Prunning
+		acquirep(p) // 初始化, 将 allp[0] 和 m0 关联起来, 并且 allp[0] 的状态为  _Prunning
 		if trace.enabled {
 			traceGoStart()
 		}
@@ -306,14 +291,14 @@ func procresize(nprocs int32) *p {
 	// g.m.p is now set, so we no longer need mcache0 for bootstrapping.
 	mcache0 = nil
 
-	// 释放未使用的 p, 初始化时 old 是0
+	// 释放未使用的 p, 此时还不能释放 p(因为处于系统调用中的 m 可能引用 p, 即 m.p = p)
+	// 初始化时 old 是 0
 	for i := nprocs; i < old; i++ {
 		p := allp[i]
 		p.destroy()
-		// can't free P itself because it can be referenced by an M in syscall
 	}
 
-	// 重新进行切分
+	// 再次确定切片大小是 nprocs
 	if int32(len(allp)) != nprocs {
 		lock(&allpLock)
 		allp = allp[:nprocs]
@@ -324,13 +309,18 @@ func procresize(nprocs int32) *p {
 	var runnablePs *p
 	for i := nprocs - 1; i >= 0; i-- {
 		p := allp[i]
-		if _g_.m.p.ptr() == p { // 当前关联的 p
+		if _g_.m.p.ptr() == p { // 当前 m 关联的 p 
 			continue
 		}
+		// 状态修改
 		p.status = _Pidle
-		if runqempty(p) {
+		
+		// 判断当 p 的本地队列是否为空 即 runqhead == runtail && runnext=0
+		if runqempty(p) { 
 			pidleput(p)
 		} else {
+		    // 给 p 绑定一个 m, 并且把这些非空闲的 p 组成一个单向链表
+		    // 最终链表的头是 runnablePs
 			p.m.set(mget())
 			p.link.set(runnablePs)
 			runnablePs = p
@@ -343,7 +333,232 @@ func procresize(nprocs int32) *p {
 }
 ```
 
+主要流程：
+
+- 使用 `make([]*p nprocs)` 初始化全局变量 allp
+
+- 使用循环初始化 nprocs 个 p 结构体对象并依次保存在 allp 切片之中
+
+- 把 m0 和 `allp[0]` 绑定在一起, 即 `m0.p = allp[0], allp[0].m = m0`
+
+- 把除了 `allp[0]` 之外的所有 p 放入全局变量 sched 的 pidle 空闲队列之中. 对于非空闲的 p 组装成一个链表, 并返回.
+
 ### runtime.mainPC(SB) main goroutine
+
+在进行 schedinit 完成调度系统初始化后, 返回到 rt0_go 函数开始调用 `newproc()` 创建一个新的 goroutine 用于执行
+mainPC 所对应的 runtime.main 函数. 
+
+
+// runtime/asm_amd64.s
+
+```cgo
+# 创建 main goroutine, 也是系统的第一个 goroutine 
+// create a new goroutine to start program
+MOVQ	$runtime·mainPC(SB), AX # mainPC 是 runtime.main 
+PUSHQ	AX # AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
+PUSHQ	$0 # newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
+CALL	runtime·newproc(SB) // 创建 main goutine
+POPQ	AX
+POPQ	AX
+
+# 主线程进入调度循环，运行刚刚创建的goroutine
+CALL  runtime·mstart(SB)  #
+
+# 上面的mstart永远不应该返回的, 如果返回了, 一定是代码逻辑有问题, 直接abort
+CALL  runtime·abort(SB)
+RET
+
+
+# runtime·mainPC 的汇编定义, 进行了一层包装
+DATA  runtime·mainPC+0(SB)/8,$runtime·main(SB)
+GLOBL runtime·mainPC(SB),RODATA,$8
+```
+
+先分析下 newproc 函数:
+
+newproc 用于创建新的 goroutine, 有两个参数, 第二个参数 fn, 新创建出来的 goroutine 将从 fn 这个函数开始执行, 而这
+个 fn 函数可能会有参数, newproc 的第一个参数是 fn 函数的参数以字节为单位的大小. 比如如下 go 片段代码:
+
+```cgo
+func sum(a, b, c int64) {
+}
+
+func main() {
+    go sum(1,2,3)
+}
+```
+
+编译器在编译上面的代码时, 会把其替换为对 newproc 函数的调用, 编译后的代码逻辑上等同于下面的汇编代码:
+
+```cgo
+0x001d 00029 (sum.go:7) MOVL    $24, (SP) # newproc第一个参数
+0x0024 00036 (sum.go:7) LEAQ    "".sum·f(SB), AX 
+0x002b 00043 (sum.go:7) MOVQ    AX, 8(SP)  # newproc第二个参数
+0x0030 00048 (sum.go:7) MOVQ    $1, 16(SP) # 函数参数1
+0x0039 00057 (sum.go:7) MOVQ    $2, 24(SP) # 函数参数2 
+0x0042 00066 (sum.go:7) MOVQ    $3, 32(SP) # 函数参数3
+0x004b 00075 (sum.go:7) CALL    runtime.newproc(SB)
+```
+
+编译器编译时首先把 sum 函数需要用到的 3 个参数压入栈, 然后调用 newproc 函数. 因为 sum 函数的 3 个 int64 类型的参数
+公占用 24 个字节, 所以传递给 newproc 的第一个参数是 24, 表示 sum 函数的大小.
+
+为什么需要传递 fn 函数的参数大小给 newproc 函数? 原因在于 newproc 函数创建一个新的 goroutine 来执行 fn 函数, 而这
+个新创建的 goroutine 与当前 goroutine 使用不同的栈, 因此需要在创建 goroutine 的时候把 fn 需要用到的参数从当前栈上
+拷贝到新 goroutine 的栈上之后才能开始执行, 而 newproc 函数本身并不知道需要拷贝多少数据到新创建的 goroutine 的栈上去,
+所以需要用参数的方式指定拷贝数据的大小.
+
+
+newproc 函数是对 newproc1 的一个包装, 这里最重要的工作两个:
+
+- 获取 fn 函数的第一个参数的地址(argp)
+
+- 使用 systemstack 函数切换到 g0 栈(对于初始化场景来说现在本身就在 g0 栈, 不需要切换, 但是对于用户创建的 goroutine
+则需要进行栈切换)
+
+```cgo
+func newproc(siz int32, fn *funcval) {
+	// 函数调用参数入栈是从右往左, 而且栈是从高地址向低地址增长的
+	// 注: argp 指向 fn 函数的第一个参数
+	// 参数 fn 在栈上的地址 + 8 = fn 函数的第一个参数. (参考上面的汇编代码)
+	argp := add(unsafe.Pointer(&fn), sys.PtrSize)
+	gp := getg() // 获取当前运行的 g, 初始化是 m0.g0
+	
+	// getcallerpc() 返回一个地址, 也就是调用 newproc 时 call 指令压栈的函数返回地址,
+	// 对于当前场景来说, pc 就是 'CALL	runtime·newproc(SB)' 后面的 'POPQ AX' 这条指令地址
+	pc := getcallerpc() 
+	
+	// 切换到 g0 执行作为参数的函数
+	systemstack(func() {
+		newg := newproc1(fn, argp, siz, gp, pc)
+
+		_p_ := getg().m.p.ptr() // 获取当前的 g0 绑定的 _p_
+		runqput(_p_, newg, true) // 将 newg 放入到 _p_ 本地队列当中
+
+		if mainStarted {
+			wakep()
+		}
+	})
+}
+```
+
+newproc1 函数的第一个参数 fn 是新创建的 goroutine 需要执行的函数, 注意 fn 的类型是 funcval; 第二个参数 argp 是 
+fn 函数的第一个参数的地址; 第三个参数是 fn 函数以字节为单位的大小. 第四个参数是当前运行的 g; 第五个参数调用 newproc
+的函数的返回地址.
+
+```cgo
+func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerpc uintptr) *g {
+	// 当前已经切换到 g0 栈, 因此无论什么状况下, _g_ = g0 (工作线程的 g0)
+	// 对于当前的场景, 这里的 g0 = m0.g0
+	_g_ := getg() 
+
+	if fn == nil {
+		_g_.m.throwing = -1 // do not dump full stacks
+		throw("go of nil func value")
+	}
+	acquirem() // disable preemption because it can be holding p in a local var
+	siz := narg
+	siz = (siz + 7) &^ 7
+
+	// We could allocate a larger initial stack if necessary.
+	// Not worth it: this is almost always an error.
+	// 4*sizeof(uintreg): extra space added below
+	// sizeof(uintreg): caller's LR (arm) or return address (x86, in gostartcall).
+	if siz >= _StackMin-4*sys.RegSize-sys.RegSize {
+		throw("newproc: function arguments too large for new goroutine")
+	}
+    
+    // 初始化时, 这里的 _p_ 其实就是 allp[0]
+	_p_ := _g_.m.p.ptr() 
+	
+	// 从 _p_ 本地缓存中获取一个 g, 初始化时没有, 返回 nil 
+	newg := gfget(_p_)
+	if newg == nil {
+	    // new一个g, 然后从堆上为其分配栈, 并设置 g 的 stack 成员和两个 stackguard 成员
+		newg = malg(_StackMin)
+		casgstatus(newg, _Gidle, _Gdead)
+		
+		// 放入全局 allgs 切片当中
+		allgadd(newg) // publishes with a g->status of Gdead so GC scanner doesn't look at uninitialized stack.
+	}
+	if newg.stack.hi == 0 {
+		throw("newproc1: newg missing stack")
+	}
+
+	if readgstatus(newg) != _Gdead {
+		throw("newproc1: new g is not Gdead")
+	}
+    
+    // 调整 g 的栈顶指针
+	totalSize := 4*sys.RegSize + uintptr(siz) + sys.MinFrameSize // extra space in case of reads slightly beyond frame
+	totalSize += -totalSize & (sys.SpAlign - 1)                  // align to spAlign
+	sp := newg.stack.hi - totalSize
+	spArg := sp
+	if usesLR {
+		// caller's LR
+		*(*uintptr)(unsafe.Pointer(sp)) = 0
+		prepGoExitFrame(sp)
+		spArg += sys.MinFrameSize
+	}
+	if narg > 0 {
+	    // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 g 的栈
+		memmove(unsafe.Pointer(spArg), argp, uintptr(narg))
+		// This is a stack-to-stack copy. If write barriers
+		// are enabled and the source stack is grey (the
+		// destination is always black), then perform a
+		// barrier copy. We do this *after* the memmove
+		// because the destination stack may have garbage on
+		// it.
+		if writeBarrier.needed && !_g_.m.curg.gcscandone {
+			f := findfunc(fn.fn)
+			stkmap := (*stackmap)(funcdata(f, _FUNCDATA_ArgsPointerMaps))
+			if stkmap.nbit > 0 {
+				// We're in the prologue, so it's always stack map index 0.
+				bv := stackmapdata(stkmap, 0)
+				bulkBarrierBitmap(spArg, spArg, uintptr(bv.n)*sys.PtrSize, 0, bv.bytedata)
+			}
+		}
+	}
+
+	memclrNoHeapPointers(unsafe.Pointer(&newg.sched), unsafe.Sizeof(newg.sched))
+	newg.sched.sp = sp
+	newg.stktopsp = sp
+	newg.sched.pc = funcPC(goexit) + sys.PCQuantum // +PCQuantum so that previous instruction is in same function
+	newg.sched.g = guintptr(unsafe.Pointer(newg))
+	gostartcallfn(&newg.sched, fn)
+	newg.gopc = callerpc
+	newg.ancestors = saveAncestors(callergp)
+	newg.startpc = fn.fn
+	if _g_.m.curg != nil {
+		newg.labels = _g_.m.curg.labels
+	}
+	if isSystemGoroutine(newg, false) {
+		atomic.Xadd(&sched.ngsys, +1)
+	}
+	casgstatus(newg, _Gdead, _Grunnable)
+
+	if _p_.goidcache == _p_.goidcacheend {
+		// Sched.goidgen is the last allocated id,
+		// this batch must be [sched.goidgen+1, sched.goidgen+GoidCacheBatch].
+		// At startup sched.goidgen=0, so main goroutine receives goid=1.
+		_p_.goidcache = atomic.Xadd64(&sched.goidgen, _GoidCacheBatch)
+		_p_.goidcache -= _GoidCacheBatch - 1
+		_p_.goidcacheend = _p_.goidcache + _GoidCacheBatch
+	}
+	newg.goid = int64(_p_.goidcache)
+	_p_.goidcache++
+	if raceenabled {
+		newg.racectx = racegostart(callerpc)
+	}
+	if trace.enabled {
+		traceGoCreate(newg, newg.startpc)
+	}
+	releasem(_g_.m)
+
+	return newg
+}
+```
+
 
 ```cgo
 func main() {
