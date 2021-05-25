@@ -474,3 +474,6 @@ func jsonCmdDecode(data string) (text textresponse) {
 
 	return text
 }
+
+func main() {
+}

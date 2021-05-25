@@ -25,7 +25,6 @@ import (
 文本/图片转语音
 */
 
-
 // voiceid
 const (
 	// 中文
@@ -567,4 +566,7 @@ func aesDecrypt(msg, key string) (data []byte, err error) {
 	plaintext := make([]byte, len(msg))
 	cfb.XORKeyStream(plaintext, []byte(msg))
 	return plaintext, nil
+}
+
+func main() {
 }
