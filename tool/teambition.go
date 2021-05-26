@@ -2,17 +2,31 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
+	"log"
 	"mime/multipart"
+	"net/http/cookiejar"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -101,9 +115,225 @@ var (
 			return "application/octet-stream"
 		}
 	}()
+
+	cookies = "TEAMBITION_SESSIONID=xxx;TEAMBITION_SESSIONID.sig=xxx;TB_ACCESS_TOKEN=xxx"
 )
 
-var cookies = "TEAMBITION_SESSIONID=xxx;TEAMBITION_SESSIONID.sig=xxx;TB_ACCESS_TOKEN=xxx"
+// login
+// "pkcs1_oaep"
+type OAEP struct {
+	alg    string
+	hash   hash.Hash
+	pubkey string
+	prikey string
+}
+
+func (o *OAEP) init() {
+	switch o.alg {
+	case "sha1":
+		o.hash = sha1.New()
+	case "sha256":
+		o.hash = sha256.New()
+	case "md5":
+		o.hash = md5.New()
+	}
+}
+
+func (o *OAEP) Encrypt(msg []byte) string {
+	block, _ := pem.Decode([]byte(o.pubkey))
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		fmt.Println("Load public key error")
+		panic(err)
+	}
+
+	encrypted, err := rsa.EncryptOAEP(o.hash, rand.Reader, pub.(*rsa.PublicKey), msg, nil)
+	if err != nil {
+		fmt.Println("Encrypt data error")
+		panic(err)
+	}
+
+	return base64.StdEncoding.EncodeToString(encrypted)
+}
+
+func (o *OAEP) Decrypt(encrypted string) []byte {
+	block, _ := pem.Decode([]byte(o.prikey))
+	var pri *rsa.PrivateKey
+	pri, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		fmt.Println("Load private key error")
+		panic(err)
+	}
+
+	decodedData, err := base64.StdEncoding.DecodeString(encrypted)
+	ciphertext, err := rsa.DecryptOAEP(o.hash, rand.Reader, pri, decodedData, nil)
+	if err != nil {
+		fmt.Println("Decrypt data error")
+		panic(err)
+	}
+
+	return ciphertext
+}
+
+func Login(clientid, pubkey, token, email, phone, pwd string) (access string, err error) {
+	key, _ := base64.StdEncoding.DecodeString(pubkey)
+	oeap := OAEP{
+		pubkey: string(key),
+		alg:    "sha1",
+	}
+	oeap.init()
+
+	password := oeap.Encrypt([]byte(pwd))
+
+	body := map[string]string{
+		"password":      password,
+		"client_id":     clientid,
+		"response_type": "session",
+		"publicKey":     pubkey,
+		"token":         token,
+	}
+
+	var u string
+	if email != "" {
+		u = "/api/login/email"
+		body["email"] = email
+	} else {
+		u = "/api/login/phone"
+		body["phone"] = phone
+	}
+
+	u = "https://account.teambition.com" + u
+	var writer bytes.Buffer
+	json.NewEncoder(&writer).Encode(body)
+	header := map[string]string{
+		"content-type": "application/json",
+	}
+	fmt.Println(writer.String())
+	data, err := POST(u, &writer, header)
+	if err != nil {
+		if _, ok := err.(CodeError); ok {
+			log.Println("login", string(data))
+		}
+		return access, err
+	}
+
+	var result struct {
+		AbnormalLogin      string `json:"abnormalLogin"`
+		HasGoogleTwoFactor bool   `json:"hasGoogleTwoFactor"`
+		Token              string `json:"token"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return access, err
+	}
+
+	if result.HasGoogleTwoFactor {
+		err = TwoFactor(clientid, token, result.Token)
+		if err != nil {
+			return access, err
+		}
+	}
+
+	if jar != nil {
+		cook := jar.(*cookiejar.Jar)
+		localjar := (*Jar)(unsafe.Pointer(cook))
+		teambit := localjar.Entries["teambition.com"]
+		teambit["teambition.com;/;TB_ACCESS_TOKEN"] = entry{
+			Name:       "TB_ACCESS_TOKEN",
+			Value:      result.Token,
+			Domain:     "teambition.com",
+			Path:       "/",
+			Secure:     true,
+			HttpOnly:   true,
+			Persistent: true,
+			HostOnly:   false,
+			Expires:    time.Now().Add(30 * time.Hour * 24),
+			Creation:   time.Now(),
+			SeqNum:     4,
+		}
+		localjar.Entries["teambition.com"] = teambit
+	}
+
+	return result.Token, nil
+}
+
+func TwoFactor(clientid, token, verify string) error {
+	var code string
+	fmt.Printf("Input Auth Code:")
+	fmt.Scanf("%v", &code)
+
+	body := map[string]string{
+		"authcode":      code,
+		"client_id":     clientid,
+		"response_type": "session",
+		"token":         token,
+		"verify":        verify,
+	}
+
+	u := "https://account.teambition.com/api/login/two-factor"
+	var writer bytes.Buffer
+	json.NewEncoder(&writer).Encode(body)
+	header := map[string]string{
+		"content-type": "application/json",
+	}
+	data, err := POST(u, &writer, header)
+	if err != nil {
+		if _, ok := err.(CodeError); ok {
+			log.Println("two-factor", string(data))
+			return err
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func LoginParams() (clientid, token, publickey string, err error) {
+	raw, err := GET("https://account.teambition.com/login", nil)
+	if err != nil {
+		return clientid, token, publickey, err
+	}
+
+	reaccout := regexp.MustCompile(`<script id="accounts-config" type="application/json">(.*?)</script>`)
+	republic := regexp.MustCompile(`<script id="accounts-ssr-props" type="application/react-ssr-props">(.*?)</script>`)
+
+	str := strings.Replace(string(raw), "\n", "", -1)
+	rawa := reaccout.FindAllStringSubmatch(str, 1)
+	rawp := republic.FindAllStringSubmatch(str, 1)
+	if len(rawa) > 0 && len(rawa[0]) == 2 && len(rawp) > 0 && len(rawp[0]) == 2 {
+		var config struct {
+			TOKEN     string
+			CLIENT_ID string
+		}
+		err = json.Unmarshal([]byte(rawa[0][1]), &config)
+		if err != nil {
+			return
+		}
+
+		var public struct {
+			Fsm struct {
+				Config struct {
+					Pub struct {
+						Algorithm string `json:"algorithm"`
+						PublicKey string `json:"publicKey"`
+					} `json:"pub"`
+				} `json:"config"`
+			} `json:"fsm"`
+		}
+
+		pub, _ := url.QueryUnescape(rawp[0][1])
+		err = json.Unmarshal([]byte(pub), &public)
+		if err != nil {
+			return
+		}
+
+		return config.CLIENT_ID, config.TOKEN, public.Fsm.Config.Pub.PublicKey, nil
+	}
+
+	return clientid, token, publickey, errors.New("api change update")
+}
 
 // project
 type UploadInfo struct {
@@ -654,17 +884,19 @@ func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
 }
 
 type PanFile struct {
-	OrgId     string   `json:"orgId"`
-	Name      string   `json:"name"`
-	Kind      string   `json:"kind"`
-	UploadId  string   `json:"uploadId"`
-	UploadUrl []string `json:"uploadUrl"`
-	NodeId    string   `json:"nodeId"`
-	ParentId  string   `json:"parentId"`
-	DriveId   string   `json:"driveId"`
+	OrgId           string   `json:"orgId"`
+	Name            string   `json:"name"`
+	Kind            string   `json:"kind"`
+	UploadId        string   `json:"uploadId"`
+	UploadUrl       []string `json:"uploadUrl"`
+	NodeId          string   `json:"nodeId"`
+	ParentId        string   `json:"parentId"`
+	DriveId         string   `json:"driveId"`
+	CcpFileId       string   `json:"ccpFileId"`       // NodeId
+	CcpParentFileId string   `json:"ccpParentFileId"` // ParentID
 }
 
-func CreateFile(name, orgid, parentid, spaceid, driverid, path string) (files []PanFile, err error) {
+func CreateFile(orgid, parentid, spaceid, driverid, path string) (files []PanFile, err error) {
 	type file struct {
 		Name        string `json:"name"`
 		ContentType string `json:"contentType"`
@@ -720,6 +952,7 @@ type PanUpload struct {
 	DriveId      string `json:"driveId"`
 	UploadId     string `json:"uploadId"`
 	FileId       string `json:"fileId"`
+	NodeId       string `json:"nodeid"`
 	PartInfoList []struct {
 		PartNumber int    `json:"partNumber"`
 		UploadUrl  string `json:"uploadUrl"`
@@ -755,10 +988,11 @@ func UploadUrl(orgid string, panfile PanFile) (upload PanUpload, err error) {
 	}
 
 	err = json.Unmarshal(data, &upload)
-	return upload, nil
+	upload.NodeId = panfile.NodeId
+	return upload, err
 }
 
-func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
+func UploadPanFile(orgid string, upload PanUpload, path string) error {
 	fd, err := os.Open(path)
 	if err != nil {
 		return err
@@ -767,7 +1001,7 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 	info, _ := fd.Stat()
 	chunk := uint64(info.Size() / int64(len(upload.PartInfoList)))
 	k8 := uint64(8192)
-	chunk = k8 + (^(k8-1))&chunk /// 8192对其
+	chunk = k8 + (^(k8 - 1))&chunk /// 8192对其
 
 	var wg sync.WaitGroup
 	wg.Add(len(upload.PartInfoList))
@@ -783,15 +1017,15 @@ func UploadPanFile(orgid, nodeid string, upload PanUpload, path string) error {
 	wg.Wait()
 
 	var body struct {
-		CcpParentId string `json:"ccpParentId"`
-		DriveId     string `json:"driveId"`
-		NodeId      string `json:"nodeId"`
-		OrgId       string `json:"orgId"`
-		UploadId    string `json:"uploadId"`
+		CcpFileId string `json:"ccpFileId"`
+		DriveId   string `json:"driveId"`
+		NodeId    string `json:"nodeId"`
+		OrgId     string `json:"orgId"`
+		UploadId  string `json:"uploadId"`
 	}
-	body.CcpParentId = nodeid
+	body.CcpFileId = upload.NodeId
+	body.NodeId = upload.NodeId
 	body.OrgId = orgid
-	body.NodeId = nodeid
 	body.DriveId = upload.DriveId
 	body.UploadId = upload.UploadId
 	bin, _ := json.Marshal(body)
@@ -904,38 +1138,99 @@ func Spaces(orgid, memberid string) (spaces []Space, err error) {
 	return spaces, nil
 }
 
-func main() {
-	DEBUG = true
-	cookies = ""
-	me, err := Roles()
-	fmt.Println(err)
-	fmt.Println(me)
+func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
+	var result struct {
+		Roles  []Role
+		Org    Org
+		Spaces []Space
+	}
+	if ReadFile("/tmp/teambit.json", &result) == nil {
+		return result.Roles, result.Org, result.Spaces, nil
+	}
 
-	org, err := Orgs(me[0].OrganizationId)
-	fmt.Println(err)
-	fmt.Println(org)
-
-	user, err := GetByUser(me[0].OrganizationId)
-	fmt.Println(err)
-	fmt.Println(user)
-
-	spaces, err := Spaces(user.OrganizationId, user.ID)
-	fmt.Println(err)
-	fmt.Println(spaces)
-	if len(spaces) == 0 {
+	roles, err = Roles()
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
-	nodes, err := Nodes(user.OrganizationId, org.DriveId, spaces[0].RootId)
+	if len(roles) == 0 {
+		err = errors.New("no roles")
+		return
+	}
+
+	org, err = Orgs(roles[0].OrganizationId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	var user User
+	user, err = GetByUser(roles[0].OrganizationId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	spaces, err = Spaces(user.OrganizationId, user.ID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if len(spaces) == 0 {
+		err = errors.New("no spaces")
+		return
+	}
+
+	result.Roles = roles
+	result.Org = org
+	result.Spaces = spaces
+	WriteFile("/tmp/teambit.json", result)
+
+	return
+}
+
+func main() {
+	DEBUG = true
+
+	_, org, spaces, err := GetCacheData()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	nodes, err := Nodes(org.OrganizationId, org.DriveId, spaces[0].RootId)
 	fmt.Println(err)
 	fmt.Println(nodes)
 
 	if len(nodes) > 0 && nodes[0].Kind == "folder" {
-		nodes, err := Nodes(user.OrganizationId, org.DriveId, nodes[0].NodeId)
+		nodes, err := Nodes(org.OrganizationId, org.DriveId, nodes[0].NodeId)
 		fmt.Println(err)
 		fmt.Println(nodes)
 
-		err = CreateFolder("osx", user.OrganizationId, nodes[0].NodeId, spaces[0].SpaceId, org.DriveId)
+		var parentid string
+		for _, node := range nodes {
+			if node.Name == "pwd" {
+				parentid = node.NodeId
+			}
+		}
+
+		if parentid != "" {
+			path := "/home/user/Downloads/6款打包/Express _v10.0.0.apk"
+			files, err := CreateFile(org.OrganizationId, parentid, spaces[0].SpaceId, org.DriveId, path)
+			if err == nil {
+				upload, err := UploadUrl(org.OrganizationId, files[0])
+				if err == nil {
+					UploadPanFile(org.OrganizationId, upload, path)
+				}
+			}
+		}
+
+	} else {
+		err = CreateFolder("osx", org.OrganizationId, spaces[0].RootId, spaces[0].SpaceId, org.DriveId)
 		fmt.Println(err)
 	}
+
+	time.Sleep(5 * time.Second)
 }
