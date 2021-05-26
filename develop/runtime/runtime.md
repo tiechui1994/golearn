@@ -547,7 +547,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	// newg.sched.pc 表示当 newg 被调度起来运行时从这个地址开始执行指令.
 	// 把 pc 设置成 goexit 函数偏移 1 (sys.PCQuantum是1) 的位置.
 	// 为啥这样做, 暂时不清楚
-	newg.sched.pc = funcPC(goexit) + sys.PCQuantum // +PCQuantum so that previous instruction is in same function
+	newg.sched.pc = funcPC(goexit) + sys.PCQuantum 
 	newg.sched.g = guintptr(unsafe.Pointer(newg))
 	
 	// 调整 sched成员和 newg 的栈(参考下面的分析)
@@ -652,6 +652,7 @@ gostartcallfn 函数的主要作用:
 
 汇编代码从 `newproc` 返回之后, 开始执行 mstart 函数.
 
+mstart() 启动调度循环, 调用链: `mstart()` -> `mstart1()` -> `schedule()`
 
 ```cgo
 func mstart() {
@@ -702,7 +703,7 @@ func mstart1() {
 	}
 
 	// getcallerpc() 获取调用 mstart1 执行完的返回地址
-	// getcallersp() 获取调用 mstarrt1 时的栈顶地址
+	// getcallersp() 获取调用 mstart1 时的栈顶地址
 	save(getcallerpc(), getcallersp())
 	asminit() // AMD64 Linux 是空函数
 	minit() // 信号相关初始化
@@ -722,68 +723,405 @@ func mstart1() {
 		acquirep(_g_.m.nextp.ptr())
 		_g_.m.nextp = 0
 	}
+	
 	// 执行调度函数
 	schedule()
 }
 ```
+
+mstart1 首先调用 save() 函数来保存 g0的调用信息, **save这一行代码非常关键, 是理解调度循环的关键点之一**. 注意这里
+getcallerpc() 返回的的 mstart 调用 mstart1 时被 call 指令压栈的返回地址, getcallersp() 返回的是调用 mstart1
+函数之前 mstart 函数的栈顶地址.
+
+```cgo
+//go:nosplit
+//go:nowritebarrierrec
+func save(pc, sp uintptr) {
+	_g_ := getg()
+
+	_g_.sched.pc = pc // 再次运行时的指令地址
+	_g_.sched.sp = sp // 再次运行时的栈顶
+	_g_.sched.lr = 0
+	_g_.sched.ret = 0
+	_g_.sched.g = guintptr(unsafe.Pointer(_g_)) // 保存当前的 _g_
+	
+	// 需要确保ctxt为零, 但此处不能有写障碍. 但是, 它应该始终已经为零.
+	// 断言.
+	if _g_.sched.ctxt != nil {
+		badctxt()
+	}
+}
+```
+
+save 函数保存了调度相关的所有信息, 包括最为重要的当前正在运行 g 的下一条指令地址和栈顶地址. 不管想 g0 还是其他的 g 来
+说这些信息在调度过程中都是必不可少的.
+
+到目前为止, 上述的 mstart() 是在 g0 上执行的, 所有的操作都是针对 g0 而言. 
+
+为何 g0 已经执行到 mstart1 这个函数而且还会继续调用其他函数, 但 g0 的调度信息中的 pc 和 sp 却要设置在 mstart 函数
+中? 难道下次切换到 g0 时需要从 `switch` 语句继续执行? 从 mstart 函数可以看到, switch 语句之后就要退出线程了!
+
+save 函数执行之后, 返回到 mstart1 继续其他跟 m 相关的一些初始化, 完成这些初始化后则调用调度系统的核心函数 schedule()
+完成 gorotine 的调度. 每次调度 goroutine 都是从 schedule 函数开始的.
+
+
+```cgo
+func schedule() {
+	_g_ := getg() // _g_ 是工作线程 m 对于的 g0, 在初始化时是 m0.g0
+
+	if _g_.m.locks != 0 {
+		throw("schedule: holding locks")
+	}
+
+	if _g_.m.lockedg != 0 {
+		stoplockedm()
+		execute(_g_.m.lockedg.ptr(), false) // Never returns.
+	}
+
+	// We should not schedule away from a g that is executing a cgo call,
+	// since the cgo call is using the m's g0 stack.
+	if _g_.m.incgo {
+		throw("schedule: in cgo")
+	}
+
+top:
+    // 获取 P, 并将抢占变量设置为 false
+	pp := _g_.m.p.ptr()
+	pp.preempt = false
+
+	if sched.gcwaiting != 0 {
+		gcstopm()
+		goto top
+	}
+	if pp.runSafePointFn != 0 {
+		runSafePointFn()
+	}
+
+	
+	// 进行完整性检查: 如果我们正在 spinning, 则 runq 应该为空.
+    // 在调用checkTimers之前检查它, 因为这可能会调用 goready 将就绪的 goroutine 放在本地运行队列中.
+	if _g_.m.spinning && (pp.runnext != 0 || pp.runqhead != pp.runqtail) {
+		throw("schedule: spinning with local work")
+	}
+
+	checkTimers(pp, 0)
+
+	var gp *g
+	var inheritTime bool
+
+	// 普通的goroutine会检查是否需要就绪, 但 GCworkers 和 tracereaders 不会这样做, 而必须在此处进行检查.
+	tryWakeP := false
+	if trace.enabled || trace.shutdown {
+		gp = traceReader()
+		if gp != nil {
+			casgstatus(gp, _Gwaiting, _Grunnable)
+			traceGoUnpark(gp, 0)
+			tryWakeP = true
+		}
+	}
+	
+	// 进入gc MarkWorker 工作模式
+	if gp == nil && gcBlackenEnabled != 0 {
+		gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
+		tryWakeP = tryWakeP || gp != nil
+	}
+	
+	// 开始查找 gp (需要调度的任务)
+	if gp == nil {
+	    // 保证调度的公平性, 每进行 61 次调度需要优先从全局运行队列中获取 gorotine
+		if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
+			lock(&sched.lock)
+			gp = globrunqget(_g_.m.p.ptr(), 1)
+			unlock(&sched.lock)
+		}
+	}
+	
+	if gp == nil {
+	    // 从与 m 关联的 p 的本地运行队列中获取 goroutine
+		gp, inheritTime = runqget(_g_.m.p.ptr())
+	}
+	if gp == nil {
+	    // 当本地队列和全局队列都没有找到要运行的 goroutine. 调用 findrunable 函数总其他工作线程
+	    // 的运行队列中偷取, 如果偷取不到, 则当前工作线程进入休眠, 直到获取到需要运行的 goroutine
+	    // 之后函数才返回.
+		gp, inheritTime = findrunnable() // blocks until work is available
+	}
+
+	// 此时线程将要开始执行 gp, 因此对于自旋状况必须重置
+	if _g_.m.spinning {
+		resetspinning()
+	}
+    
+	if sched.disable.user && !schedEnabled(gp) {
+	    // 当前的 gp 被禁用调用时, 需要重新启用用户调度并再次查看, 
+	    // 否则, 将其放在待处理的可运行goroutine列表中.
+	    // 一般只有系统的 goroutine 可以被禁用调度
+		lock(&sched.lock)
+		if schedEnabled(gp) {
+			unlock(&sched.lock)
+		} else {
+			sched.disable.runnable.pushBack(gp)
+			sched.disable.n++
+			unlock(&sched.lock)
+			goto top
+		}
+	}
+
+	// 当 goroutine 不是一般的 goroutine 时 (a GCworker or tracereader),
+	// 唤醒一个 P(可能会开启一个线程, sched.npidle>0 且 sched.nmspinning=0 状况下)
+	if tryWakeP {
+		wakep()
+	}
+	
+	// gp锁定在某个 m 上, 则需要重新进行查询 gp 
+	if gp.lockedm != 0 {
+		// Hands off own p to the locked m,
+		// then blocks waiting for a new p.
+		startlockedm(gp)
+		goto top
+	}
+    
+    // 当前运行的是 runtime 代码, 函数栈使用的是 g0 的栈空间
+    // 调用 execute 切换到 gp 代码和栈空间去运行.
+	execute(gp, inheritTime)
+}
+```
+
+schedule 函数通过 globalrunqget() 和 runqget() 函数分别从全局队列和当前工作线程的本地运行队列获取要下一个要运行的
+goroutine, 如果这两个队列都没有需要运行的 goroutine, 则通过 findrunnable() 函数从其他的 p 的运行队列当中偷取
+goroutine, 一旦找到一个, 则调用 execute 函数从 g0 切换到该 goroutine 去运作. 
+
+
+```cgo
+// 这里的 g 是要即将运行的 goroutine, 一般是用户代码
+func execute(gp *g, inheritTime bool) {
+	_g_ := getg() // 当前是 g0
+
+	// 在进入 _Grunning 之前, 将 m 和 g 进行关联
+	_g_.m.curg = gp
+	gp.m = _g_.m
+	
+	// 修改状态为 _Grunning
+	casgstatus(gp, _Grunnable, _Grunning)
+	gp.waitsince = 0
+	gp.preempt = false
+	gp.stackguard0 = gp.stack.lo + _StackGuard 
+	if !inheritTime {
+		_g_.m.p.ptr().schedtick++
+	}
+
+	// 检查是否需要打开或关闭 profiler, 这个是进行 pprof 开启状况下进行捕捉信息使用的.
+	hz := sched.profilehz
+	if _g_.m.profilehz != hz {
+		setThreadCPUProfiler(hz)
+	}
+
+	if trace.enabled {
+		// GoSysExit has to happen when we have a P, but before GoStart.
+		// So we emit it here.
+		if gp.syscallsp != 0 && gp.sysblocktraced {
+			traceGoSysExit(gp.sysexitticks)
+		}
+		traceGoStart()
+	}
+
+    // 完成 g0 到 gp 正在的切换.
+	gogo(&gp.sched)
+}
+```
+
+execute 的第一个参数 gp 是需要调度起来的 goroutine. 这里首先进行了 m 和 gp 的绑定, 接着就是 gp 状态修改为 _Grunning.
+完成 gp 运行前的准备工作之后, gogo 函数完成 g0 到 gp 的切换: **CPU执行权的转让和栈的切换**
+
+gogo 函数是使用汇编实现的, 之所以使用汇编, 是因为 goroutine 的调度涉及不同执行流之间的切换, 执行流的切换本质上就是
+CPU寄存器以及函数栈帧的切换.
+
+```cgo
+// func gogo(buf *gobuf)
+// 从 gobuf 当中恢复 state, longjmp
+TEXT runtime·gogo(SB), NOSPLIT, $16-8
+	MOVQ	buf+0(FP), BX   // buf=&gp.sched
+	MOVQ	gobuf_g(BX), DX // DX=gp.sched.g
+	
+	# 检查 gp.sched.g 不为 nil 
+	MOVQ	0(DX), CX	// make sure g != nil
+	
+	get_tls(CX)
+	
+	// 将运行的 g 的指针存放到本地存储, 这样后面可以直接通过线程本地存储获取到当前正在执行的
+	// goroutine 的 g 对象, 从而找到与之关联的 m 和 p
+	MOVQ	DX, g(CX) 
+	
+	# CPU 的 SP 寄存器设置为 sched.sp, 栈切换
+	MOVQ	gobuf_sp(BX), SP // restore SP
+	
+	# CPU其他寄存器
+	MOVQ	gobuf_ret(BX), AX
+	MOVQ	gobuf_ctxt(BX), DX
+	MOVQ	gobuf_bp(BX), BP
+	
+	# 清空 sched 的值
+	MOVQ	$0, gobuf_sp(BX)	// clear to help garbage collector
+	MOVQ	$0, gobuf_ret(BX)
+	MOVQ	$0, gobuf_ctxt(BX)
+	MOVQ	$0, gobuf_bp(BX)
+	
+	# sched.pc 的值( goroutine函数执行的入口地址 )放入 BX 寄存器,
+	# JMP 把 BX 寄存器的值放入到 CPU 的 IP 寄存器, 于是, CPU 就跳转到该地址继续执行指令  
+	MOVQ	gobuf_pc(BX), BX
+	JMP	BX
+```
+
+gogo 主要做的事情:
+
+1. 将 sched.g 存储到 tls 当中, 这样通过 tls 直接获取到 g, 然后获取到与之关联的 m 和 p 
+
+2. sched 的成员恢复到 CPU 寄存器完成状态和栈的切换
+
+3. 跳转到 gp.sched.pc 所指的指令地址(goroutine 函数入口)处执行.
+
+到目前为止, runtime.main 函数就被调度执行起来了.
+
+下来, 看看 main 函数:
+
+```cgo
+func main() {
+	g := getg() // 当前是 g, 即 m.curg
+
+	// Racectx of m0->g0 is used only as the parent of the main goroutine.
+	// It must not be used for anything else.
+	g.m.g0.racectx = 0
+
+	// 最大栈空间
+	if sys.PtrSize == 8 {
+		maxstacksize = 1000000000
+	} else {
+		maxstacksize = 250000000
+	}
+
+	// Allow newproc to start new Ms.
+	mainStarted = true
+    
+	if GOARCH != "wasm" { 
+		// 现在执行的是 main goroutine, 因此使用的是 main goroutine 的栈, 需要切换
+		// 到 g0 栈去执行 newm() 函数.
+		systemstack(func() {
+		    // 创建监控线程, 该线程独立于调度器, 不需要关联 p 即可运行(只在 g0 上运行)
+			newm(sysmon, nil, -1)
+		})
+	}
+
+	// Lock the main goroutine onto this, the main OS thread,
+	// during initialization. Most programs won't care, but a few
+	// do require certain calls to be made by the main thread.
+	// Those can arrange for main.main to run in the main thread
+	// by calling runtime.LockOSThread during initialization
+	// to preserve the lock.
+	lockOSThread()
+
+	if g.m != &m0 {
+		throw("runtime.main not on m0")
+	}
+    
+    // 执行 runtime 包的 init 函数
+	doInit(&runtime_inittask) // must be before defer
+	if nanotime() == 0 {
+		throw("nanotime returning zero")
+	}
+
+	// Defer unlock so that runtime.Goexit during init does the unlock too.
+	needUnlock := true
+	defer func() {
+		if needUnlock {
+			unlockOSThread()
+		}
+	}()
+
+	// Record when the world started.
+	runtimeInitTime = nanotime()
+
+    // 开启垃圾回收器
+	gcenable()
+
+	main_init_done = make(chan bool)
+   
+    ......  
+    
+    // 执行 main 包的 init 函数
+	doInit(&main_inittask)
+
+	close(main_init_done)
+
+	needUnlock = false
+	unlockOSThread()
+    
+    // 静态库或动态库
+	if isarchive || islibrary {
+		// A program compiled with -buildmode=c-archive or c-shared
+		// has a main, but it is not executed.
+		return
+	}
+	
+	// 开始执行 main 函数
+	fn := main_main 
+	fn()
+	if raceenabled {
+		racefini()
+	}
+    
+    // 可恢复的 panic
+	// 使正常的客户端程序正常工作: 如果在 main 返回的时同时另一个goroutine 产生 panic, 
+	// 则让另一个 goroutine 完成对 panic 的打印. 一旦完成, 它将退出.
+	if atomic.Load(&runningPanicDefers) != 0 {
+		// 最多执行 1000 次调度
+		for c := 0; c < 1000; c++ {
+			if atomic.Load(&runningPanicDefers) == 0 {
+				break
+			}
+			
+			// 切换到 g0, 主动让出 CPU 执行(当前的 gp 的 m 与 p 解绑, 将 gp 放入全局队列, 开启新一轮调度)
+			Gosched() 
+		}
+	}
+	
+	// 不可恢复的 panic, 直接休眠
+	if atomic.Load(&panicking) != 0 {
+		gopark(nil, nil, waitReasonPanicWait, traceEvGoStop, 1)
+	}
+    
+    // 系统调用, 退出进程, main goroutine 并没有返回, 而是直接进入系统调用退出进程
+	exit(0)
+	
+	// 保护性代码
+	for {
+		var x *int32
+		*x = 0
+	}
+}
+```
+
+runtime.main 函数工作:
+
+1. 启用 sysmon 系统监控线程, 该线程负责整个程序的 pc, 抢占调度, netpoll 等功能监控
+
+2. 执行 runtime 包的 init 初始化
+
+3. 执行 main 包的 init 初始化
+
+4. 执行 main.main 函数
+
+5. 调用 exit 系统调用退出进程.
+
+从上述流程来看, runtime.main 在执行玩 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 这里
+需要注意, runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, 而是在 `schedule() -> execute() ->
+gogo()` 这个调用链的 gogo 函数中使用汇编代码跳过来的, 从这个角度, goroutine 没有地方可以返回. 但是, 前面的分析当中
+得知, 在创建 gorotine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
+使用到这个返回地址, 其实这个地址是为非 main goroutine 准备的, 让其在执行完成之后返回到 goexit 继续执行.
+
+
+
 
 ### 调度器如何开启调度循环
-
-mstart() 启动 M, 调用的链: `mstart()` -> `mstart1()` -> `schedule()`
-
-```cgo
-func mstart() {
-	_g_ := getg()
-
-	...
-	
-	mstart1()
-
-	...
-	
-	mexit(osStack)
-}
-```
-
-```cgo
-func mstart1() {
-	_g_ := getg()
-
-	if _g_ != _g_.m.g0 {
-		throw("bad runtime·mstart")
-	}
-
-	// Record the caller for use as the top of stack in mcall and
-	// for terminating the thread.
-	// We're never coming back to mstart1 after we call schedule,
-	// so other calls can reuse the current frame.
-	save(getcallerpc(), getcallersp())
-	asminit()
-	minit()
-    
-    // 只在汇编当中调用才执行此函数。
-	// 初始化信号处理程序; minit之后, 以便 minit 可以准备线程以处理信号.
-	if _g_.m == &m0 {
-		mstartm0()
-	}
-
-    // 初始化函数
-	if fn := _g_.m.mstartfn; fn != nil {
-		fn()
-	}
-
-	if _g_.m != &m0 {
-		acquirep(_g_.m.nextp.ptr())
-		_g_.m.nextp = 0
-	}
-	// 执行调度函数
-	schedule()
-}
-```
-
-
-// 创建一个 M, 并绑定到一个系统内核线程, 系统内核线程的启动函数是 mstart (在 g0 上执行), 初始化函数是 fn(在 mstart 
-当中被调用执行, 也是运行在 g0 上的.)
 
 ```cgo
 // 调度 M 的执行 P 当中的 G, 即 M 的启动函数
@@ -967,142 +1305,6 @@ newm 方法创建一个 M 与 P 绑定.
 也需要用到栈空间来完成调度工作, 而拥有执行栈的地方只有 G, 因此需要为每个 M 配置一个 g0
 
 
-### 调度器如何进入调度循环的
-
-调用 schedule 进入调度循环后, 这个方法永远不会再返回.
-
-```cgo
-// runtime/proc.go
-
-func schedule() {
-	_g_ := getg()
-
-	if _g_.m.locks != 0 {
-		throw("schedule: holding locks")
-	}
-
-	if _g_.m.lockedg != 0 {
-		stoplockedm()
-		execute(_g_.m.lockedg.ptr(), false) // Never returns.
-	}
-
-	// We should not schedule away from a g that is executing a cgo call,
-	// since the cgo call is using the m's g0 stack.
-	if _g_.m.incgo {
-		throw("schedule: in cgo")
-	}
-
-top:
-    // 获取 P, 并将抢占变量设置为 false
-	pp := _g_.m.p.ptr()
-	pp.preempt = false
-
-	if sched.gcwaiting != 0 {
-		gcstopm()
-		goto top
-	}
-	if pp.runSafePointFn != 0 {
-		runSafePointFn()
-	}
-
-	
-	// 进行完整性检查: 如果我们正在 spinning, 则 runq 应该为空.
-    // 在调用checkTimers之前检查它, 因为这可能会调用 goready 将就绪的 goroutine 放在本地运行队列中.
-	if _g_.m.spinning && (pp.runnext != 0 || pp.runqhead != pp.runqtail) {
-		throw("schedule: spinning with local work")
-	}
-
-	checkTimers(pp, 0)
-
-	var gp *g
-	var inheritTime bool
-
-	// 普通的goroutine会检查是否需要就绪, 但 GCworkers 和 tracereaders 不会这样做, 而必须在此处进行检查.
-	tryWakeP := false
-	if trace.enabled || trace.shutdown {
-		gp = traceReader()
-		if gp != nil {
-			casgstatus(gp, _Gwaiting, _Grunnable)
-			traceGoUnpark(gp, 0)
-			tryWakeP = true
-		}
-	}
-	
-	// 进入gc MarkWorker 工作模式
-	if gp == nil && gcBlackenEnabled != 0 {
-		gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
-		tryWakeP = tryWakeP || gp != nil
-	}
-	
-	// 开始查找 gp (需要调度的任务)
-	if gp == nil {
-	    // 全局队列
-		if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
-			lock(&sched.lock)
-			gp = globrunqget(_g_.m.p.ptr(), 1)
-			unlock(&sched.lock)
-		}
-	}
-	if gp == nil {
-	    // M 绑定的 P 的本地队列
-		gp, inheritTime = runqget(_g_.m.p.ptr())
-	}
-	if gp == nil {
-	    // 从其他的 M 当中获取, 这个方法是阻塞执行的
-		gp, inheritTime = findrunnable() // blocks until work is available
-	}
-
-	// 此线程将运行goroutine并且不再自旋, 因此, 如果将其标记为正在旋转, 则需要立即将其重置, 
-	// 并可能启动新的旋转M.
-	if _g_.m.spinning {
-		resetspinning()
-	}
-
-	if sched.disable.user && !schedEnabled(gp) {
-		// Scheduling of this goroutine is disabled. Put it on
-		// the list of pending runnable goroutines for when we
-		// re-enable user scheduling and look again.
-		lock(&sched.lock)
-		if schedEnabled(gp) {
-			// Something re-enabled scheduling while we
-			// were acquiring the lock.
-			unlock(&sched.lock)
-		} else {
-			sched.disable.runnable.pushBack(gp)
-			sched.disable.n++
-			unlock(&sched.lock)
-			goto top
-		}
-	}
-
-	// If about to schedule a not-normal goroutine (a GCworker or tracereader),
-	// wake a P if there is one.
-	if tryWakeP {
-		wakep()
-	}
-	if gp.lockedm != 0 {
-		// Hands off own p to the locked m,
-		// then blocks waiting for a new p.
-		startlockedm(gp)
-		goto top
-	}
-    
-    // 执行查找到的 G
-	execute(gp, inheritTime)
-}
-```
-
-schedule 中首先尝试从本地 P 获取(runqget)一个可执行的 G, 如果没有则从其他地方获取(findrunnable), 最终通过 execute
-方法执行 G.
-
-runqget 先通过 runnext 拿到待运行 G, 没有的话, 再从 runq 里获取.
-
-findrunnable 从全局队列, epoll, 其他的 P 里获取.
-
-> 在调度开通做了个优化: 每处理一些任务之后, 就会优先从全局队列里获取任务, 以保障公平性, 防止由于每个 P 里的 G 过多, 而
-全局队列里的任务得不到执行机会.
-
-
 ### 调度循环中如何让出 CPU
 
 #### 正常完成让出 CPU
@@ -1113,7 +1315,7 @@ schedule -> execute -> gogo -> 执行G
 
 创建 G:
      
-newproc1 -> pc指向 goexit( goexit -> goexit0 -> goexit1-> schedule)
+newproc1 -> goexit0(通过调整 ip 寄存器设置的) -> goexit1 -> schedule)
 
 
 绝大多数场景下程序都行执行完成一个 G, 再执行另一个 G. 
