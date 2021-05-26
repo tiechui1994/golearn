@@ -119,6 +119,12 @@ ok:
 
 ### runtime.schedinit(SB) 调度初始化
 
+schedinit 做的重要事情:
+
+- 初始化 m0, mcommoninit函数
+
+- 创建和初始化 allp, procresize 函数, 并将 m0 绑定到 `allp[0]` 即 `m0.p = allp[0], allp[0].m = m0` 
+
 ```cgo
 func schedinit() {
     // getg 最终是插入代码, 格式如下:
@@ -137,7 +143,7 @@ func schedinit() {
 	
 	......  
 
-	msigsave(_g_.m)
+	msigsave(_g_.m) // 初始化 m0.gsignal
 	initSigmask = _g_.m.sigmask
 
     ...... 
@@ -167,7 +173,7 @@ sched.maxmcount 设置了 M 最大数量, 而 M 代表系统内核线程, 因此
 procresize 初始化P的数量, procs 参数为初始化的数量, 而在初始化之前先做数量的判断, 默认是ncpu(CPU核数). 也可以通过
 GOMAXPROCS来控制P的数量. _MaxGomaxprocs 控制了最大数量只能是1024.
 
-重点关注一下 mcommoninit 如何初始化 m0 以及 procresize 函数如何创建和初始化 p 结构体对象.
+重点关注一下 mcommoninit() 函数如何初始化 m0 以及 procresize() 函数如何创建和初始化 p 结构体对象.
 
 ````cgo
 func mcommoninit(mp *m, id int64) {
@@ -217,7 +223,8 @@ func mcommoninit(mp *m, id int64) {
 }
 ````
 
-此函数就是将 m0 放入到全局链表 allm 之中, 然后就返回了.
+mcommoninit 函数重点就是初始化了 m0 的 `id, fastrand, gsignal ...` 等变量,  然后 m0 放入到全局链表 allm 之中, 
+然后就返回了.
 
 
 ```cgo
@@ -333,43 +340,47 @@ func procresize(nprocs int32) *p {
 }
 ```
 
-主要流程：
+procresize 函数主要干的事情:
 
-- 使用 `make([]*p nprocs)` 初始化全局变量 allp
+- 使用 `make([]*p nprocs)` 初始化全局变量 allp. 
 
-- 使用循环初始化 nprocs 个 p 结构体对象并依次保存在 allp 切片之中
+- 使用循环初始化 nprocs 个 p 结构体对象并依次保存在 allp 切片之中.
 
-- 把 m0 和 `allp[0]` 绑定在一起, 即 `m0.p = allp[0], allp[0].m = m0`
+- 把 m0 和 `allp[0]` 绑定在一起, 即 `m0.p = allp[0], allp[0].m = m0` (比较关键)
 
 - 把除了 `allp[0]` 之外的所有 p 放入全局变量 sched 的 pidle 空闲队列之中. 对于非空闲的 p 组装成一个链表, 并返回.
 
 ### runtime.mainPC(SB) main goroutine
 
-在进行 schedinit 完成调度系统初始化后, 返回到 rt0_go 函数开始调用 `newproc()` 创建一个新的 goroutine 用于执行
-mainPC 所对应的 runtime.main 函数. 
+在进行 schedinit 完成调度系统初始化后, `m0 与 g0`, `m0 与 allp[0]` 已经相互关联了. 接下来的操作就行需要创建 main
+goroutine 用于执行 runtime.main 函数. 
 
+调用 `newproc()` 创建一个新的 goroutine 用于执行 mainPC 所对应的 runtime.main 函数. 
 
 // runtime/asm_amd64.s
 
 ```cgo
-# 创建 main goroutine, 也是系统的第一个 goroutine 
-// create a new goroutine to start program
-MOVQ	$runtime·mainPC(SB), AX # mainPC 是 runtime.main 
-PUSHQ	AX # AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
-PUSHQ	$0 # newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
-CALL	runtime·newproc(SB) // 创建 main goutine
-POPQ	AX
-POPQ	AX
+TEXT runtime·rt0_go(SB),NOSPLIT,$0
+    ..... 
+    
+    # 创建 main goroutine, 也是系统的第一个 goroutine 
+    // create a new goroutine to start program
+    MOVQ	$runtime·mainPC(SB), AX # mainPC 是 runtime.main 
+    PUSHQ	AX # AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
+    PUSHQ	$0 # newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
+    CALL	runtime·newproc(SB) // 创建 main goutine
+    POPQ	AX
+    POPQ	AX
+    
+    # 主线程进入调度循环，运行刚刚创建的goroutine
+    CALL  runtime·mstart(SB)  #
+    
+    # 上面的mstart永远不应该返回的, 如果返回了, 一定是代码逻辑有问题, 直接abort
+    CALL  runtime·abort(SB)
+    RET
 
-# 主线程进入调度循环，运行刚刚创建的goroutine
-CALL  runtime·mstart(SB)  #
 
-# 上面的mstart永远不应该返回的, 如果返回了, 一定是代码逻辑有问题, 直接abort
-CALL  runtime·abort(SB)
-RET
-
-
-# runtime·mainPC 的汇编定义, 进行了一层包装
+# runtime·mainPC 的定义.
 DATA  runtime·mainPC+0(SB)/8,$runtime·main(SB)
 GLOBL runtime·mainPC(SB),RODATA,$8
 ```
@@ -409,7 +420,7 @@ func main() {
 所以需要用参数的方式指定拷贝数据的大小.
 
 
-newproc 函数是对 newproc1 的一个包装, 这里最重要的工作两个:
+newproc 函数是对 newproc1 的一个包装, 最重要的工作:
 
 - 获取 fn 函数的第一个参数的地址(argp)
 
@@ -431,9 +442,11 @@ func newproc(siz int32, fn *funcval) {
 	// 切换到 g0 执行作为参数的函数
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
-
-		_p_ := getg().m.p.ptr() // 获取当前的 g0 绑定的 _p_
-		runqput(_p_, newg, true) // 将 newg 放入到 _p_ 本地队列当中
+        
+        // 获取当前的 g0 绑定的 _p_, 然后将新创建的 newg 放入到 _p_ 本地队列当中.
+        // 注: newg 当前还没有和任何 m 进行关联, 只有被调度运行的时才和 m 进行关联
+		_p_ := getg().m.p.ptr() 
+		runqput(_p_, newg, true)
 
 		if mainStarted {
 			wakep()
@@ -456,9 +469,11 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 		_g_.m.throwing = -1 // do not dump full stacks
 		throw("go of nil func value")
 	}
-	acquirem() // disable preemption because it can be holding p in a local var
+	
+	// 禁用抢占, 因为它可以将 p 保留在本地变量中
+	acquirem() 
 	siz := narg
-	siz = (siz + 7) &^ 7
+	siz = (siz + 7) &^ 7 // size 进行 8 字节对齐
 
 	// We could allocate a larger initial stack if necessary.
 	// Not worth it: this is almost always an error.
@@ -489,7 +504,10 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 		throw("newproc1: new g is not Gdead")
 	}
     
-    // 调整 g 的栈顶指针
+    // 调整 g 的栈顶指针.
+    // sys.MinFrameSize 是 0
+    // sys.SpAlign 是 1
+    // totalSize 最终大小是 siz+32
 	totalSize := 4*sys.RegSize + uintptr(siz) + sys.MinFrameSize // extra space in case of reads slightly beyond frame
 	totalSize += -totalSize & (sys.SpAlign - 1)                  // align to spAlign
 	sp := newg.stack.hi - totalSize
@@ -502,6 +520,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	if narg > 0 {
 	    // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 g 的栈
+	    // 注: 这里是从 sp 的位置开始拷贝的.
 		memmove(unsafe.Pointer(spArg), argp, uintptr(narg))
 		// This is a stack-to-stack copy. If write barriers
 		// are enabled and the source stack is grey (the
@@ -519,15 +538,27 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 			}
 		}
 	}
-
+    
+    // 清空 newg.sched 里面的字段, 然后重新设置 sched 对应的值
 	memclrNoHeapPointers(unsafe.Pointer(&newg.sched), unsafe.Sizeof(newg.sched))
-	newg.sched.sp = sp
-	newg.stktopsp = sp
+	newg.sched.sp = sp 
+	newg.stktopsp = sp 
+	
+	// newg.sched.pc 表示当 newg 被调度起来运行时从这个地址开始执行指令.
+	// 把 pc 设置成 goexit 函数偏移 1 (sys.PCQuantum是1) 的位置.
+	// 为啥这样做, 暂时不清楚
 	newg.sched.pc = funcPC(goexit) + sys.PCQuantum // +PCQuantum so that previous instruction is in same function
 	newg.sched.g = guintptr(unsafe.Pointer(newg))
+	
+	// 调整 sched成员和 newg 的栈(参考下面的分析)
 	gostartcallfn(&newg.sched, fn)
+	
+	// traceback
 	newg.gopc = callerpc
 	newg.ancestors = saveAncestors(callergp)
+	
+	// 设置 newg 的 startpc 为 fn.fn, 该成员主要用于函数调用栈的 traceback 和栈收缩
+	// newg 真正从哪里执行不依赖次成员, 而是 sched.pc
 	newg.startpc = fn.fn
 	if _g_.m.curg != nil {
 		newg.labels = _g_.m.curg.labels
@@ -535,8 +566,11 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	if isSystemGoroutine(newg, false) {
 		atomic.Xadd(&sched.ngsys, +1)
 	}
+	// newg 的状态为 _Grunnable, 表示 g 可以进行运行了
+	// 注: 前面获取 newg 的时候, newg 添加到 allg 当中, 但是当前的 newg 并没有关联到某个 p
 	casgstatus(newg, _Gdead, _Grunnable)
-
+    
+    // 下面主要进行 goid 设置和 goid 缓存(缓存在 _p_ 当中)
 	if _p_.goidcache == _p_.goidcacheend {
 		// Sched.goidgen is the last allocated id,
 		// this batch must be [sched.goidgen+1, sched.goidgen+GoidCacheBatch].
@@ -559,58 +593,139 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 }
 ```
 
+gostartcallfn 函数, 在 newg.sched.pc 设置为 `funcPC(goexit) + 1` 之后进行调用, 在这个函数当中可以找到为何这样做
+的原因.
 
 ```cgo
-func main() {
-	g := getg()
-
-	// m0->g0的 racectx 仅用作main goroutine的parent, 不得将其用于其他任何用途.
-	g.m.g0.racectx = 0
-
-	// 设置 maxstacksize, 64-bit是 1GB, 32-bit 是 250M. 之所以使用十进制, 主要是方便查看信息.
-	if sys.PtrSize == 8 {
-		maxstacksize = 1000000000
+// fn 是 goroutine 的入口地址, 在初始化的时候对应是是 runtime.main
+func gostartcallfn(gobuf *gobuf, fv *funcval) {
+	var fn unsafe.Pointer
+	if fv != nil {
+		fn = unsafe.Pointer(fv.fn)
 	} else {
-		maxstacksize = 250000000
+		fn = unsafe.Pointer(funcPC(nilfunc))
 	}
+	gostartcall(gobuf, fn, unsafe.Pointer(fv))
+}
 
-	// Allow newproc to start new Ms.
-	mainStarted = true
-    
-    // 启动 sysmon 系统线程, 后台监控
-	if GOARCH != "wasm" { // no threads on wasm yet, so no sysmon
-		systemstack(func() {
-			newm(sysmon, nil, -1)
-		})
+
+func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) {
+	sp := buf.sp // newg 的栈顶, 目前 newg 栈上只有 fn 函数的参数, sp 指向的是 fn 的第一个参数
+	if sys.RegSize > sys.PtrSize {
+		sp -= sys.PtrSize
+		*(*uintptr)(unsafe.Pointer(sp)) = 0
 	}
-    
-    ....
+	sp -= sys.PtrSize // 为返回地址预留空间, 然后将返回地址写入当前预留的位置
+	*(*uintptr)(unsafe.Pointer(sp)) = buf.pc
+	buf.sp = sp // 重新设置 newg 的栈顶寄存器
+	
+	// 这里才正在让 newg 的 ip 寄存器指向 fn 函数. 这里只是设置 newg 的信息, newg 还未执行,
+	// 等到 newg 被调度起来之后, 调度器会把 buf.pc 放入到 CPU 的 ip 寄存器, 从而使得 cpu 真正执行起来.
+	buf.pc = uintptr(fn)
+	buf.ctxt = ctxt // fv 地址
 }
 ```
 
-在 runtime 下启动一个全程运行的监控任务, 该任务用于标记抢占时间过长的 G, 以及检测 epoll 里面有没有可执行的G. 
+gostartcallfn 函数的主要作用:
+
+- 获取 fn 函数地址
+
+- 调用 gostartcall 函数, 在函数当中调整 newg 的 sp (将 goexit 函数的第二条指令地址入栈, 伪造成 goexit 函数调用了 fn,
+从而使 fn 执行完成后 ret 指令返回到 goexit 继续执行完成清理工作) 和 pc (重新设置 pc 为需要执行的函数的地址, 即fn, 当前
+场景为 runtime.main 函数地址) 的值.
+
+
+在调用 newproc 函数之后, runtime.main 对应的 newg 已经创建完成, 并且加入到当前线程绑定的 p 当中, 等待被调度执行.
+
+- newg 的 pc 指向的是 runtime.main 函数的第一条指令, sp 成员指向是的 newg 栈顶单元, 该单元保存了 runtime.main 函数
+执行完成之后的返回地址( runtime.goexit 的第二条指令, 预期 runtime.main 执行完成之后就会执行 `CALL runtime.goexit1(SB)`
+这条指令)
+
+- newg 放入当前线程绑定的 p 对象的本地运行队列, 它是第一个真正意义上的用户 goroutine
+
+- **newg 的 m 成员是 nil, 因为它还没有被调度起来运行, 没有任何 m 进行绑定.**
 
 ### runtime.mstart(SB) 调度循环开始
 
-调度循环:
+到目前为止, runtime.main goroutine已经创建, 并放到了 m0 线程绑定的 `allp[0]` 的本地队列当中, 接下来就需要启动调度循
+环, 开始去查找 goroutine 并执行. 
 
-![image](/images/develop_runtime_schedule.png)
+汇编代码从 `newproc` 返回之后, 开始执行 mstart 函数.
 
-- 图1代表 M 启动的过程, 把 M 跟一个 P 绑定在一起. 在程序初始化的过程中进程启动的最后一步启动第一个M(即M0), 这个M从全
-局的空闲的P列表里拿到一个P, 然后与其绑定. 而 P 里面有2个管理G的链表(runq存储待运行的G列表, gfree存储空闲的G列表), M
-启动后等待可执行的G
 
-- 图2代表创建 G 的过程. 创建完一个 G 先扔到当前 P 的 runq 带运行队列里. 在图 3 的执行过程, M 从绑定的P的 runq 列表
-里获取一个 G 来执行. 当中执行完成之后, 图4的流程里把 G 扔到 gfree 列表里. 注意: 此时的 G 并没有销毁(只重置了G的栈以
-及状态), 当再次创建G的时候优先从 gfree 当中获取, 这样达到复用 G 的目的.
+```cgo
+func mstart() {
+	_g_ := getg() // _g_ = g0
+    
+    // 对于启动过程, g0 的 stack 早完成初始化, osStack = false
+	osStack := _g_.stack.lo == 0
+	if osStack {
+		// Initialize stack bounds from system stack.
+		// Cgo may have left stack size in stack.hi.
+		// minit may update the stack bounds.
+		size := _g_.stack.hi
+		if size == 0 {
+			size = 8192 * sys.StackGuardMultiplier
+		}
+		_g_.stack.hi = uintptr(noescape(unsafe.Pointer(&size)))
+		_g_.stack.lo = _g_.stack.hi - size + 1024
+	}
+	// Initialize stack guard so that we can start calling regular
+	// Go code.
+	_g_.stackguard0 = _g_.stack.lo + _StackGuard
+	// This is the g0, so we can also call go:systemstack
+	// functions, which check stackguard1.
+	_g_.stackguard1 = _g_.stackguard0
+	
+	// 执行 mstart1
+	mstart1()
 
-- 图3代表执行一个 G 的过程.
+	// Exit this thread.
+	switch GOOS {
+	case "windows", "solaris", "illumos", "plan9", "darwin", "aix":
+		// Windows, Solaris, illumos, Darwin, AIX and Plan 9 always system-allocate
+		// the stack, but put it in _g_.stack before mstart,
+		// so the logic above hasn't set osStack yet.
+		osStack = true
+	}
+	mexit(osStack)
+}
+``` 
 
-- 图4代表释放一个 G 的过程.
 
-> M 启动后处于一个自循环状态, 执行完一个 G 之后继续执行下一个 G, 反复上面的 `图2 ~ 图4` 的过程. 当第一个 M 正在繁忙而
-又有新的 G 需要执行时, 会再开启一个 M 来执行.
+```cgo
+func mstart1() {
+	_g_ := getg() // 启动过程为 g0, 当前是运行在 g0 栈上的
 
+	if _g_ != _g_.m.g0 {
+		throw("bad runtime·mstart")
+	}
+
+	// getcallerpc() 获取调用 mstart1 执行完的返回地址
+	// getcallersp() 获取调用 mstarrt1 时的栈顶地址
+	save(getcallerpc(), getcallersp())
+	asminit() // AMD64 Linux 是空函数
+	minit() // 信号相关初始化
+    
+    // 启动时, _g_.m 是 &m0, 因此会执行下面的 mstartm0 函数
+	if _g_.m == &m0 {
+		mstartm0() // 信号初始化
+	}
+
+    // 在这里 fn 为 nil 
+	if fn := _g_.m.mstartfn; fn != nil {
+		fn()
+	}
+    
+    // 在这里, 将 nextp 与当前的 m 进行绑定
+	if _g_.m != &m0 {
+		acquirep(_g_.m.nextp.ptr())
+		_g_.m.nextp = 0
+	}
+	// 执行调度函数
+	schedule()
+}
+```
 
 ### 调度器如何开启调度循环
 
