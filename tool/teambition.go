@@ -850,6 +850,36 @@ func NodeArchive(orgid string, nodeids []string) (err error) {
 	return err
 }
 
+func NodeMove(orgid, driverid string, nodeids []string, dstparentid string) (err error) {
+	u := pan + "/pan/api/nodes/move"
+
+	var body struct {
+		DriveId   string              `json:"driveId"`
+		Ids       []map[string]string `json:"ids"`
+		OrgId     string              `json:"orgId"`
+		ParentId  string              `json:"parentId"`
+		SameLevel bool                `json:"sameLevel"`
+	}
+	body.DriveId = driverid
+	for _, id := range nodeids {
+		body.Ids = append(body.Ids, map[string]string{
+			"id":        id,
+			"ccpFileId": id,
+		})
+	}
+	body.ParentId = dstparentid
+	body.OrgId = orgid
+	bin, _ := json.Marshal(body)
+
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+
+	_, err = POST(u, bytes.NewBuffer(bin), header)
+	return err
+}
+
 func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
 	var body struct {
 		CcpParentId   string `json:"ccpParentId"`
