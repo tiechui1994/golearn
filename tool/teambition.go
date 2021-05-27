@@ -880,7 +880,7 @@ func NodeMove(orgid, driverid string, nodeids []string, dstparentid string) (err
 	return err
 }
 
-func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
+func CreateFolder(name, orgid, parentid, spaceid, driverid string) (nodeid string, err error) {
 	var body struct {
 		CcpParentId   string `json:"ccpParentId"`
 		CheckNameMode string `json:"checkNameMode"`
@@ -909,8 +909,20 @@ func CreateFolder(name, orgid, parentid, spaceid, driverid string) (err error) {
 
 	u := pan + "/pan/api/nodes/folder"
 
-	_, err = POST(u, bytes.NewBuffer(bin), header)
-	return err
+	data, err := POST(u, bytes.NewBuffer(bin), header)
+	if err != nil {
+		return nodeid, err
+	}
+
+	var result []struct {
+		NodeId string `json:"nodeId"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return nodeid, err
+	}
+
+	return result[0].NodeId, nil
 }
 
 type PanFile struct {
@@ -1221,6 +1233,92 @@ func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
 	return
 }
 
+func PanFindDir(dir string) (node Node, err error) {
+	dir = strings.TrimSpace(dir)
+	if !strings.HasPrefix(dir, "/") {
+		return node, errors.New("invalid path")
+	}
+
+	_, org, spaces, err := GetCacheData()
+	if err != nil {
+		return node, err
+	}
+
+	tokens := strings.Split(dir[1:], "/")
+	parentid := spaces[0].RootId
+	exist := false
+	for i, p := range tokens {
+		nodes, err := Nodes(org.OrganizationId, org.DriveId, parentid)
+		if err != nil {
+			return node, err
+		}
+
+		for _, n := range nodes {
+			if n.Name == p {
+				parentid = n.NodeId
+				node = n
+				exist = i == len(tokens)-1
+			}
+		}
+	}
+
+	if !exist {
+		return node, errors.New("no exist path")
+	}
+
+	return node, nil
+}
+
+func PanMkdirP(dir string) (nodeid string, err error) {
+	dir = strings.TrimSpace(dir)
+	if !strings.HasPrefix(dir, "/") {
+		return nodeid, errors.New("invalid path")
+	}
+
+	_, org, spaces, err := GetCacheData()
+	if err != nil {
+		return nodeid, err
+	}
+
+	isSearch := true
+	tokens := strings.Split(dir[1:], "/")
+	parentid := spaces[0].RootId
+	for _, p := range tokens {
+		if isSearch {
+			nodes, err := Nodes(org.OrganizationId, org.DriveId, parentid)
+			if err != nil {
+				return nodeid, err
+			}
+
+			exist := false
+			for _, n := range nodes {
+				if n.Name == p {
+					parentid = n.NodeId
+					exist = true
+					break
+				}
+			}
+
+			if !exist {
+				isSearch = false
+				parentid, err = CreateFolder(p, org.OrganizationId, parentid, spaces[0].SpaceId, org.DriveId)
+				if err != nil {
+					return nodeid, err
+				}
+			}
+
+			continue
+		}
+
+		parentid, err = CreateFolder(p, org.OrganizationId, parentid, spaces[0].SpaceId, org.DriveId)
+		if err != nil {
+			return nodeid, err
+		}
+	}
+
+	return parentid, nil
+}
+
 func main() {
 	DEBUG = true
 
@@ -1230,36 +1328,30 @@ func main() {
 		return
 	}
 
-	nodes, err := Nodes(org.OrganizationId, org.DriveId, spaces[0].RootId)
-	fmt.Println(err)
-	fmt.Println(nodes)
+	nodeid, err := PanMkdirP("/vpn/安卓")
+	if err != nil {
+		log.Println("PanMkdirP", err)
+		return
+	}
 
-	if len(nodes) > 0 && nodes[0].Kind == "folder" {
-		nodes, err := Nodes(org.OrganizationId, org.DriveId, nodes[0].NodeId)
-		fmt.Println(err)
-		fmt.Println(nodes)
-
-		var parentid string
-		for _, node := range nodes {
-			if node.Name == "pwd" {
-				parentid = node.NodeId
-			}
+	var files []string
+	filepath.Walk("/home/user/Downloads/6款打包", func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			files = append(files, path)
 		}
+		return nil
+	})
 
-		if parentid != "" {
-			path := "/home/user/Downloads/6款打包/Express _v10.0.0.apk"
-			files, err := CreateFile(org.OrganizationId, parentid, spaces[0].SpaceId, org.DriveId, path)
+	for _, file := range files {
+		files, err := CreateFile(org.OrganizationId, nodeid, spaces[0].SpaceId, org.DriveId, file)
+		if err == nil {
+			upload, err := UploadUrl(org.OrganizationId, files[0])
 			if err == nil {
-				upload, err := UploadUrl(org.OrganizationId, files[0])
-				if err == nil {
-					UploadPanFile(org.OrganizationId, upload, path)
-				}
+				UploadPanFile(org.OrganizationId, upload, file)
 			}
 		}
 
-	} else {
-		err = CreateFolder("osx", org.OrganizationId, spaces[0].RootId, spaces[0].SpaceId, org.DriveId)
-		fmt.Println(err)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	time.Sleep(5 * time.Second)

@@ -1119,6 +1119,144 @@ gogo()` 这个调用链的 gogo 函数中使用汇编代码跳过来的, 从这�
 使用到这个返回地址, 其实这个地址是为非 main goroutine 准备的, 让其在执行完成之后返回到 goexit 继续执行.
 
 
+非 main goroutine 的退出流程:
+
+首先来看下 goexit 汇编函数
+
+```cgo
+// 在 goroutine 上运行的最顶层函数.
+// returns to goexit+PCQuantum.
+TEXT runtime·goexit(SB),NOSPLIT,$0-0
+    BYTE	$0x90	// NOP
+    CALL	runtime·goexit1(SB)	// does not return
+    // traceback from goexit1 must hit code range of goexit
+    BYTE	$0x90	// NOP
+```
+
+非 main goroutine 返回时直接返回到 goexit 的第二条指令: `CALL	runtime·goexit1(SB)`, 该指令继续调用 goexit1 函
+数. 
+
+```cgo
+func goexit1() {
+	if raceenabled {
+		racegoend()
+	}
+	if trace.enabled {
+		traceGoEnd()
+	}
+	mcall(goexit0)
+}
+```
+
+goexit1 函数通过调用 mcall 从当前运行的用户 goroutine 切换到 g0, 然后在 g0 栈上调用和执行 goexit0 函数.
+
+```cgo
+// func mcall(fn func(*g))
+// 切换到 m->g0 栈上, 然后调用 fn(g) 函数
+// fn 函数必须不能返回.
+// It should gogo(&g->sched) to keep running g.
+// mcall 的参数是一个指向 funcval 对象的指针.
+TEXT runtime·mcall(SB), NOSPLIT, $0-8
+    # 获取参数的值放入 DI 寄存器, 它是 funcval 对象的指针. 当前场景是 goexit0 的地址
+    MOVQ	fn+0(FP), DI 
+    
+    get_tls(CX)
+    MOVQ	g(CX), AX	# AX=g, 这里的 g 是用户 goroutine
+    MOVQ	0(SP), BX	# 将 mcall 的返回地址(rip寄存器的值)放入 BX
+    
+    # 保存 g 的调度信息, 即将切换到 g0 栈
+    MOVQ	BX, (g_sched+gobuf_pc)(AX) # g.sched.pc = AX 
+    LEAQ	fn+0(FP), BX # fn 是调用方的栈顶元素, 其地址就是调用方的栈顶
+    MOVQ	BX, (g_sched+gobuf_sp)(AX) # g.sched.sp = BX, 用户 goroutine 的 rsp 
+    MOVQ	AX, (g_sched+gobuf_g)(AX) # g.sched.g = AX
+    MOVQ	BP, (g_sched+gobuf_bp)(AX) # g.sched.bp = BP, 用户 goroutine 的 rbp 
+    
+    # 切换到 g0 栈, 然后调用 fn 
+    MOVQ	g(CX), BX    # BX = g 
+    MOVQ	g_m(BX), BX  # BX = g.m 
+    MOVQ	m_g0(BX), SI # SI = g0 
+    
+    # 此时, SI=g0, AX=g, 这里需要判断 g 是否是 g0 
+    CMPQ	SI, AX	// if g == m->g0 call badmcall
+    JNE	3(PC) # 不相等
+    MOVQ	$runtime·badmcall(SB), AX
+    JMP	AX
+    MOVQ	SI, g(CX) # 将本地存储设置为 g0
+    MOVQ	(g_sched+gobuf_sp)(SI), SP	# 从 g0.sched.sp 当中恢复 SP, 即 rsp 寄存器  
+    PUSHQ	AX  # fn 的参数 g 入栈
+    MOVQ	DI, DX # DX=fn 
+    MOVQ	0(DI), DI # 判断fn不为nil
+    CALL	DI # 调用 fn 函数, 该函数不会返回, 这里调用的函数是 goexit0 
+    POPQ	AX # 正常状况下, 这里及其之后的指令不会执行的
+    MOVQ	$runtime·badmcall2(SB), AX
+    JMP	AX
+    RET
+```
+
+```cgo
+func goexit0(gp *g) {
+	_g_ := getg()
+
+	casgstatus(gp, _Grunning, _Gdead)
+	if isSystemGoroutine(gp, false) {
+		atomic.Xadd(&sched.ngsys, -1)
+	}
+	gp.m = nil
+	locked := gp.lockedm != 0
+	gp.lockedm = 0
+	_g_.m.lockedg = 0
+	gp.preemptStop = false
+	gp.paniconfault = false
+	gp._defer = nil // should be true already but just in case.
+	gp._panic = nil // non-nil for Goexit during panic. points at stack-allocated data.
+	gp.writebuf = nil
+	gp.waitreason = 0
+	gp.param = nil
+	gp.labels = nil
+	gp.timer = nil
+
+	if gcBlackenEnabled != 0 && gp.gcAssistBytes > 0 {
+		// Flush assist credit to the global pool. This gives
+		// better information to pacing if the application is
+		// rapidly creating an exiting goroutines.
+		scanCredit := int64(gcController.assistWorkPerByte * float64(gp.gcAssistBytes))
+		atomic.Xaddint64(&gcController.bgScanCredit, scanCredit)
+		gp.gcAssistBytes = 0
+	}
+
+	dropg()
+
+	if GOARCH == "wasm" { // no threads yet on wasm
+		gfput(_g_.m.p.ptr(), gp)
+		schedule() // never returns
+	}
+
+	if _g_.m.lockedInt != 0 {
+		print("invalid m->lockedInt = ", _g_.m.lockedInt, "\n")
+		throw("internal lockOSThread error")
+	}
+	gfput(_g_.m.p.ptr(), gp)
+	if locked {
+		// The goroutine may have locked this thread because
+		// it put it in an unusual kernel state. Kill it
+		// rather than returning it to the thread pool.
+
+		// Return to mstart, which will release the P and exit
+		// the thread.
+		if GOOS != "plan9" { // See golang.org/issue/22227.
+			gogo(&_g_.m.g0.sched)
+		} else {
+			// Clear lockedExt on plan9 since we may end up re-using
+			// this thread.
+			_g_.m.lockedExt = 0
+		}
+	}
+	schedule()
+}
+```
+
+
+
 ### 调度器如何开启调度循环
 
 ```cgo
