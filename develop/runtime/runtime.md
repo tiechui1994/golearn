@@ -65,13 +65,13 @@ TEXT runtime·rt0_go(SB),NOSPLIT,$0
     MOVQ	BX, (g_stack+stack_lo)(DI) # g0.stack.lo=BX
     MOVQ	SP, (g_stack+stack_hi)(DI) # g0.stack.hi=SP
     
-   ....
-   
+    ....
+    
     # 开始初始化tls, settls本质上是通过系统调用 arch_prctl 实现的.
     LEAQ	runtime·m0+m_tls(SB), DI # DI=&m0.tls
-   	CALL	runtime·settls(SB) # 调用 settls 设置本地存储, settls 的参数在 DI 当中
-   	
-   	# 测试settls 是否可以正常工作
+    CALL	runtime·settls(SB) # 调用 settls 设置本地存储, settls 的参数在 DI 当中
+    
+    # 测试settls 是否可以正常工作
     get_tls(BX) # 获取fs段寄存器地址并放入 BX 寄存器, 其实就是 m0.tls[1] 的地址
     MOVQ	$0x123, g(BX) # 将 0x123 拷贝到 fs 段寄存器的地址偏移-8的内存位置, 也就是 m0.tls[0]=0x123 
     MOVQ	runtime·m0+m_tls(SB), AX # AX=m0.tls[0]
@@ -79,32 +79,32 @@ TEXT runtime·rt0_go(SB),NOSPLIT,$0
     JEQ 2(PC) # 相等
     CALL	runtime·abort(SB) # 线程本地存储功能不正常, 退出程序
 ok:
-	// set the per-goroutine and per-mach "registers"
-	get_tls(BX) // 获取fs段基地址BX寄存器
-	LEAQ	runtime·g0(SB), CX // CX=&g0
-	MOVQ	CX, g(BX)  // 把g0的地址保存到线程本地存储,即 m0.tls[0]=&g0
-	LEAQ	runtime·m0(SB), AX // AX=&m0
+    // set the per-goroutine and per-mach "registers"
+    get_tls(BX) // 获取fs段基地址BX寄存器
+    LEAQ	runtime·g0(SB), CX // CX=&g0
+    MOVQ	CX, g(BX)  // 把g0的地址保存到线程本地存储,即 m0.tls[0]=&g0
+    LEAQ	runtime·m0(SB), AX // AX=&m0
     
     // 全局 m0 与 g0 进行关联
-	MOVQ	CX, m_g0(AX) # m0.g0=&g0 
-	MOVQ	AX, g_m(CX) # g0.m=&m0
+    MOVQ	CX, m_g0(AX) # m0.g0=&g0 
+    MOVQ	AX, g_m(CX) # g0.m=&m0
     
     # 到此位置, m0与g0绑定在一起, 之后主线程可以通过 get_tls 获取到 g0, 通过 g0 又获取到 m0 
     # 这样就实现了 m0, g0 与主线程直接的关联. 
         
-	CLD				// convention is D is always left cleared
-	CALL	runtime·check(SB)
+    CLD				// convention is D is always left cleared
+    CALL	runtime·check(SB)
     
     # 命令行参数拷贝
-	MOVL	16(SP), AX		// copy argc
-	MOVL	AX, 0(SP)
-	MOVQ	24(SP), AX		// copy argv
-	MOVQ	AX, 8(SP) 
-	CALL	runtime·args(SB)   // 解析命令行
-	
-	// 对于 linux, osinit 唯一功能就是获取CPU核数并放到变量 ncpu 中
-	CALL	runtime·osinit(SB) 
-	CALL	runtime·schedinit(SB) // 调度系统初始化
+    MOVL	16(SP), AX		// copy argc
+    MOVL	AX, 0(SP)
+    MOVQ	24(SP), AX		// copy argv
+    MOVQ	AX, 8(SP) 
+    CALL	runtime·args(SB)   // 解析命令行
+    
+    // 对于 linux, osinit 唯一功能就是获取CPU核数并放到变量 ncpu 中
+    CALL	runtime·osinit(SB) 
+    CALL	runtime·schedinit(SB) // 调度系统初始化
 ```
 
 > M0 是什么? 程序会启动多个 M, 第一个启动的是 M0
