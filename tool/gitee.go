@@ -141,7 +141,7 @@ func main() {
 	c := flag.String("cookie", "", "cookie value")
 	t := flag.Int("sleep", 3, "sync wait seconds")
 	flag.Parse()
-	
+
 	if *c == "" {
 		fmt.Println("未设置cookie")
 		return

@@ -1425,6 +1425,293 @@ atomic.CasRel:
 - 线程执行atomic.CasRel 完成后其他线程通过 atomic.LoadAcq 读取同一变量可以读到最新的值.
 
 
+当全局队列和本地队列当中找不到要执行的 goroutine 时, 这时就要从其他工作线程的本地运行队列当中盗取 goroutine.
+
+findrunnable() 函数负责处理与盗取相关的逻辑.
+
+```cgo
+// Tries to steal from other P's, get g from global queue, poll network.
+func findrunnable() (gp *g, inheritTime bool) {
+    _g_ := getg() // g0
+    
+    // 这里的条件和 handoffp 中的条件必须一致: 如果 findrunnable 将返回G以运行,
+    // 则 handoffp 必须启动一个 M.
+top:
+    _p_ := _g_.m.p.ptr()
+    
+    ... 
+    
+    // local runq
+    // 再次查看一下本地运行队列是否有需要运行的 goroutine
+    if gp, inheritTime := runqget(_p_); gp != nil {
+        return gp, inheritTime
+    }
+    
+    // global runq
+    // 再次查看一下全局运行队列是否有需要运行的 goroutine
+    if sched.runqsize != 0 {
+        lock(&sched.lock)
+        gp := globrunqget(_p_, 0)
+        unlock(&sched.lock)
+        if gp != nil {
+            return gp, false
+        }
+    }
+    
+    ...
+    
+    // Steal work from other P's.
+    procs := uint32(gomaxprocs)
+    ranTimer := false
+    // 当 "处于自旋状态的M的数量" >= "处于运行当中的P的数量" 时, 阻塞运行
+    // 当 GOMAXPROCS>>1 但是程序并行度很低, 这对于防止过度的 CPU 消耗是必要的
+    // 这个判断主要是为了防止因为寻找可运行的goroutine而消耗太多的CPU.
+    // 因为已经有足够多的工作线程正在寻找可运行的goroutine, 让他们去找就好了, 自己偷个懒去睡觉.
+    if !_g_.m.spinning && 2*atomic.Load(&sched.nmspinning) >= procs-atomic.Load(&sched.npidle) {
+        goto stop
+    }
+    
+    // 让当前的线程进入自旋状态 
+    if !_g_.m.spinning {
+        _g_.m.spinning = true
+        atomic.Xadd(&sched.nmspinning, 1)
+    }
+    
+    for i := 0; i < 4; i++ {
+        // stealOrder.start() 是创建一个随机的偷取开始位置
+        for enum := stealOrder.start(fastrand()); !enum.done(); enum.next() {
+            if sched.gcwaiting != 0 {
+                goto top
+            }
+            stealRunNextG := i > 2 // first look for ready queues with more than 1 g
+            p2 := allp[enum.position()] // allp 当中的某个位置
+            if _p_ == p2 { // p2 刚好是当前的线程绑定的 p, 则不用查找, 本身就没有
+                continue
+            }
+            
+            // 从 p2 当中偷取, 偷取到了则返回
+            if gp := runqsteal(_p_, p2, stealRunNextG); gp != nil {
+                return gp, false
+            }
+            
+            // 从 p2 当中没有偷取到. 
+            // Consider stealing timers from p2.
+            // This call to checkTimers is the only place where
+            // we hold a lock on a different P's timers.
+            // Lock contention can be a problem here, so
+            // initially avoid grabbing the lock if p2 is running
+            // and is not marked for preemption. If p2 is running
+            // and not being preempted we assume it will handle its
+            // own timers.
+            // If we're still looking for work after checking all
+            // the P's, then go ahead and steal from an active P.
+            
+            // i = 2 时, shouldStealTimers() 决定是否从 p2 当中偷取
+            // 当 p2 的状态非 _Prunning 或 p2 绑定的 m 对应的 curg 当前处于 _Grunning 并且可抢占
+            // i = 3 时, 直接从 p2 当中偷取
+            if i > 2 || (i > 1 && shouldStealTimers(p2)) {
+                tnow, w, ran := checkTimers(p2, now)
+                now = tnow
+                if w != 0 && (pollUntil == 0 || w < pollUntil) {
+                    pollUntil = w
+                }
+                if ran {
+                    // Running the timers may have
+                    // made an arbitrary number of G's
+                    // ready and added them to this P's
+                    // local run queue. That invalidates
+                    // the assumption of runqsteal
+                    // that is always has room to add
+                    // stolen G's. So check now if there
+                    // is a local G to run.
+                    if gp, inheritTime := runqget(_p_); gp != nil {
+                        return gp, inheritTime
+                    }
+                    ranTimer = true
+                }
+            }
+        }
+    }
+    if ranTimer {
+        // Running a timer may have made some goroutine ready.
+        goto top
+    }
+    
+stop:
+    
+    // We have nothing to do. If we're in the GC mark phase, can
+    // safely scan and blacken objects, and have work to do, run
+    // idle-time marking rather than give up the P.
+    if gcBlackenEnabled != 0 && _p_.gcBgMarkWorker != 0 && gcMarkWorkAvailable(_p_) {
+        _p_.gcMarkWorkerMode = gcMarkWorkerIdleMode
+        gp := _p_.gcBgMarkWorker.ptr()
+        casgstatus(gp, _Gwaiting, _Grunnable)
+        if trace.enabled {
+            traceGoUnpark(gp, 0)
+        }
+        return gp, false
+    }
+    
+    delta := int64(-1)
+    if pollUntil != 0 {
+        // checkTimers ensures that polluntil > now.
+        delta = pollUntil - now
+    }
+    
+    // wasm only:
+    // If a callback returned and no other goroutine is awake,
+    // then wake event handler goroutine which pauses execution
+    // until a callback was triggered.
+    gp, otherReady := beforeIdle(delta)
+    if gp != nil {
+        casgstatus(gp, _Gwaiting, _Grunnable)
+        if trace.enabled {
+            traceGoUnpark(gp, 0)
+        }
+        return gp, false
+    }
+    if otherReady {
+        goto top
+    }
+    
+    // Before we drop our P, make a snapshot of the allp slice,
+    // which can change underfoot once we no longer block
+    // safe-points. We don't need to snapshot the contents because
+    // everything up to cap(allp) is immutable.
+    allpSnapshot := allp
+    
+    // return P and block
+    lock(&sched.lock)
+    if sched.gcwaiting != 0 || _p_.runSafePointFn != 0 {
+        unlock(&sched.lock)
+        goto top
+    }
+    if sched.runqsize != 0 {
+        gp := globrunqget(_p_, 0)
+        unlock(&sched.lock)
+        return gp, false
+    }
+    if releasep() != _p_ {
+        throw("findrunnable: wrong p")
+    }
+    pidleput(_p_)
+    unlock(&sched.lock)
+    
+    // Delicate dance: thread transitions from spinning to non-spinning state,
+    // potentially concurrently with submission of new goroutines. We must
+    // drop nmspinning first and then check all per-P queues again (with
+    // #StoreLoad memory barrier in between). If we do it the other way around,
+    // another thread can submit a goroutine after we've checked all run queues
+    // but before we drop nmspinning; as the result nobody will unpark a thread
+    // to run the goroutine.
+    // If we discover new work below, we need to restore m.spinning as a signal
+    // for resetspinning to unpark a new worker thread (because there can be more
+    // than one starving goroutine). However, if after discovering new work
+    // we also observe no idle Ps, it is OK to just park the current thread:
+    // the system is fully loaded so no spinning threads are required.
+    // Also see "Worker thread parking/unparking" comment at the top of the file.
+    wasSpinning := _g_.m.spinning
+    if _g_.m.spinning {
+        _g_.m.spinning = false
+        if int32(atomic.Xadd(&sched.nmspinning, -1)) < 0 {
+            throw("findrunnable: negative nmspinning")
+        }
+    }
+    
+    // check all runqueues once again
+    for _, _p_ := range allpSnapshot {
+        if !runqempty(_p_) {
+            lock(&sched.lock)
+            _p_ = pidleget()
+            unlock(&sched.lock)
+            if _p_ != nil {
+                acquirep(_p_)
+                if wasSpinning {
+                    _g_.m.spinning = true
+                    atomic.Xadd(&sched.nmspinning, 1)
+                }
+                goto top
+            }
+            break
+        }
+    }
+    
+    // Check for idle-priority GC work again.
+    if gcBlackenEnabled != 0 && gcMarkWorkAvailable(nil) {
+        lock(&sched.lock)
+        _p_ = pidleget()
+        if _p_ != nil && _p_.gcBgMarkWorker == 0 {
+            pidleput(_p_)
+            _p_ = nil
+        }
+        unlock(&sched.lock)
+        if _p_ != nil {
+            acquirep(_p_)
+            if wasSpinning {
+                _g_.m.spinning = true
+                atomic.Xadd(&sched.nmspinning, 1)
+            }
+            // Go back to idle GC check.
+            goto stop
+        }
+    }
+    
+    // poll network
+    if netpollinited() && (atomic.Load(&netpollWaiters) > 0 || pollUntil != 0) && atomic.Xchg64(&sched.lastpoll, 0) != 0 {
+        atomic.Store64(&sched.pollUntil, uint64(pollUntil))
+        if _g_.m.p != 0 {
+            throw("findrunnable: netpoll with p")
+        }
+        if _g_.m.spinning {
+            throw("findrunnable: netpoll with spinning")
+        }
+        if faketime != 0 {
+            // When using fake time, just poll.
+            delta = 0
+        }
+        list := netpoll(delta) // block until new work is available
+        atomic.Store64(&sched.pollUntil, 0)
+        atomic.Store64(&sched.lastpoll, uint64(nanotime()))
+        if faketime != 0 && list.empty() {
+            // Using fake time and nothing is ready; stop M.
+            // When all M's stop, checkdead will call timejump.
+            stopm()
+            goto top
+        }
+        lock(&sched.lock)
+        _p_ = pidleget()
+        unlock(&sched.lock)
+        if _p_ == nil {
+            injectglist(&list)
+        } else {
+            acquirep(_p_)
+            if !list.empty() {
+                gp := list.pop()
+                injectglist(&list)
+                casgstatus(gp, _Gwaiting, _Grunnable)
+                if trace.enabled {
+                    traceGoUnpark(gp, 0)
+                }
+                return gp, false
+            }
+            if wasSpinning {
+                _g_.m.spinning = true
+                atomic.Xadd(&sched.nmspinning, 1)
+            }
+            goto top
+        }
+    } else if pollUntil != 0 && netpollinited() {
+        pollerPollUntil := int64(atomic.Load64(&sched.pollUntil))
+        if pollerPollUntil == 0 || pollerPollUntil > pollUntil {
+            netpollBreak()
+        }
+    }
+    stopm()
+    goto top
+}
+```
+
+
 ### M 是如何创建的? P0 是什么时候创建的?
 
 ```cgo
