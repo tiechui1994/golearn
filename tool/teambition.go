@@ -1186,7 +1186,9 @@ func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
 		Org    Org
 		Spaces []Space
 	}
-	if ReadFile("/tmp/teambit.json", &result) == nil {
+
+	key := filepath.Join(ConfDir, "teambition_cache.json")
+	if ReadFile(key, &result) == nil {
 		return result.Roles, result.Org, result.Spaces, nil
 	}
 
@@ -1228,7 +1230,7 @@ func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
 	result.Roles = roles
 	result.Org = org
 	result.Spaces = spaces
-	WriteFile("/tmp/teambit.json", result)
+	WriteFile(key, result)
 
 	return
 }
@@ -1320,7 +1322,8 @@ func PanMkdirP(dir string) (nodeid string, err error) {
 }
 
 func main() {
-	DEBUG = true
+	Debug = true
+	UserAgent = agents[0]
 
 	_, org, spaces, err := GetCacheData()
 	if err != nil {

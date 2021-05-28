@@ -10,13 +10,20 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
 )
 
-const (
-	agent = "Mozilla/5.0 (X11; Linux x86_64) Chrome/90.0.4430.93 Safari/537.36"
+var (
+	agents = []string{
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/534.57.2 (KHTML, like Gecko) Version/5.1.7 Safari/534.57.2",
+
+		"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:34.0) Gecko/20100101 Firefox/34.0",
+		"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0",
+	}
 )
 
 type CodeError int
@@ -56,16 +63,19 @@ type Jar struct {
 	NextSeqNum uint64 `json:"nextseqnum"`
 }
 
-func Serialize(jar *cookiejar.Jar, path string) {
+func Serialize(jar *cookiejar.Jar) {
+	oldpath := filepath.Join(ConfDir, "."+AppName+".json")
 	localjar := (*Jar)(unsafe.Pointer(jar))
-	fd, _ := os.Create("/tmp/jar.json")
+	fd, _ := os.Create(oldpath)
 	json.NewEncoder(fd).Encode(localjar)
 	fd.Sync()
+
+	os.Rename(oldpath, filepath.Join(ConfDir, AppName+".json"))
 }
 
-func UnSerialize(path string) *Jar {
+func UnSerialize() *Jar {
 	var localjar Jar
-	fd, _ := os.Open("/tmp/jar.json")
+	fd, _ := os.Open(filepath.Join(ConfDir, AppName+".json"))
 	err := json.NewDecoder(fd).Decode(&localjar)
 	if err != nil {
 		return nil
@@ -75,12 +85,28 @@ func UnSerialize(path string) *Jar {
 }
 
 var (
-	DEBUG = false
-	jar   http.CookieJar
+	Debug      = false
+	CookieSync = make(chan struct{})
+	UserAgent  string
+
+	AppName string
+	ConfDir string
+
+	jar http.CookieJar
 )
 
 func init() {
-	localjar := UnSerialize("")
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/tmp"
+	}
+
+	ConfDir = filepath.Join(home, ".config", "tool")
+	os.MkdirAll(ConfDir, 0775)
+
+	UserAgent = agents[int(time.Now().Unix())%len(agents)]
+
+	localjar := UnSerialize()
 	if localjar != nil {
 		jar = (*cookiejar.Jar)(unsafe.Pointer(localjar))
 	} else {
@@ -102,10 +128,16 @@ func init() {
 	}
 
 	go func() {
-		timer := time.NewTicker(1 * time.Second)
-		for range timer.C {
-			cookjar := jar.(*cookiejar.Jar)
-			Serialize(cookjar, "")
+		timer := time.NewTicker(5 * time.Second)
+		for {
+			select {
+			case <-timer.C:
+				cookjar := jar.(*cookiejar.Jar)
+				Serialize(cookjar)
+			case <-CookieSync:
+				cookjar := jar.(*cookiejar.Jar)
+				Serialize(cookjar)
+			}
 		}
 	}()
 }
@@ -118,14 +150,14 @@ func request(method, u string, body io.Reader, header map[string]string) (raw js
 		}
 	}
 
-	if DEBUG {
+	if Debug {
 		log.Println(method, request.URL.Path)
 	}
 
 	if len(jar.Cookies(request.URL)) != 0 {
 		request.Header.Set("cookie", "")
 	}
-	request.Header.Set("user-agent", agent)
+	request.Header.Set("user-agent", UserAgent)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return raw, err
@@ -136,7 +168,7 @@ func request(method, u string, body io.Reader, header map[string]string) (raw js
 		return raw, err
 	}
 
-	if DEBUG && len(raw) > 0{
+	if Debug && len(raw) > 0 {
 		log.Println(method, request.URL.Path, "data", string(raw))
 	}
 
@@ -158,7 +190,6 @@ func PUT(u string, body io.Reader, header map[string]string) (raw json.RawMessag
 func GET(u string, header map[string]string) (raw json.RawMessage, err error) {
 	return request("GET", u, nil, header)
 }
-
 
 func WriteFile(filepath string, data interface{}) error {
 	fd, err := os.Create(filepath)

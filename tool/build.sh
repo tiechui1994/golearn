@@ -46,7 +46,9 @@ echo >> /tmp/Makefile
 # build
 for name in ${!main[@]}; do
     echo "$name: clean"  >> /tmp/Makefile
-    echo -e "\tgo build -o $name -v -ldflags '-w'"' $(util) ' "${main[$name]}" >> /tmp/Makefile
+    build=$(printf "go build -o %s -v -ldflags '-w -s -X main.AppName=%s' %s %s" \
+        "$name" "$name" '$(util)' "${main[$name]}")
+    echo -e "\t$build" >> /tmp/Makefile
     echo >> /tmp/Makefile
 done
 

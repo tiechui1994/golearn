@@ -17,7 +17,6 @@ gitee 同步 git 项目
 
 const (
 	endpoint = "https://gitee.com"
-	useraget = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
 )
 
 var (
@@ -101,6 +100,30 @@ func forceSync(project string) (err error) {
 	return nil
 }
 
+func mark() (err error) {
+	body := `{"scope":"infos"}`
+	u := endpoint + "/notifications/mark"
+	header := map[string]string{
+		"X-CSRF-Token": token,
+		"Content-Type": "application/json;charset=UTF-8",
+	}
+	data, err := PUT(u, bytes.NewBufferString(body), header)
+	if err != nil {
+		return err
+	}
+
+	var result struct {
+		Count int `json:"count"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("成功将 [%d] 条消息标记已读\n", result.Count)
+	return nil
+}
+
 type sliceflag []string
 
 func (s *sliceflag) String() string {
@@ -118,7 +141,7 @@ func main() {
 	c := flag.String("cookie", "", "cookie value")
 	t := flag.Int("sleep", 3, "sync wait seconds")
 	flag.Parse()
-
+	
 	if *c == "" {
 		fmt.Println("未设置cookie")
 		return
@@ -139,6 +162,7 @@ func main() {
 		fmt.Println("cookie内容不合法")
 		return
 	}
+	CookieSync <- struct{}{}
 
 	err = resources()
 	if err != nil {
@@ -159,4 +183,7 @@ func main() {
 		}(project)
 	}
 	wg.Wait()
+
+	mark()
+	CookieSync <- struct{}{}
 }
