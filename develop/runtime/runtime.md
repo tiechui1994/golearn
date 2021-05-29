@@ -1597,119 +1597,66 @@ stop:
     pidleput(_p_)
     unlock(&sched.lock)
     
-    // Delicate dance: thread transitions from spinning to non-spinning state,
-    // potentially concurrently with submission of new goroutines. We must
-    // drop nmspinning first and then check all per-P queues again (with
-    // #StoreLoad memory barrier in between). If we do it the other way around,
-    // another thread can submit a goroutine after we've checked all run queues
-    // but before we drop nmspinning; as the result nobody will unpark a thread
-    // to run the goroutine.
-    // If we discover new work below, we need to restore m.spinning as a signal
-    // for resetspinning to unpark a new worker thread (because there can be more
-    // than one starving goroutine). However, if after discovering new work
-    // we also observe no idle Ps, it is OK to just park the current thread:
-    // the system is fully loaded so no spinning threads are required.
-    // Also see "Worker thread parking/unparking" comment at the top of the file.
+    // Delicate dance: 线程从 "自旋状态" 转换为 "非自旋状态", 可能与提交新的goroutine并发. 
+    // 我们必须先丢弃 nmspinning, 然后再次检查所有 P 本地队列 (在两者之间使用 #StoreLoad 内存屏障). 
+    // 如果上述两件事执行顺序相反, 在检查完所有运行队列之后但在丢弃 nmspinning 之前, 另一个线程可以提交 
+    // goroutine. 结果, 没有人会释放线程来运行 goroutine.
+    //
+    // 如果后面查到了新 goroutine, 则需要恢复 m.spinning 作为自旋的信号, 以释放新的工作线程 (因为可能有
+    // 多个饥饿的goroutine). 但是, 如果在发现新goroutine之后也没有查找到空闲的P, 则可以仅休眠当前线程: 
+    // 系统已满载, 因此不需要旋转线程.
+    // 另请参见文件顶部的 "Worker thread parking/unparking" 注释.
+    
     wasSpinning := _g_.m.spinning
     if _g_.m.spinning {
+        // 先将 m 更改为 "非自旋状态"
         _g_.m.spinning = false
         if int32(atomic.Xadd(&sched.nmspinning, -1)) < 0 {
             throw("findrunnable: negative nmspinning")
         }
     }
     
-    // check all runqueues once again
+    // 接着检查 allp 当中是否有先新的 goroutine 加入
     for _, _p_ := range allpSnapshot {
+        // _p_ 的本地队列有 g 加入
         if !runqempty(_p_) {
             lock(&sched.lock)
-            _p_ = pidleget()
+            _p_ = pidleget() // 从全局空闲 sched.pidle 当中获取一个 _p_ 
             unlock(&sched.lock)
             if _p_ != nil {
-                acquirep(_p_)
+                acquirep(_p_) // 将 _p_ 当前运行的 m 绑定. acquirep() -> wirep()
                 if wasSpinning {
-                    _g_.m.spinning = true
+                    _g_.m.spinning = true // 当前的 m 再次进入自旋当中
                     atomic.Xadd(&sched.nmspinning, 1)
                 }
                 goto top
             }
+            
             break
         }
     }
     
-    // Check for idle-priority GC work again.
-    if gcBlackenEnabled != 0 && gcMarkWorkAvailable(nil) {
-        lock(&sched.lock)
-        _p_ = pidleget()
-        if _p_ != nil && _p_.gcBgMarkWorker == 0 {
-            pidleput(_p_)
-            _p_ = nil
-        }
-        unlock(&sched.lock)
-        if _p_ != nil {
-            acquirep(_p_)
-            if wasSpinning {
-                _g_.m.spinning = true
-                atomic.Xadd(&sched.nmspinning, 1)
-            }
-            // Go back to idle GC check.
-            goto stop
-        }
-    }
+    ... 
     
-    // poll network
-    if netpollinited() && (atomic.Load(&netpollWaiters) > 0 || pollUntil != 0) && atomic.Xchg64(&sched.lastpoll, 0) != 0 {
-        atomic.Store64(&sched.pollUntil, uint64(pollUntil))
-        if _g_.m.p != 0 {
-            throw("findrunnable: netpoll with p")
-        }
-        if _g_.m.spinning {
-            throw("findrunnable: netpoll with spinning")
-        }
-        if faketime != 0 {
-            // When using fake time, just poll.
-            delta = 0
-        }
-        list := netpoll(delta) // block until new work is available
-        atomic.Store64(&sched.pollUntil, 0)
-        atomic.Store64(&sched.lastpoll, uint64(nanotime()))
-        if faketime != 0 && list.empty() {
-            // Using fake time and nothing is ready; stop M.
-            // When all M's stop, checkdead will call timejump.
-            stopm()
-            goto top
-        }
-        lock(&sched.lock)
-        _p_ = pidleget()
-        unlock(&sched.lock)
-        if _p_ == nil {
-            injectglist(&list)
-        } else {
-            acquirep(_p_)
-            if !list.empty() {
-                gp := list.pop()
-                injectglist(&list)
-                casgstatus(gp, _Gwaiting, _Grunnable)
-                if trace.enabled {
-                    traceGoUnpark(gp, 0)
-                }
-                return gp, false
-            }
-            if wasSpinning {
-                _g_.m.spinning = true
-                atomic.Xadd(&sched.nmspinning, 1)
-            }
-            goto top
-        }
-    } else if pollUntil != 0 && netpollinited() {
-        pollerPollUntil := int64(atomic.Load64(&sched.pollUntil))
-        if pollerPollUntil == 0 || pollerPollUntil > pollUntil {
-            netpollBreak()
-        }
-    }
+    // 休眠
     stopm()
     goto top
 }
 ```
+
+工作线程在放弃可运行的 goroutine 而进入睡眠之前, 会反复尝试从各个运行队列寻找需要运行的 goroutine, 可谓是尽心尽力.
+需要注意:
+
+1. 工作线程M的自旋状态(spinning). 工作线程在从其他工作线程的本地运行队列中盗取goroutine时的状态称为自旋状态. 当前 M
+在去其他 P 的运行队列盗取 goroutine 之前先把 spinning 标志设为 true, 同时增加处于自旋状态 M 的数量, 而盗取结束之后
+则把 spinning 标志还原为 false, 同时减少处于自旋状态的 M 的数量. 当有空闲 P 又有 goroutine 需要运行时, 这个处于自
+旋状态 M 的数量决定了是否需要唤醒或者创建新的工作线程.
+
+2.盗取算法. 盗取过程用了两个嵌套 for 循环. 内层循环实现盗取逻辑, 从代码可以看到盗取的实质就是遍历 allp 中所有的 p, 查
+看其运行队列是否有goroutine, 如果有, 则取其一半到当前工作线程的运行队列, 然后从findrunnable 返回. 如果没有, 则继续
+遍历下一个p. **但是为了保证公平性, 遍历 allp 时并不是从固定的 `allp[0]` 开始, 而是从随机位置上的 p 开始, 而且遍历的
+顺序也是随机化了, 并不是现在访问了第i个p下一次就访问第i+1个p, 而是使用了一种伪随机方式遍历allp中的每个p, 防止每次遍历时
+使用同样的顺序访问allp中的元素**
 
 
 ### M 是如何创建的? P0 是什么时候创建的?
