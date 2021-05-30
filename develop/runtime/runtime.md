@@ -423,7 +423,7 @@ func newproc(siz int32, fn *funcval) {
     gp := getg() // 当前场景是 m0.g0
     
     // getcallerpc() 返回一个地址, 也就是调用 newproc 时 call 指令压栈的函数返回地址,
-    // 对于当前场景来说, pc 就是 'CALL	runtime·newproc(SB)' 后面的 'POPQ AX' 这条指令地址
+    // 对于当前场景来说, pc 就是 'CALL runtime·newproc(SB)' 后面的 'POPQ AX' 这条指令地址
     pc := getcallerpc() 
     
     // 切换到 g0 执行作为参数的函数
@@ -447,6 +447,7 @@ fn 函数的第一个参数的地址; 第三个参数是 fn 函数以字节为�
 的函数的返回地址.
 
 ```cgo
+//go:systemstack
 func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerpc uintptr) *g {
     // 当前已经切换到 g0 栈, 因此无论什么状况下, _g_ = g0 (工作线程的 g0)
     // 对于当前的场景, 这里的 g0 = m0.g0
@@ -457,8 +458,8 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
         throw("go of nil func value")
     }
     
-    // 禁用抢占, 因为它可以将 p 保留在本地变量中
-    acquirem() 
+    // 禁止抢占
+    acquirem() // 增加当前 m 的 locks 值
     siz := narg
     siz = (siz + 7) &^ 7 // size 进行 8 字节对齐
     
@@ -574,7 +575,9 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     if trace.enabled {
         traceGoCreate(newg, newg.startpc)
     }
-    releasem(_g_.m)
+    
+    // 减少当前 m 的 locks 的值, 同时当 m.locks=0 && _g_.preempt 时, 进行抢占标记
+    releasem(_g_.m) 
     
     return newg
 }
