@@ -1844,3 +1844,69 @@ newm 方法创建一个 M 与 P 绑定.
 
 > allocm 方法中创建M的同时创建一个 G 与自己关联, 这个 G 就是 g0. 为何 M 要关联一个 g0 ? 因为 runtime 下执行一个 G
 也需要用到栈空间来完成调度工作, 而拥有执行栈的地方只有 G, 因此需要为每个 M 配置一个 g0
+
+
+systemstack() 函数: 切换到 g0 栈上, 执行函数 func
+
+```cgo
+// func systemstack(fn func())
+TEXT runtime·systemstack(SB), NOSPLIT, $0-8
+	MOVQ	fn+0(FP), DI	// DI = fn
+	get_tls(CX)
+	MOVQ	g(CX), AX	// AX = g
+	MOVQ	g_m(AX), BX	// BX = m, 当前工作线程 m
+
+	CMPQ	AX, m_gsignal(BX) // g == m.gsignal
+	JEQ	noswitch // 相等跳转到 noswitch
+
+	MOVQ	m_g0(BX), DX // DX = g0
+	CMPQ	AX, DX // g == m.g0
+	JEQ	noswitch // 相等则跳转, 当前本身就在 g0 栈上
+
+	CMPQ	AX, m_curg(BX) // g == m.curg
+	JNE	bad // 不相等, 程序异常(结合前面的逻辑).
+
+	// 切换 stack, 从 curg 切换到 g0
+	// 将 curg 保存到 sched 当中
+	MOVQ	$runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
+	MOVQ	SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
+	MOVQ	SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
+	MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
+	MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
+
+	MOVQ	DX, g(CX) // 设置本地存储为 g0
+	MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
+	
+	// 栈切换完成, 伪装成 mstart() 调用函数 systemstack()
+	SUBQ	$8, BX
+	MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
+	MOVQ	DX, 0(BX) // 将 runtime·mstart 入栈, rip 指令
+	MOVQ	BX, SP // 设置 SP 
+
+	// 调用 target 函数
+	MOVQ	DI, DX   // DX=fn 
+	MOVQ	0(DI), DI // 判断 fn 非空
+	CALL	DI // 函数调用, 没有参数和返回值
+
+	// 函数调用完成, 切换到 curg 栈上
+	get_tls(CX)
+	MOVQ	g(CX), AX   
+	MOVQ	g_m(AX), BX // BX=m
+	MOVQ	m_curg(BX), AX // AX=m.curg
+	MOVQ	AX, g(CX) // 设置本地保存 m.curg 
+	MOVQ	(g_sched+gobuf_sp)(AX), SP // SP = m.curg.sched.sp
+	MOVQ	$0, (g_sched+gobuf_sp)(AX) // m.curg.sched.sp = 0
+	RET
+
+noswitch:
+	// 当前已经在 g0 栈上了, 直接调用函数
+	MOVQ	DI, DX
+	MOVQ	0(DI), DI
+	JMP	DI
+
+bad:
+	// Bad: g is not gsignal, not g0, not curg. What is it?
+	MOVQ	$runtime·badsystemstack(SB), AX
+	CALL	AX
+	INT	$3
+```
