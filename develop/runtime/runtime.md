@@ -412,7 +412,8 @@ newproc 函数是对 newproc1 的一个包装, 最重要的工作:
 - 获取 fn 函数的第一个参数的地址(argp)
 
 - 使用 systemstack 函数切换到 g0 栈(对于初始化场景来说现在本身就在 g0 栈, 不需要切换, 但是对于用户创建的 goroutine
-则需要进行栈切换)
+则需要进行栈切换), 创建一个 newg, 同时进行栈参数拷贝, 同时设置 newg.sched (调整sp, pc指向 goexit, g), 以及 newg
+其它相关变量, 完成后 newg 的状态是 _Grunnable
 
 ```cgo
 func newproc(siz int32, fn *funcval) {
@@ -435,9 +436,10 @@ func newproc(siz int32, fn *funcval) {
         // 注: newg 当前还没有和任何 m 进行关联, 只有被调度运行的时才和 m 进行关联
         _p_ := getg().m.p.ptr() 
         runqput(_p_, newg, true)
-    
+        
+        // 当 runtime.main 执行后, 值为 true
         if mainStarted {
-            wakep()
+            wakep() // 唤醒一个 p, sched.npidle > 0 && sched.nmspinning == 0, startm(), 开启一个线程
         }
     })
 }
