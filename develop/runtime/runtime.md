@@ -399,7 +399,7 @@ func main() {
 ```
 
 编译器编译时首先把 sum 函数需要用到的 3 个参数压入栈, 然后调用 newproc 函数. 因为 sum 函数的 3 个 int64 类型的参数
-公占用 24 个字节, 所以传递给 newproc 的第一个参数是 24, 表示 sum 函数的大小.
+共占用 24 个字节, 所以传递给 newproc 的第一个参数是 24, 表示 sum 函数的大小.
 
 为什么需要传递 fn 函数的参数大小给 newproc 函数? 原因在于 newproc 函数创建一个新的 goroutine 来执行 fn 函数, 而这
 个新创建的 goroutine 与当前 goroutine 使用不同的栈, 因此需要在创建 goroutine 的时候把 fn 需要用到的参数从当前栈上
@@ -416,6 +416,7 @@ newproc 函数是对 newproc1 的一个包装, 最重要的工作:
 
 ```cgo
 func newproc(siz int32, fn *funcval) {
+    // 注: siz 当中包含了保存 rip 使用的栈空间(8)
     // 函数调用参数入栈是从右往左, 而且栈是从高地址向低地址增长的
     // 注: argp 指向 fn 函数的第一个参数
     // 参数 fn 在栈上的地址 + 8 = fn 函数的第一个参数. (参考上面的汇编代码)
@@ -442,16 +443,19 @@ func newproc(siz int32, fn *funcval) {
 }
 ```
 
-newproc1 函数的第一个参数 fn 是新创建的 goroutine 需要执行的函数, 注意 fn 的类型是 funcval; 第二个参数 argp 是 
-fn 函数的第一个参数的地址; 第三个参数是 fn 函数以字节为单位的大小. 第四个参数是当前运行的 g; 第五个参数调用 newproc
-的函数的返回地址.
+newproc1 函数参数:
+
+- 第一个参数 fn 是新创建的 goroutine 需要执行的函数, 注意 fn 的类型是 funcval; 
+- 第二个参数 argp 是 fn 函数的第一个参数的地址; 
+- 第三个参数是 fn 函数以字节为单位的大小;
+- 第四个参数是当前运行的 g; 
+- 第五个参数调用 newproc 的函数的返回地址.
 
 ```cgo
 //go:systemstack
 func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerpc uintptr) *g {
     // 当前已经切换到 g0 栈, 因此无论什么状况下, _g_ = g0 (工作线程的 g0)
-    // 对于当前的场景, 这里的 g0 = m0.g0
-    _g_ := getg() 
+    _g_ := getg()  // 对于当前的场景, 这里的 g0 = m0.g0
     
     if fn == nil {
         _g_.m.throwing = -1 // do not dump full stacks
@@ -463,59 +467,56 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     siz := narg
     siz = (siz + 7) &^ 7 // size 进行 8 字节对齐
     
-    // We could allocate a larger initial stack if necessary.
-    // Not worth it: this is almost always an error.
+    // 对于参数大小的限制, 不能超过 2008 (2048-4*8-8), 如果是 int64 类型, 最多只能是 249 个参数
     // 4*sizeof(uintreg): extra space added below
     // sizeof(uintreg): caller's LR (arm) or return address (x86, in gostartcall).
     if siz >= _StackMin-4*sys.RegSize-sys.RegSize {
         throw("newproc: function arguments too large for new goroutine")
     }
     
-    // 初始化时, 这里的 _p_ 其实就是 allp[0]
+    // 当前与 m 绑定的 p, 初始化时, 这里的 _p_ 其实就是 allp[0]
     _p_ := _g_.m.p.ptr() 
     
-    // 从 _p_ 本地缓存中获取一个 g, 初始化时没有, 返回 nil 
+    // 从本地队列中获取一个 g. 在初始化时没有, 返回值是 nil 
     newg := gfget(_p_)
     if newg == nil {
         // new一个g, 然后从堆上为其分配栈, 并设置 g 的 stack 成员和两个 stackguard 成员
-        newg = malg(_StackMin)
+        newg = malg(_StackMin) // 2k栈大小
         casgstatus(newg, _Gidle, _Gdead)
         
         // 放入全局 allgs 切片当中
         allgadd(newg) // publishes with a g->status of Gdead so GC scanner doesn't look at uninitialized stack.
     }
+    
     if newg.stack.hi == 0 {
         throw("newproc1: newg missing stack")
     }
-    
     if readgstatus(newg) != _Gdead {
         throw("newproc1: new g is not Gdead")
     }
     
-    // 调整 g 的栈顶指针.
-    // sys.MinFrameSize 是 0
-    // sys.SpAlign 是 1
+    // 调整 newg 的栈顶指针.
+    // sys.RegSize=8, sys.MinFrameSize=0, sys.SpAlign=1
     // totalSize 最终大小是 siz+32
     totalSize := 4*sys.RegSize + uintptr(siz) + sys.MinFrameSize // extra space in case of reads slightly beyond frame
     totalSize += -totalSize & (sys.SpAlign - 1)                  // align to spAlign
     sp := newg.stack.hi - totalSize
     spArg := sp
-    if usesLR {
+    if usesLR { // 值是 false, 不会执行到此的
         // caller's LR
         *(*uintptr)(unsafe.Pointer(sp)) = 0
         prepGoExitFrame(sp)
         spArg += sys.MinFrameSize
     }
+    
     if narg > 0 {
-        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 g 的栈
+        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 newg 的栈
         // 注: 这里是从 sp 的位置开始拷贝的.
         memmove(unsafe.Pointer(spArg), argp, uintptr(narg))
-        // This is a stack-to-stack copy. If write barriers
-        // are enabled and the source stack is grey (the
-        // destination is always black), then perform a
-        // barrier copy. We do this *after* the memmove
-        // because the destination stack may have garbage on
-        // it.
+        
+        // 这是一个 stack-to-stack 的复制. 
+        // 如果启用了写屏障并且 source stack为 grey (目标始终为黑色), 则执行屏障复制.
+        // 我们 "after" memmove 之后这样做, 因为目标 stack 上可能有垃圾.
         if writeBarrier.needed && !_g_.m.curg.gcscandone {
             f := findfunc(fn.fn)
             stkmap := (*stackmap)(funcdata(f, _FUNCDATA_ArgsPointerMaps))
@@ -538,7 +539,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     newg.sched.pc = funcPC(goexit) + sys.PCQuantum 
     newg.sched.g = guintptr(unsafe.Pointer(newg))
     
-    // 调整 sched成员和 newg 的栈(参考下面的分析)
+    // 重新调整 sched 成员和 newg 的栈(参考下面的分析)
     gostartcallfn(&newg.sched, fn)
     
     // traceback
@@ -1854,17 +1855,17 @@ TEXT runtime·systemstack(SB), NOSPLIT, $0-8
 	MOVQ	fn+0(FP), DI	// DI = fn
 	get_tls(CX)
 	MOVQ	g(CX), AX	// AX = g
-	MOVQ	g_m(AX), BX	// BX = m, 当前工作线程 m
+	MOVQ	g_m(AX), BX	// BX = g.m, 当前工作线程 m
 
 	CMPQ	AX, m_gsignal(BX) // g == m.gsignal
 	JEQ	noswitch // 相等跳转到 noswitch
 
-	MOVQ	m_g0(BX), DX // DX = g0
+	MOVQ	m_g0(BX), DX // DX = m.g0
 	CMPQ	AX, DX // g == m.g0
-	JEQ	noswitch // 相等则跳转, 当前本身就在 g0 栈上
+	JEQ	noswitch // 相等则跳转 noswitch, 当前在 g0 栈上
 
 	CMPQ	AX, m_curg(BX) // g == m.curg
-	JNE	bad // 不相等, 程序异常(结合前面的逻辑).
+	JNE	bad // 不相等, 程序异常
 
 	// 切换 stack, 从 curg 切换到 g0
 	// 将 curg 保存到 sched 当中
@@ -1874,14 +1875,14 @@ TEXT runtime·systemstack(SB), NOSPLIT, $0-8
 	MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
 	MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
 
-	MOVQ	DX, g(CX) // 设置本地存储为 g0
+	MOVQ	DX, g(CX) // 切换 tls 到 g0
 	MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
 	
-	// 栈切换完成, 伪装成 mstart() 调用函数 systemstack()
+	// 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止回溯
 	SUBQ	$8, BX
 	MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
-	MOVQ	DX, 0(BX) // 将 runtime·mstart 入栈, rip 指令
-	MOVQ	BX, SP // 设置 SP 
+	MOVQ	DX, 0(BX) // 将 runtime·mstart 函数地址入栈
+	MOVQ	BX, SP // 调整当前的 SP 
 
 	// 调用 target 函数
 	MOVQ	DI, DX   // DX=fn 
