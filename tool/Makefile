@@ -4,6 +4,7 @@ clean:
 	rm -rf lightyearvpn
 	rm -rf speechtext
 	rm -rf speechify
+	rm -rf github
 	rm -rf teambition
 	rm -rf drive
 	rm -rf idea
@@ -18,6 +19,9 @@ speechtext: clean
 speechify: clean
 	go build -o speechify -v -ldflags '-w -s -X main.AppName=speechify' $(util) speechify.go
 
+github: clean
+	go build -o github -v -ldflags '-w -s -X main.AppName=github' $(util) github.go
+
 teambition: clean
 	go build -o teambition -v -ldflags '-w -s -X main.AppName=teambition' $(util) teambition.go
 
@@ -30,5 +34,5 @@ idea: clean
 gitee: clean
 	go build -o gitee -v -ldflags '-w -s -X main.AppName=gitee' $(util) gitee.go
 
-all: lightyearvpn speechtext speechify teambition drive idea gitee
+all: lightyearvpn speechtext speechify github teambition drive idea gitee
 

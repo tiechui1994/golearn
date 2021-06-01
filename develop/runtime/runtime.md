@@ -1484,7 +1484,10 @@ top:
     }
     
     for i := 0; i < 4; i++ {
-        // stealOrder.start() 是创建一个随机的偷取开始位置
+        // stealOrder.start() 开启一次随机偷取的枚举
+        // enum.next() 是计算下一个位置
+        // enum.done() 是否结束
+        // enum.position() 获取当前的位置
         for enum := stealOrder.start(fastrand()); !enum.done(); enum.next() {
             if sched.gcwaiting != 0 {
                 goto top
@@ -1495,23 +1498,12 @@ top:
                 continue
             }
             
-            // 从 p2 当中偷取, 偷取到了则返回
+            // 从 p2 当中偷取, 偷取成功则返回
             if gp := runqsteal(_p_, p2, stealRunNextG); gp != nil {
                 return gp, false
             }
             
             // 从 p2 当中没有偷取到. 
-            // Consider stealing timers from p2.
-            // This call to checkTimers is the only place where
-            // we hold a lock on a different P's timers.
-            // Lock contention can be a problem here, so
-            // initially avoid grabbing the lock if p2 is running
-            // and is not marked for preemption. If p2 is running
-            // and not being preempted we assume it will handle its
-            // own timers.
-            // If we're still looking for work after checking all
-            // the P's, then go ahead and steal from an active P.
-            
             // i = 2 时, shouldStealTimers() 决定是否从 p2 当中偷取
             // 当 p2 的状态非 _Prunning 或 p2 绑定的 m 对应的 curg 当前处于 _Grunning 并且可抢占
             // i = 3 时, 直接从 p2 当中偷取
@@ -1647,6 +1639,28 @@ stop:
     // 休眠
     stopm()
     goto top
+}
+```
+
+```cgo
+// 从 _p_ 当中偷取 g 放入到 p2
+func runqsteal(_p_, p2 *p, stealRunNextG bool) *g {
+	t := _p_.runqtail
+	n := runqgrab(p2, &_p_.runq, t, stealRunNextG)
+	if n == 0 {
+		return nil
+	}
+	n--
+	gp := _p_.runq[(t+n)%uint32(len(_p_.runq))].ptr()
+	if n == 0 {
+		return gp
+	}
+	h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with consumers
+	if t-h+n >= uint32(len(_p_.runq)) {
+		throw("runqsteal: runq overflow")
+	}
+	atomic.StoreRel(&_p_.runqtail, t+n) // store-release, makes the item available for consumption
+	return gp
 }
 ```
 
