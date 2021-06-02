@@ -1498,8 +1498,9 @@ top:
                 continue
             }
             
-            // 从 p2 当中偷取, 偷取成功则返回
-            if gp := runqsteal(_p_, p2, stealRunNextG); gp != nil {
+            // 从 p2 当中偷取(如果偷取到, 至少应该是一个, 剩下的会保存在 _p_ 当中的)
+            // stealRunNextG 表示是否偷取 p2.runnext 
+            if gp := runqsteal(_p_, stealRunNextG, stealRunNextG); gp != nil {
                 return gp, false
             }
             
@@ -1646,21 +1647,89 @@ stop:
 // 从 _p_ 当中偷取 g 放入到 p2
 func runqsteal(_p_, p2 *p, stealRunNextG bool) *g {
 	t := _p_.runqtail
+	// 从 p2 当中偷取 g 存放到_p_ 当中, t 是 _p_ 当中存储的开始位置
+	// 返回偷取的数量
 	n := runqgrab(p2, &_p_.runq, t, stealRunNextG)
 	if n == 0 {
 		return nil
 	}
+	
+	// 至少偷取了一个, 将偷取到的最后一个位置的 gp 返回
 	n--
 	gp := _p_.runq[(t+n)%uint32(len(_p_.runq))].ptr()
 	if n == 0 {
 		return gp
 	}
+	// 调整 _p_ 的 runqtail 的值.
 	h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with consumers
 	if t-h+n >= uint32(len(_p_.runq)) {
 		throw("runqsteal: runq overflow")
 	}
 	atomic.StoreRel(&_p_.runqtail, t+n) // store-release, makes the item available for consumption
 	return gp
+}
+```
+
+```cgo
+// batchHead 是开始的位置, stealRunNextG 是否尝试偷取 runnext 
+func runqgrab(_p_ *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool) uint32 {
+	for {
+		h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
+		t := atomic.LoadAcq(&_p_.runqtail) // load-acquire, synchronize with the producer
+		
+		n := t - h // 计算队列中有多少个 goroutine
+		n = n - n/2 // 取队列中 goroutine 个数的一半
+		if n == 0 {
+			if stealRunNextG {
+				// 尝试从 _p_.runnext 当中 steal 
+				if next := _p_.runnext; next != 0 {
+				    // 当前的 _p_ 处于运行中的
+					if _p_.status == _Prunning {
+						// 休眠以确保 _p_ 不会 run 我们将要窃取的 g.
+                        // 这里的重要用例是当 _p_ 中的一个 gp 正在运行在 ready() 中(g0栈, 将 gp 变为 _Grunnable), 
+                        // 其他一个 g 几乎同时被阻塞. 不要在此期间中偷取 gp 当中 runnext, 而是退后给 _p_ 一个调
+                        // 度 runnext 的机会. 这将避免在不同 Ps 之间传递 gs.
+                        // 同步 chan send/recv 在写入时需要约 50ns, 因此 3us 会产生约 50 次写入.
+						if GOOS != "windows" {
+							usleep(3)
+						} else {
+							// 在 windows 系统定时器粒度是 1-15ms
+							osyield() // windows 系统
+						}
+					}
+					
+					if !_p_.runnext.cas(next, 0) {
+						continue
+					}
+					
+					// 成功偷取 runnext
+					batch[batchHead%uint32(len(batch))] = next
+					return 1
+				}
+			}
+			return 0
+		}
+		
+		// 细节: 按理说队列中的goroutine个数最多就是 len(_p_.runq)
+		// 所以n的最大值也就是len(_p_.runq)/2, 这里的判断是为啥?
+		// 读取 runqhead 和 runqtail 是两个操作而非一个原子操作, 当读取 runhead 之后未读取 runqtail
+		// 之前, 如果其他线程快速的增加这两个值(其他偷取者偷取g会增加 runqhead, 队列所有者添加 g 会增加 runqtail), 
+		// 则导致读取出来的 runqtail 已经远远大于之前读取到的放在局部变量的 h 里面的 runqhead 了, 也就是说 h 和 t 
+		// 已经不一致了.
+		if n > uint32(len(_p_.runq)/2) { // read inconsistent h and t
+			continue
+		}
+		
+		// 获取 n 个 goroutine, 将其存放在 batch 当中
+		for i := uint32(0); i < n; i++ {
+			g := _p_.runq[(h+i)%uint32(len(_p_.runq))]
+			batch[(batchHead+i)%uint32(len(batch))] = g
+		}
+		// 修改 _p_ 本地队列的 runqhead
+		if atomic.CasRel(&_p_.runqhead, h, h+n) { // cas-release, commits consume
+			return n
+		}
+	}
 }
 ```
 
