@@ -150,15 +150,15 @@ func request(method, u string, body io.Reader, header map[string]string) (raw js
 		}
 	}
 
-	if Debug {
-		log.Println(method, request.URL.Path)
-	}
-
 	if len(jar.Cookies(request.URL)) != 0 {
 		request.Header.Set("cookie", "")
 	}
 	request.Header.Set("user-agent", UserAgent)
 	response, err := http.DefaultClient.Do(request)
+	if Debug {
+		log.Println(method, request.URL.Path, request.Header.Get("cookie"))
+	}
+
 	if err != nil {
 		return raw, err
 	}

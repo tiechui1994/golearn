@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -75,48 +77,123 @@ func Session(username, password string) (err error) {
 	return err
 }
 
-func RunJobs(project string) {
-	u := github + "/" + project + "/actions?page=5"
+func RunDelJobs(project string, day int64) {
+	if day == 0 {
+		day = 3
+	}
+
+	type record struct {
+		url  string
+		time string
+	}
+
+	retotal := regexp.MustCompile(`data-test-selector="workflow-results">.*?([0-9,]+)`)
+	rerecord := regexp.MustCompile(`id="check_suite_[0-9]+"\s+data-channel=".*?"\s+.*?<time-ago datetime="(.*?)".*?<details-dialog\s+src="(.*?)"`)
+	retoken := regexp.MustCompile(`name="authenticity_token"\s+value="(.*?)"`)
+
+	const size = 25
+	var (
+		page, total int64
+		desc        bool
+		steup       bool
+	)
+
+	page = 1
+
+loop:
+	fmt.Printf("project:[%s], page=%d\n", project, page)
+	u := github + fmt.Sprintf("/%s/actions?page=%v", project, page)
 	data, err := GET(u, nil)
 	if err != nil {
 		return
 	}
 
-	type record struct {
-		id   string
-		time string
-	}
-
 	var records []record
 	str := strings.Replace(string(data), "\n", "", -1)
-	reinfos := regexp.MustCompile(`id="check_suite_[0-9]+"\s+data-channel=".*?"\s+data-url="(.*?)">.*?<time-ago datetime="(.*?)"`)
-	reid := regexp.MustCompile("/" + project + "/actions/workflow-run/([0-9]+)")
-	tokens := reinfos.FindAllStringSubmatch(str, -1)
+	if page == 1 && !steup {
+		steup = true
+		tokens := retotal.FindAllStringSubmatch(str, 1)
+		if len(tokens) == 1 && len(tokens[0]) == 2 {
+			num := strings.ReplaceAll(tokens[0][1], ",", "")
+			total, _ = strconv.ParseInt(num, 10, 64)
+		}
+		if total > 0 {
+			page = total / size
+			if total%size != 0 {
+				page += 1
+			}
+			fmt.Printf("project:[%s], total=%d, pages=%d\n", project, total, page)
+			if page > 1 {
+				desc = true
+				goto loop
+			}
+		}
+	}
+
+	tokens := rerecord.FindAllStringSubmatch(str, -1)
 	for _, token := range tokens {
-		ids := reid.FindAllStringSubmatch(token[1], 1)
 		records = append(records, record{
-			id:   ids[0][1],
+			url:  token[2],
 			time: token[1],
 		})
 	}
 
-	//rehiden := regexp.MustCompile(`name="authenticity_token" value="(.*?)"`)
-	for _, record := range records {
-		u = github + "/" + project + "/actions/runs/" + record.id + "/delete"
-		u = "https://github.com/tiechui1994/jobs/actions/runs/879808969/delete"
-		fmt.Println(u)
+	del := func(u, token string) {
+		value := url.Values{}
+		value.Set("_method", "delete")
+		value.Set("authenticity_token", token)
 		header := map[string]string{
-			"accept": "text/html",
+			"accept":       "text/html",
+			"content-type": "application/x-www-form-urlencoded",
 		}
-		data, err = GET(u, header)
+		_, err = POST(github+u, bytes.NewBufferString(value.Encode()), header)
+		if err != nil {
+			fmt.Println(u, err)
+			return
+		}
 
-		fmt.Println(string(data))
-		break
+		fmt.Printf("del [%v] success\n", u)
 	}
 
-	fmt.Println(len(records))
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		t, _ := time.Parse("2006-01-02T15:04:05Z", record.time)
+		if t.Unix()+day*24*3600 > time.Now().Unix() {
+			if desc {
+				return
+			}
+
+			continue
+		}
+
+		u = github + record.url
+		header := map[string]string{
+			"accept":           "text/html",
+			"x-requested-with": "XMLHttpRequest",
+		}
+		data, err = GET(u, header)
+		if err != nil {
+			fmt.Println(record.url, err)
+			continue
+		}
+
+		tokens := retoken.FindAllStringSubmatch(string(data), 1)
+		if len(tokens) == 1 && len(tokens[0]) == 2 {
+			u := record.url[:strings.LastIndex(record.url, "/")]
+			go del(u, tokens[0][1])
+		}
+	}
+
+	if desc && page > 1 {
+		page -= 1
+		goto loop
+	} else if !desc && len(records) == size {
+		page += 1
+		goto loop
+	}
 }
 
 func main() {
-	RunJobs("tiechui1994/jobs")
+	RunDelJobs("tiechui1994/jobs", 3)
+	time.Sleep(30 * time.Second)
 }
