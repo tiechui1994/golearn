@@ -1447,6 +1447,10 @@ top:
     
     ... 
     
+    now, pollUntil, _ := checkTimers(_p_, 0) // 运行计时器
+    
+    ... 
+    
     // local runq
     // 再次查看一下本地运行队列是否有需要运行的 goroutine
     if gp, inheritTime := runqget(_p_); gp != nil {
@@ -1464,7 +1468,24 @@ top:
         }
     }
     
-    ...
+    // 检查 netpoll 当中是否存在就绪的 g
+    // netpollinited() 返回当前 netpoll 是否就绪
+    if netpollinited() && atomic.Load(&netpollWaiters) > 0 && atomic.Load64(&sched.lastpoll) != 0 {
+        if list := netpoll(0); !list.empty() { // non-blocking
+            gp := list.pop()
+            // injectglist 将 list 中的每个可运行 G 添加到某个运行队列中, 并清除 glist.
+            // 如果当前 M 没有绑定 _p_, 向全局队列批量添加 len(list) 个 G, 同时启动 min(len(list), sched.npidle)
+            // 个 M;
+            // 如果当前 M 绑定了 _p_, 则分 min(len(list), sched.npidle) 次向全局队列添加 G, 同时启动 
+            // min(len(list), sched.npidle) 个 M, 对于剩余的 G 则添加到当前 _p_ 的本地运行队列中.
+            injectglist(&list) 
+            casgstatus(gp, _Gwaiting, _Grunnable)
+            if trace.enabled {
+                traceGoUnpark(gp, 0)
+            }
+            return gp, false
+        }
+    }
     
     // Steal work from other P's.
     procs := uint32(gomaxprocs)
@@ -1500,29 +1521,24 @@ top:
             
             // 从 p2 当中偷取(如果偷取到, 至少应该是一个, 剩下的会保存在 _p_ 当中的)
             // stealRunNextG 表示是否偷取 p2.runnext 
-            if gp := runqsteal(_p_, stealRunNextG, stealRunNextG); gp != nil {
+            if gp := runqsteal(_p_, p2, stealRunNextG); gp != nil {
                 return gp, false
             }
             
             // 从 p2 当中没有偷取到. 
-            // i = 2 时, shouldStealTimers() 决定是否从 p2 当中偷取
-            // 当 p2 的状态非 _Prunning 或 p2 绑定的 m 对应的 curg 当前处于 _Grunning 并且可抢占
+            // i = 2 时, shouldStealTimers() 决定是否能从 p2 当中偷取 g
+            // 当 p2.status != _Prunning || (p2.m.curg.status == _Grunning && preempt)
             // i = 3 时, 直接从 p2 当中偷取
             if i > 2 || (i > 1 && shouldStealTimers(p2)) {
+                // 为 p2 运行计时器, tnow是当前时间, w 是下一个运行计时器时间, ran是否运行了计时器
                 tnow, w, ran := checkTimers(p2, now)
                 now = tnow
                 if w != 0 && (pollUntil == 0 || w < pollUntil) {
                     pollUntil = w
                 }
                 if ran {
-                    // Running the timers may have
-                    // made an arbitrary number of G's
-                    // ready and added them to this P's
-                    // local run queue. That invalidates
-                    // the assumption of runqsteal
-                    // that is always has room to add
-                    // stolen G's. So check now if there
-                    // is a local G to run.
+                    // 运行 timer 可能导致任意数量处于ready当中的 G 被添加到这个 P 的本地运行队列中. 
+                    // 这会导致 runqsteal 总是有空间添加盗取 G 的这一假设无效. 所以现在检查是否有本地 G 运行。
                     if gp, inheritTime := runqget(_p_); gp != nil {
                         return gp, inheritTime
                     }
@@ -1537,7 +1553,8 @@ top:
     }
     
 stop:
-    
+     
+    // GC 检查
     // We have nothing to do. If we're in the GC mark phase, can
     // safely scan and blacken objects, and have work to do, run
     // idle-time marking rather than give up the P.
@@ -1635,13 +1652,18 @@ stop:
         }
     }
     
-    ... 
+    ... // 再次进行 GC 和 netpoll 检查 
+    
     
     // 休眠
     stopm()
     goto top
 }
 ```
+
+
+偷取是由 runqsteal() 函数完成, 从 p2 当中偷取 G 放入 `_p_` 当中. 批量偷取的细节函数由 runqgrab() 完成. 偷取完成
+之后, 对 `_p_` 的runqtail进行修正.
 
 ```cgo
 // 从 _p_ 当中偷取 g 放入到 p2
@@ -1669,6 +1691,12 @@ func runqsteal(_p_, p2 *p, stealRunNextG bool) *g {
 	return gp
 }
 ```
+
+runqgrab() 完成偷取工作:
+
+- 计算需要批量偷取的 G 的数量
+
+- 根据计算的数量并且结合 stealRunNextG 进行偷取操作(进行 G 拷贝), 最后修正被偷取的 p 的 runqhead 的值
 
 ```cgo
 // batchHead 是开始的位置, stealRunNextG 是否尝试偷取 runnext 
@@ -1746,6 +1774,120 @@ func runqgrab(_p_ *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool
 遍历下一个p. **但是为了保证公平性, 遍历 allp 时并不是从固定的 `allp[0]` 开始, 而是从随机位置上的 p 开始, 而且遍历的
 顺序也是随机化了, 并不是现在访问了第i个p下一次就访问第i+1个p, 而是使用了一种伪随机方式遍历allp中的每个p, 防止每次遍历时
 使用同样的顺序访问allp中的元素**
+
+3.当真的没有可以偷取的 G 时候, 则休眠当前的 M, 并在 M 唤醒之后再次重新去偷取 G, 直到偷取成功之后返回.
+
+
+当前工作线程休眠:
+
+```cgo
+func stopm() {
+	_g_ := getg() // 当前是 g0
+    
+    // 当前运行的 M 的状态判断(未锁定, 与p绑定, 非自旋)
+	if _g_.m.locks != 0 {
+		throw("stopm holding locks")
+	}
+	if _g_.m.p != 0 {
+		throw("stopm holding p")
+	}
+	if _g_.m.spinning {
+		throw("stopm spinning")
+	}
+
+	lock(&sched.lock)
+	mput(_g_.m) // 将 M 放入全局 sched.midle 当中
+	unlock(&sched.lock)
+	notesleep(&_g_.m.park)  // 当前工作线程休眠在 park 成员上, 直到唤醒才返回.
+	noteclear(&_g_.m.park)  // 唤醒之后的清理工作
+	acquirep(_g_.m.nextp.ptr()) // 唤醒之后, 将 m 与 m.nextp 绑定, 并开始运行
+	_g_.m.nextp = 0
+}
+```
+
+stopm的核心是调用mput把m结构体对象放入sched的midle空闲队列, 然后通过notesleep(&m.park)函数让自己进入睡眠状态.
+
+**note是go runtime实现的一次性睡眠和唤醒机制, 一个线程可以通过调用 `notesleep(*note)` 进入睡眠状态, 而另外一个线
+程则可以通过 `notewakeup(*note)` 把其唤醒**.
+
+note 的底层实现机制与操作系统相关, 不同操作系统不同机制. Linux下使用 futext 系统调用, Mac 下则使用的是 pthread_cond_t
+条件变量. note 对这些底层机制做了抽象个封装.
+
+```cgo
+func notesleep(n *note) {
+	gp := getg() // 当前的 g0 
+	if gp != gp.m.g0 {
+		throw("notesleep not on g0")
+	}
+	ns := int64(-1) // 休眠的时间, ns
+	if *cgo_yield != nil {
+		// Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+		ns = 10e6 // cgo 当中的单位是 ms
+	}
+	
+	// 为了防止意外唤醒, 使用了 for 循环. 也就是说, 当处于休眠状态 n.key 的值一直是 0
+	for atomic.Load(key32(&n.key)) == 0 {
+		gp.m.blocked = true
+		futexsleep(key32(&n.key), 0, ns) // 系统调用
+		if *cgo_yield != nil {
+			asmcgocall(*cgo_yield, nil)
+		}
+		gp.m.blocked = false
+	}
+}
+```
+
+Linux下线程休眠系统调用: 当 addr 的值为 val 时, 线程休眠
+
+```cgo
+func futexsleep(addr *uint32, val uint32, ns int64) {
+	// ns < 0, 一直进行休眠. 
+	// op 的值为 _FUTEX_WAIT_PRIVATE
+	if ns < 0 {
+		futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, nil, nil, 0)
+		return
+	}
+    
+    // ns >= 0, 休眠时间为 ns
+	var ts timespec
+	ts.setNsec(ns)
+	futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, unsafe.Pointer(&ts), nil, 0)
+}
+```
+
+futex 是使用汇编实现的, 这里不再展开了.
+
+说了线程休眠, 也顺带说下一线程唤醒, 线程唤醒原理很简单, 就是将 note.key 的值设为 1, 并调用 futexwakeup 函数.
+
+```cgo
+func notewakeup(n *note) {
+	old := atomic.Xchg(key32(&n.key), 1)
+	if old != 0 {
+		print("notewakeup - double wakeup (", old, ")\n")
+		throw("notewakeup - double wakeup")
+	}
+	futexwakeup(key32(&n.key), 1)
+}
+
+
+func futexwakeup(addr *uint32, cnt uint32) {
+	// 系统调用, op 的值为 _FUTEX_WAKE_PRIVATE
+	ret := futex(unsafe.Pointer(addr), _FUTEX_WAKE_PRIVATE, cnt, nil, nil, 0)
+	if ret >= 0 {
+		return
+	}
+    
+    // 下面是系统调用异常, 则程序退出
+	// I don't know that futex wakeup can return
+	// EAGAIN or EINTR, but if it does, it would be
+	// safe to loop and call futex again.
+	systemstack(func() {
+		print("futexwakeup addr=", addr, " returned ", ret, "\n")
+	})
+
+	*(*int32)(unsafe.Pointer(uintptr(0x1006))) = 0x1006 // 访问非法地址, 让程序退出
+}
+```
 
 
 ### M 是如何创建的? P0 是什么时候创建的?
