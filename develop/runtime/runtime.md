@@ -2075,7 +2075,7 @@ func allocm(_p_ *p, fn func(), id int64) *m {
 	}
 
 	mp := new(m)
-	mp.mstartfn = fn   // 
+	mp.mstartfn = fn   // 在 M 启动之后, 调度之前执行的函数
 	mcommoninit(mp, id) // 开始初始化m, 将 mp 添加到全局队列当中
     
     // 创建 g0, 并将 g0 与 m 进行绑定.

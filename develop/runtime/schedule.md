@@ -11,7 +11,7 @@ schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->s
 其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
 上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
 
-#### 主动让出 CPU
+#### 被动阻塞让出CPU
 
 在实际场景中还有一些没有执行完成的 G, 而又需要临时停止执行. 比如, time.Sleep, IO阻塞等, 就要挂起该 G, 把CPU让出来
 给其他 G 使用. 在 runtime 的 gopark 方法:
@@ -125,6 +125,51 @@ ready() 函数的工作是将 gp 的状态恢复为 _Grunnable, 然后将 gp 放
 
 关于 M 的的启动和休眠在 runtime.md 当中有详细的讲解.
 
+#### 主动调度
+
+goroutine 的主动调度是指当前正在运行的 goroutine 通过调用 runtime.Gosched() 函数暂时放弃运行而发生的调度.
+
+主动调度完全是用户代码自己控制的, 根据代码可以预计什么地方一定会发生调度. 
+
+```cgo
+func Gosched() {
+	checkTimeouts() // amd64 linux 下是空函数
+	
+	// 切换到 g0 上, 执行 gosched_m 函数
+	// 在 mcall 函数当中会保存好当前 gp 的 sp, pc, g, bp 信息, 以便后续的恢复执行.
+	mcall(gosched_m)
+}
+```
+
+```cgo
+func gosched_m(gp *g) {
+    // 追踪信息
+	if trace.enabled {
+		traceGoSched()
+	}
+	
+	goschedImpl(gp) // 这里的 gp 是切换到 g0 之前的运行的 goroutine
+}
+
+func goschedImpl(gp *g) {
+    // 读取 gp 的状态
+	status := readgstatus(gp) 
+	// gp 当前的状态必须是 _Grunning, 因为正在运行主动调度的嘛
+	if status&^_Gscan != _Grunning {
+		dumpgstatus(gp)
+		throw("bad g status")
+	}
+	
+	// 将 gp 的状态切换为 _Grunnable
+	casgstatus(gp, _Grunning, _Grunnable)
+	dropg() // 解除 gp 与 m 的绑定关系
+	lock(&sched.lock)
+	globrunqput(gp) // 将 gp 放入全局队列
+	unlock(&sched.lock)
+
+	schedule() // 执行新一轮调度
+}
+```
 
 #### 抢占让出 CPU
 
@@ -393,4 +438,21 @@ func reentersyscall(pc, sp uintptr) {
 	_g_.m.locks--
 }
 
+```
+
+
+#### 常用的函数
+
+```cgo
+wakep() // 在 sched.npidle >0 && sched.nmspinning == 0 的状况下启动一个自旋的 M, 也就是唤醒一个 P
+
+dropg() // 解除 curg 和 m 的绑定关系
+
+acquirep(p) // 将 p 与 m 进行绑定, 同时设置 p 的状态为 _Prunning
+releasep()  // 将 p 与 m 解绑, 同时设置 p 的状态为 _Pidle
+
+
+acquirem()  // 禁止抢占调度(m.locks++)
+releasem(m) // 启用抢占调度(m.locks--), 如果当前处于抢占当中(m.locks==0&&_g_.preempt ), 
+            // 修改 _g_.stackguard0 的值
 ```
