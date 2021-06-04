@@ -11,7 +11,6 @@ schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->s
 其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
 上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
 
-
 #### 主动让出 CPU
 
 在实际场景中还有一些没有执行完成的 G, 而又需要临时停止执行. 比如, time.Sleep, IO阻塞等, 就要挂起该 G, 把CPU让出来
@@ -20,47 +19,50 @@ schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->s
 ```cgo
 // runtime/proc.go 
 
-func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason waitReason, 
-    traceEv byte, traceskip int) {
+func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason waitReason, traceEv byte, traceskip int) {
 	if reason != waitReasonSleep {
-		checkTimeouts() // timeouts may expire while two goroutines keep the scheduler busy
+		checkTimeouts() // 空函数
 	}
-	mp := acquirem()
-	gp := mp.curg
-	status := readgstatus(gp)
+	mp := acquirem() // 获取当前的 m, 并加锁.
+	gp := mp.curg // 当前执行的 gp
+	status := readgstatus(gp) // 获取 gp 的状态
 	if status != _Grunning && status != _Gscanrunning {
 		throw("gopark: bad g status")
 	}
+	
+	// 设置 mp 和 gp 在挂起之前的一些参数
 	mp.waitlock = lock
 	mp.waitunlockf = unlockf
 	gp.waitreason = reason
 	mp.waittraceev = traceEv
 	mp.waittraceskip = traceskip
-	releasem(mp)
+	releasem(mp) // 释放锁
 	
-	// mcall 在M里从当前正在运行的G切换到g0
-    // park_m 在切换到的g0下先把传过来的 G 切换为_Gwaiting 状态挂起该G
-    // 调用回调函数waitunlockf()由外层决定是否等待解锁, 返回true则等待解锁不在执行G, 返回false则不等待解锁继续执行.
+	// mcall, 从 curg 切换到 g0 上执行 park_m 函数
+    // park_m 在切换到的 g0 下先将 gp 切换为_Gwaiting 状态挂起该G
+    // 调用回调函数waitunlockf()由外层决定是否等待解锁, true表示等待解锁不在执行G, false则不等待解锁可以继续执行.
 	mcall(park_m)
 }
 
-// 在 g0 上执行
+// 运行在 g0 上
 func park_m(gp *g) {
-	_g_ := getg()
+	_g_ := getg() // 当前是 g0
 
 	if trace.enabled {
 		traceGoPark(_g_.m.waittraceev, _g_.m.waittraceskip)
 	}
     
-    // 切换状态, _Grunning -> _Gwaiting
+    // gp 状态修改: _Grunning -> _Gwaiting
 	casgstatus(gp, _Grunning, _Gwaiting)
-	dropg() // 把g0从M的"当前运行"里剥离出来.
+	dropg() // 将 curg 与 m 进行解绑
     
-    // 如果不需要等待解锁, 则切换到_Grunnable状态并直接执行G
+    // 执行 waitunlockf 函数, 根据返回结果做进一步处理
 	if fn := _g_.m.waitunlockf; fn != nil {
 		ok := fn(gp, _g_.m.waitlock)
 		_g_.m.waitunlockf = nil
 		_g_.m.waitlock = nil
+		
+		// 返回结果是 false, 将 gp 状态重新切换为 _Grunnable, 并重新执行 gp 
 		if !ok {
 			if trace.enabled {
 				traceGoUnpark(gp, 2)
@@ -70,62 +72,59 @@ func park_m(gp *g) {
 		}
 	}
 	
-	// 需要等待解锁, 不再执行当前的 G
+	// 返回结果是 true, 需要等待解锁, 进入下一次调度
 	schedule()
 }
 ``` 
 
+park_m 函数主要做的事情:
+
+- 将 curg 状态设置为 _Gwaiting (等待当中), 调用 dropg 解除 curg 与 m 的关联关系
+
+- 调用 waitunlockf 函数, 根据函数返回结果决定是再次执行(false), 还是调度执行其他的 g(true)
+
+关于 mcall 函数, 在 `runtime.md` 当中有详细的讲解.
+
+
+g 有挂起(_Gwaiting), 肯定就存在唤醒 (_Grunnable), 函数是 runtime.goready()
+
 ```cgo
-// func mcall(fn func(*g)), 切换到 m->g0 的栈(SP=g0.sched.sp), 调用 fn(g), fn必须永远不返回. 
-// 在 g 当中保存了运行状态, bp, g, bp
-TEXT runtime·mcall(SB), NOSPLIT, $0-8
-	MOVQ	fn+0(FP), DI  // fn 函数
+// 唤醒 gp
+func goready(gp *g, traceskip int) {
+	systemstack(func() {
+		ready(gp, traceskip, true)
+	})
+}
 
-	get_tls(CX)  // CX=tls
-	MOVQ	g(CX), AX	// AX = g
-	MOVQ	0(SP), BX	// caller's PC
-	MOVQ	BX, (g_sched+gobuf_pc)(AX) // 设置 g.sched.pc 的值为当前的 SP
-	LEAQ	fn+0(FP), BX	// caller's SP, 函数地址传送
-	
-	// 保存 sp, g, bp 到 g->sched 当中
-	MOVQ	BX, (g_sched+gobuf_sp)(AX) // sp 保存了 mcall 调用的函数地址 
-	MOVQ	AX, (g_sched+gobuf_g)(AX)  // g 保存了当前线程的 g
-	MOVQ	BP, (g_sched+gobuf_bp)(AX) // bp 保存了BP寄存器(SP伪寄存器, 一个标记, 包含在调用栈当中)
+// 这里的 ready 是运行在 g0 栈上的
+func ready(gp *g, traceskip int, next bool) {
+	if trace.enabled {
+		traceGoUnpark(gp, traceskip)
+	}
 
-	// 切换到 m->g0 & its stack, 执行 fn
-	MOVQ	g(CX), BX  // g
-	MOVQ	g_m(BX), BX // g.m
-	MOVQ	m_g0(BX), SI // g.m.g0
-	CMPQ	SI, AX	// g == m->g0
-	JNE	3(PC)  // 不等于则跳转 pc+3 的位置, 即 "MOVQ	SI, g(CX)" 位置
-	MOVQ	$runtime·badmcall(SB), AX // 获取 badmcall 函数地址
-	JMP	AX                            // 跳转到对应函数地址, 执行函数 
-	MOVQ	SI, g(CX)	// 切换, 设置 g = m->g0
-	MOVQ	(g_sched+gobuf_sp)(SI), SP	// sp = m->g0->sched.sp
-	PUSHQ	AX // 调用方的 g 
-	MOVQ	DI, DX // fn 函数
-	MOVQ	0(DI), DI // 获取 DI 偏移量为0的数据, 即判断 fn ！= nil
-	CALL	DI // 调用 fn 函数, 参数是调用方的 g
-	POPQ	AX // 正常状况下, 执行不到这里, 因为 fn 函数永不返回.
-	MOVQ	$runtime·badmcall2(SB), AX
-	JMP	AX
-	RET
+	status := readgstatus(gp) // 读取 gp 的状态
+
+	// Mark runnable.
+	_g_ := getg() // 当前的 g0
+	mp := acquirem() // 当中的工作线程 M, 增加 locks, 阻止对 _g_ 的抢占调度
+	if status&^_Gscan != _Gwaiting { // 
+		dumpgstatus(gp)
+		throw("bad g->status in ready")
+	}
+
+	// gp 的状态切换回 _Grunnable
+	casgstatus(gp, _Gwaiting, _Grunnable)
+	runqput(_g_.m.p.ptr(), gp, next) // 将 gp 放入到当前 _p_ 的本地运行队列, 优先调度
+	wakep() // 可能启动新的 M
+	releasem(mp) // 减少locks, 并进行可能的 _g_ 抢占调度标记
+}
 ```
 
+ready() 函数的工作是将 gp 的状态恢复为 _Grunnable, 然后将 gp 放入到本地运行队列当中等待调度. 同时可能会启动新的 M
+来调度执行 G
 
-gopark 是进行调度让出 CPU 资源的方法, 里面调用了 mcall(), 注释是这样描述的:
+关于 M 的的启动和休眠在 runtime.md 当中有详细的讲解.
 
-> 从当前运行的 g 切换到 g0 的运行栈, 然后调用 fn(g), 这里被调用的 g 是调用 mcall 方法时的 G. mcall 方法保存当前
-运行 G 的 PC/SP 到 g->sched 里, 因此该 G 可以在以后被重新恢复执行.
-
-
-M 创建时绑定一个 g0, 调度工作运行在 g0 栈上的. mcall 方法通过 g0 先把当前调用的 G 的执行栈暂存到 g->sched 变量里,
-然后切换到 g0 的执行栈上执行 park_m. park_m 方法的状态把 gp(当前调用的G) 的状态从 _Grunning 切换到 _Gwaiting 表
-明进入到了等待唤醒状态, 此时休眠 G 的操作就完成了. 接下来既然 G 休眠了, CPU 线程总不能闲下来, 在 park_m 当中又出现了
-schedule 方法, 开启新的一轮调度循环了.
-
-> 进入调度循环之前还有个对 waitunlockf 方法的判断, 该方法是如果不需要等待解锁则调用调用 execute 方法继续执行之前的 G,
-而该方法永远不会 return, 也不会再次进入下一次调度. 这是一个外部一个控制是否要进行下一轮调度的选择.
 
 #### 抢占让出 CPU
 
