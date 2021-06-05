@@ -1,6 +1,6 @@
 ### 调度循环中如何让出 CPU
 
-#### 正常完成让出 CPU
+#### 正常完成
 
 正常执行过程:
 
@@ -11,7 +11,7 @@ schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->s
 其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
 上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
 
-#### 被动阻塞让出CPU
+#### 被动调度
 
 在实际场景中还有一些没有执行完成的 G, 而又需要临时停止执行. 比如, time.Sleep, IO阻塞等, 就要挂起该 G, 把CPU让出来
 给其他 G 使用. 在 runtime 的 gopark 方法:
@@ -171,11 +171,31 @@ func goschedImpl(gp *g) {
 }
 ```
 
-#### 抢占让出 CPU
+#### 抢占调度
+
+需要关注的内容:
+
+- 什么情况下会发生抢占调度
+
+- 因运行时间过长而发生的抢占调度有什么特点
+
+sysmon 系统监控线程会定期(10ms) 通过 retake 函数对 goroutine 发起抢占. 先从 sysmon 函数讲起.
+
+sysmon 的启动是在 runtime.main 函数当中启动的. 启动代码片段如下:
 
 ```cgo
+systemstack(func() {
+    newm(sysmon, nil, -1)
+})
+```
 
-// 始终在不带P的情况下运行, 因此不存在写屏障.
+newm() 的第一个参数 fn 是创建 m 的 mstartfn 的值, 该函数是在 m 启动后(调用 mstart() 函数), 未调度之前需要执行的函
+数. sysmon() 函数本身是一个死循环, 因此创建的 m 不会和 p 进行绑定.
+
+sysmon() 函数就做一件事, 没个 10 ms 发起抢占调度.
+
+```cgo
+// 始终在不带 p 的情况下运行, 因此不存在写屏障.
 func sysmon() {
 	lock(&sched.lock)
 	sched.nmsys++
@@ -196,41 +216,52 @@ func sysmon() {
 		if delay > 10*1000 { 
 			delay = 10 * 1000
 		}
-		usleep(delay)
-		now := nanotime()
-		next, _ := timeSleepUntil()
-		// 双检查
+		usleep(delay) // 休眠 delay 时间
+		now := nanotime() // 当前时间
+		next, _ := timeSleepUntil() // 返回下一次需要休眠的时间
+		// double check
 		if debug.schedtrace <= 0 && (sched.gcwaiting != 0 || atomic.Load(&sched.npidle) == uint32(gomaxprocs)) {
 			lock(&sched.lock)
+			// sched.gcwaiting gc 等待的时间
+			// sched.npidle 当前空闲的 p
 			if atomic.Load(&sched.gcwaiting) != 0 || atomic.Load(&sched.npidle) == uint32(gomaxprocs) {
-				if next > now {
+			    // 下一次休眠时间未到, 需要进行休眠
+				if next > now { 
 					atomic.Store(&sched.sysmonwait, 1)
 					unlock(&sched.lock)
-					// Make wake-up period small enough
-					// for the sampling to be correct.
-					sleep := forcegcperiod / 2
+					// 使唤醒周期足够小以使采样正确
+					// forcegcperiod 是 120 s
+					sleep := forcegcperiod / 2 
 					if next-now < sleep {
 						sleep = next - now
 					}
+					
+					// osRelaxMinNS=0
 					shouldRelax := sleep >= osRelaxMinNS
 					if shouldRelax {
-						osRelax(true)
+						osRelax(true) // amd64 linux 是空函數
 					}
+					
+					// 休眠 sysmon 线程
 					notetsleep(&sched.sysmonnote, sleep)
 					if shouldRelax {
 						osRelax(false)
 					}
+					
+					// 唤醒 sysmon 后需要重新计算 now 和 next
 					now = nanotime()
 					next, _ = timeSleepUntil()
 					lock(&sched.lock)
 					atomic.Store(&sched.sysmonwait, 0)
-					noteclear(&sched.sysmonnote)
+					noteclear(&sched.sysmonnote) // 唤醒后清理工作
 				}
 				idle = 0
 				delay = 20
 			}
 			unlock(&sched.lock)
 		}
+		
+		// 重新校对 now 和 next
 		lock(&sched.sysmonlock)
 		{
 			// If we spent a long time blocked on sysmonlock
@@ -247,46 +278,41 @@ func sysmon() {
 		if *cgo_yield != nil {
 			asmcgocall(*cgo_yield, nil)
 		}
-		// poll network if not polled for more than 10ms
+		// 如果超过 10 毫秒没有查找 epoll
 		lastpoll := int64(atomic.Load64(&sched.lastpoll))
 		if netpollinited() && lastpoll != 0 && lastpoll+10*1000*1000 < now {
 			atomic.Cas64(&sched.lastpoll, uint64(lastpoll), uint64(now))
 			list := netpoll(0) // non-blocking - returns list of goroutines
 			if !list.empty() {
-				// Need to decrement number of idle locked M's
-				// (pretending that one more is running) before injectglist.
-				// Otherwise it can lead to the following situation:
-				// injectglist grabs all P's but before it starts M's to run the P's,
-				// another M returns from syscall, finishes running its G,
-				// observes that there is no work to do and no other running M's
-				// and reports deadlock.
-				// 需要在 injectglist 之前减少 "空闲锁定的M" 的数量(假设还有一个正在运行). 
-				// 否则, 可能导致以下情况: injectglist 捕获所有P, 但在启动M运行P之前, 另一个M从syscall返回, 完
-				// 成运行G, 观察到没有工作要做没有其他正在运行的M, 并报告了死锁.
+				// 需要在 injectglist 之前减少 "空闲锁定的m" 的数量(假设还有一个正在运行). 
+				// 否则, 可能导致以下情况: injectglist 唤醒了所有的 p. 但在启动 m 运行 p 之前, 另一个 m 从
+				// syscall返回, 完成它运行g, 观察到 "没有工作要执行" 并且 "也没有正在运行的m", 就报告了死锁.
 				incidlelocked(-1)
 				
-				// 把 epoll ready 的G列表注入到全局runq里
+				// 把 epoll ready 的 g 放入到全局队列. 这里不会放入到本地队列的, 因为 m 没有绑定 p
 				injectglist(&list)
 				incidlelocked(1)
 			}
 		}
+		
+		// next < now, 说明定时器已经执行了
 		if next < now {
-			// There are timers that should have already run,
-			// perhaps because there is an unpreemptible P.
-			// Try to start an M to run them.
+		    // 可能是因为有一个不可抢占的 P.
+            // 尝试启动一个 M 来运行它们.
 			startm(nil, false)
 		}
 		if atomic.Load(&scavenge.sysmonWake) != 0 {
 			// Kick the scavenger awake if someone requested it.
 			wakeScavenger()
 		}
-		// retake P's blocked in syscalls
-		// and preempt long running G's
+		// 重新获取在 syscall 中阻塞的 P 并抢占长时间运行的 G
 		if retake(now) != 0 {
 			idle = 0
 		} else {
 			idle++
 		}
+		
+		// GC 相关内容
 		// check if we need to force a GC
 		if t := (gcTrigger{kind: gcTriggerTime, now: now}); t.test() && atomic.Load(&forcegc.idle) != 0 {
 			lock(&forcegc.lock)
@@ -302,6 +328,87 @@ func sysmon() {
 		}
 		unlock(&sched.sysmonlock)
 	}
+}
+```
+
+retake() 函数是 sysmon 的一个核心函数, 目的是获取在 syscall 中阻塞的 P 并抢占长时间运行的 G
+
+```cgo
+func retake(now int64) uint32 {
+	n := 0
+	// Prevent allp slice changes. This lock will be completely
+	// uncontended unless we're already stopping the world.
+	lock(&allpLock)
+	
+	// 我们不能在 allp 上使用 range 循环, 因为我们可能会暂时删除 allpLock. 
+	// 因此, 我们需要在循环中每次都重新获取.
+	for i := 0; i < len(allp); i++ {
+		_p_ := allp[i]
+		if _p_ == nil {
+			// This can happen if procresize has grown
+			// allp but not yet created new Ps.
+			continue
+		}
+		
+		// _p_.sysmontick用于 sysmon 线程记录被监控 p 的系统调用的次数和调度的次数
+		pd := &_p_.sysmontick
+		s := _p_.status
+		sysretake := false
+		// 当前 p 处于系统调用或正在运行当中
+		if s == _Prunning || s == _Psyscall {
+			// 如果运行时间过长, 则进行抢占
+			// _p_.schedtick: 每发生一次调度, 调度器++该值
+			t := int64(_p_.schedtick)
+			if int64(pd.schedtick) != t { // 监控到一次新的调度, 重置 schedtick 和 schedwhen
+				pd.schedtick = uint32(t) 
+				pd.schedwhen = now
+			} else if pd.schedwhen+forcePreemptNS <= now { // 运行时间超过 10 ms 运行时间
+			    // 抢占标记, 设置运行的 gp.preempt=true, gp.stackguard0=stackPreempt
+				preemptone(_p_) 
+				// 对于系统调用, preemptone() 不会工作, 因为此时的 m 和 p 已经解绑.
+				sysretake = true
+			}
+		}
+		
+		// 当前 p 处于系统调用当中
+		if s == _Psyscall {
+			// 在运行时间未超过 10 ms状况下, 监控到一次新的调度(至少是20us), 修正相关的值
+			t := int64(_p_.syscalltick)
+			if !sysretake && int64(pd.syscalltick) != t {
+			    // 监控线程监控到一次新的调度, 需要重置跟 sysmon 相关的 schedtick 和 schedwhen 变量
+				pd.syscalltick = uint32(t)
+				pd.syscallwhen = now
+				continue
+			}
+			
+			// 在满足下面所有条件下, 不会发生抢占调度:
+			// - 当前的 _p_ 本地队列为空, 说明没有可以执行的 g;
+			// - sched.nmspinning 或 sched.npidle 不为0,
+			// - 运行时间未超过 10ms;
+			if runqempty(_p_) && atomic.Load(&sched.nmspinning)+atomic.Load(&sched.npidle) > 0 && 
+			    pd.syscallwhen+10*1000*1000 > now {
+				continue
+			}
+			// Drop allpLock so we can take sched.lock.
+			unlock(&allpLock)
+			
+			// 减少 sched.nmidlelocked 的数量
+			incidlelocked(-1)
+			if atomic.Cas(&_p_.status, s, _Pidle) { // 将当前的 _p_ 状态切换成 _Pidle
+				if trace.enabled {
+					traceGoSysBlock(_p_)
+					traceProcStop(_p_)
+				}
+				n++
+				_p_.syscalltick++ // 系统调度次数增加
+				handoffp(_p_) // 启动新的 m 
+			}
+			incidlelocked(1)
+			lock(&allpLock)
+		}
+	}
+	unlock(&allpLock)
+	return uint32(n)
 }
 ```
 
