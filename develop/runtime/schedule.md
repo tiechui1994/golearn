@@ -412,7 +412,126 @@ func retake(now int64) uint32 {
 }
 ```
 
-#### 系统调用让出 CPU
+sysmon 监控线程如果监控到某个 goroutine 连续运行超过 10ms, 则会调用 preemptone() 函数向该 goroutine 发起抢占请
+求.
+
+```cgo
+func preemptone(_p_ *p) bool {
+	mp := _p_.m.ptr()
+	if mp == nil || mp == getg().m {
+		return false
+	}
+	gp := mp.curg
+	if gp == nil || gp == mp.g0 {
+		return false
+	}
+
+    // gp 是被抢占的 goroutine, 因此是 curg
+    // 设置抢占标志
+	gp.preempt = true 
+
+	
+	// go 协程中的每个调用都通过将当前栈指针与 gp->stackguard0 进行比较来检查栈溢出.
+    // 将 gp->stackguard0 设置为 StackPreempt 会将抢占合并到正常的栈溢出检查中.
+	// stackPreempt 是一个常亮 0xfffffffffffffade, 非常大的一个数
+	gp.stackguard0 = stackPreempt
+
+	// Request an async preemption of this P.
+	if preemptMSupported && debug.asyncpreemptoff == 0 {
+		_p_.preempt = true
+		preemptM(mp)
+	}
+
+	return true
+}
+```
+
+preemptone 函数只是简单的设置了抢占 goroutine 对于 g 结构体中的 preempt 成员为 true 和 stackguard0 成员的值为
+stackPreempt就返回了, 并未真正强制被抢占的 goroutine 暂停下来.
+
+既然设置了抢占标志, 那么就一定需要对这些标志进行处理.
+
+处理抢占请求的函数是 newstack(), 该函数如果发现自己被抢占, 则会暂停当前 goroutine 的执行. 而调用 newstack函数的调用
+链是: `morestack_noctxt()->morestack()->newstack()`, 而 `runtime.morestack_noctxt()` 函数会被插入到每个 go
+函数的结尾处.
+
+```cgo
+0x0000 00000 (call.go:17)       MOVQ    (TLS), CX # CX=g 
+0x0009 00009 (call.go:17)       CMPQ    SP, 16(CX) # g.stackguard0 与当前 SP 进行比较
+0x000d 00013 (call.go:17)       JLS     163 # SP < g.stackguard0, 则跳转
+
+... 
+
+0x00a3 00163 (call.go:17)       CALL    runtime.morestack_noctxt(SB) # stack 扩容
+0x00a8 00168 (call.go:17)       JMP     0 # 跳转到开始
+```
+
+上面代码的核心就是当 sp < stackguard0, 则说明当前 g 的栈快用完了. 有溢出风险, 需要栈扩容. 
+
+如果当前的 g 设置了抢占标记, 那么 sp 的值就会远远小于 stackguard0, 这样就会执行 runtime.morestack_noctxt() 函数.
+
+```cgo
+TEXT runtime·morestack_noctxt(SB),NOSPLIT,$0
+	MOVL	$0, DX
+	JMP	runtime·morestack(SB)
+```
+
+morestack_noctxt 函数使用 JMP 指令直接跳转到 morestack 继续执行. 注意这里没有使用 CALL 指令调用 morestack, 因此
+rsp 栈顶寄存器没有发生变化(栈顶值为调用 morestack_noctxt 函数的下一条指令的地址)
+
+```cgo
+TEXT runtime·morestack(SB),NOSPLIT,$0-0
+	# 获取 m 
+	get_tls(CX)
+	MOVQ	g(CX), BX    # BX=g 
+	MOVQ	g_m(BX), BX  # BX=g.m 
+	
+	# m->g0 与 g 比较
+	MOVQ	m_g0(BX), SI # SI=m.g0 
+	CMPQ	g(CX), SI    # m.g0 == g 
+	JNE	3(PC) # 不相等
+	CALL	runtime·badmorestackg0(SB)
+	CALL	runtime·abort(SB)
+    
+    # m->gsignal 与 g 比较 
+	MOVQ	m_gsignal(BX), SI # SI = m.signal 
+	CMPQ	g(CX), SI # m.signal == g 
+	JNE	3(PC) # 不相等
+	CALL	runtime·badmorestackgsignal(SB)
+	CALL	runtime·abort(SB)
+
+	# 保存 caller 的 SP, PC, g 到 m.morebuf 当中
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVQ	8(SP), AX	// 调用者 PC 
+	MOVQ	AX, (m_morebuf+gobuf_pc)(BX)
+	LEAQ	16(SP), AX	// 调用者 SP
+	MOVQ	AX, (m_morebuf+gobuf_sp)(BX)
+	get_tls(CX)
+	MOVQ	g(CX), SI
+	MOVQ	SI, (m_morebuf+gobuf_g)(BX)
+
+	// Set g->sched to context in f.
+	# 保存当前函数的 SP, PC, g, BP 到 g.sched 当中
+	MOVQ	0(SP), AX // f's PC
+	MOVQ	AX, (g_sched+gobuf_pc)(SI)
+	MOVQ	SI, (g_sched+gobuf_g)(SI)
+	LEAQ	8(SP), AX // f's SP
+	MOVQ	AX, (g_sched+gobuf_sp)(SI)
+	MOVQ	BP, (g_sched+gobuf_bp)(SI)
+	MOVQ	DX, (g_sched+gobuf_ctxt)(SI) # 0 
+
+	// Call newstack on m->g0's stack.
+	MOVQ	m_g0(BX), BX
+	MOVQ	BX, g(CX)
+	MOVQ	(g_sched+gobuf_sp)(BX), SP
+	CALL	runtime·newstack(SB)
+	CALL	runtime·abort(SB)	// crash if newstack returns
+	RET
+
+```
+
+
+#### 系统调用
 
 Go 中没有直接对系统内核函数调用, 而是封装了 syscall.Syscall 方法.
 

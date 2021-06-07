@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 func sum(a, b int) int {
 	a2 := a * a
 	b2 := b * b
@@ -8,6 +10,11 @@ func sum(a, b int) int {
 	return c
 }
 
+const (
+	Build = "main"
+)
+
 func main() {
 	sum(1, 2)
+	fmt.Println(Build)
 }

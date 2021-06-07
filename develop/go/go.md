@@ -23,12 +23,13 @@
 ```
 -I linker  添加搜索header文件的目录
 -L directory 将指定目录添加到库路径
+-X definition 使用 importpath.name=value 增加定义值
 
 -c        dump call graph
 -n        dump symbol table
 -dumpdep  dump symbol dependency graph
 
--buildid id 设置编译唯一标识
+-buildid id 设置编译唯一标识, 使用 file 命令可以查看次标识
 -buildmode mode 设置编译mode
 -linkmode mode 设置链接mode
 
@@ -43,6 +44,9 @@
 -s 禁止生成符号表(symbol table)
 -w 禁止生成 DWARF 
 -v 打印link的追踪
+
+-r path 设置 ELF 动态链接搜索路径, dir1:dir2:...
+-pluginpath string 插件路径
 ```
 
 - `-gcflags '[pattern=]arg list'` 用于传递每个 `go tool compile` 调用的参数.
@@ -53,6 +57,7 @@
 
 -D path 设置本地导入的相对路径.
 -I directory 将directory添加到导入搜索的目录
+-E 调试符号表导出
 
 -N 禁止编译器优化
 -l 禁止内联
@@ -64,6 +69,8 @@
 -w debug type checking
 
 -asmhdr file 将汇编的header写入到文件file
+
+-m 打印优化的决策
 ```
 
 ## 编译压缩
