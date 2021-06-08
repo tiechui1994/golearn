@@ -383,7 +383,7 @@ func retake(now int64) uint32 {
 			
 			// 在满足下面所有条件下, 不会发生抢占调度:
 			// - 当前的 _p_ 本地队列为空, 说明没有可以执行的 g;
-			// - sched.nmspinning 或 sched.npidle 不为0,
+			// - sched.nmspinning 或 sched.npidle 不为0, 说明没有空闲的 p
 			// - 运行时间未超过 10ms;
 			if runqempty(_p_) && atomic.Load(&sched.nmspinning)+atomic.Load(&sched.npidle) > 0 && 
 			    pd.syscallwhen+10*1000*1000 > now {
@@ -652,6 +652,102 @@ func newstack() {
 
 #### 系统调用
 
+前面分析了当运行时间超过 10ms 之后会发生抢占. 接下来说下系统调用导致的抢占.
+
+对于处于 _Psyscall 状态的 p, 只要满足下面三个条件之一, 就会发生抢占:
+
+- p 的运行队列不为空. 这用来保证当前 p 的本地运行队列中的 goroutine 得到及时的调度, 因为该 p 对应的工作线程正处于系统
+调用之中, 无法调度队列中的 goroutine, 所以需要寻找另外一个工作线程来接管这个 p 从而达到调度这些 goroutine 的目的.
+
+- 没有空闲的 p(sched.nmspinning+sched.npidle==0). 表示其他所有的 p 都已经与工作线程绑定且正在执行 go 代码, 这说
+明系统比较繁忙, 因此需要抢占当前正在处于系统调用之中而实际上系统调用并不需要的这个 p 并把它分配给其他的工作线程去调度其他
+的 goroutine
+
+- 观察到 p 对应的 m 处于系统调用之中到现在已经超过 10ms. 这表示只要系统调用超时, 就对其进行抢占.
+
+上述的条件是根据 sysmon() 函数当当中 p 为 `_Psyscall` 反推来的. 那么当满足上述的条件之后, 会调用函数 handoffp() 函
+数去启动新的工作线程来接管 p 从而达到抢占的目的.
+
+```cgo
+func handoffp(_p_ *p) {
+	// handoffp must start an M in any situation where
+	// findrunnable would return a G to run on _p_.
+
+	// 本地运行队列不为空, 需要启动 m 来接管
+	if !runqempty(_p_) || sched.runqsize != 0 {
+		startm(_p_, false)
+		return
+	}
+	// 有垃圾回收工作要做, 也需要启动 m 来接管
+	if gcBlackenEnabled != 0 && gcMarkWorkAvailable(_p_) {
+		startm(_p_, false)
+		return
+	}
+	
+	// 所有其他的 p 都在运行 goroutine, 说明系统比较忙, 需要启动 m 
+	if atomic.Load(&sched.nmspinning)+atomic.Load(&sched.npidle) == 0 && atomic.Cas(&sched.nmspinning, 0, 1) { // TODO: fast atomic
+		startm(_p_, true)
+		return
+	}
+	
+	lock(&sched.lock)
+	
+	// 如果 gc 正在等待 Stop The World
+	if sched.gcwaiting != 0 {
+		_p_.status = _Pgcstop
+		sched.stopwait--
+		if sched.stopwait == 0 {
+			notewakeup(&sched.stopnote)
+		}
+		unlock(&sched.lock)
+		return
+	}
+	if _p_.runSafePointFn != 0 && atomic.Cas(&_p_.runSafePointFn, 1, 0) {
+		sched.safePointFn(_p_)
+		sched.safePointWait--
+		if sched.safePointWait == 0 {
+			notewakeup(&sched.safePointNote)
+		}
+	}
+	
+	// 全局运行队列不为空, 启动 m 来接管 p
+	if sched.runqsize != 0 {
+		unlock(&sched.lock)
+		startm(_p_, false)
+		return
+	}
+	
+	// 所有的 p 都空闲下来了, 但是需要监控网络连接读写时间, 需要启动 m
+	if sched.npidle == uint32(gomaxprocs-1) && atomic.Load64(&sched.lastpoll) != 0 {
+		unlock(&sched.lock)
+		startm(_p_, false)
+		return
+	}
+	if when := nobarrierWakeTime(_p_); when != 0 {
+		wakeNetPoller(when)
+	}
+	pidleput(_p_) // 无事可做, 将 p 放入到全局空闲队列
+	unlock(&sched.lock)
+}
+```
+
+handoffp 函数就是在适当的状况下启动 m 接收 p, 主要包含以下条件:
+
+- "p 本地运行队列" 或 "全局队列" 存在待运行的 g
+
+- 需要帮助 gc 完成标记工作
+
+- 系统繁忙, 所有其他的 p 都在运行 g, 需要帮忙
+
+- 所有的 p 都处于空闲状态, 但是需要监控网络连接读写事件, 则需要启动新的 m 来 poll 网络连接.
+
+到此为止, sysmon 监控线程对处于系统调用当中的 p 抢占就已经完成.
+
+从上面来看, **对于正在进行系统调用的goroutine的抢占实质是剥夺与其对应的工作线程所绑定的p**, 虽然说处于系统调用之中的工
+作线程不需要 p, 但一旦从操作系统内核返回到用户空间之后就必须绑定一个 p 才能运行 go 代码. 那么, 工作线程从系统调用返回之
+后如果发现进入系统调用之前的所使用的 p 被监控线程拿走了, 该咋办?
+
+
 Go 中没有直接对系统内核函数调用, 而是封装了 syscall.Syscall 方法.
 
 ```cgo
@@ -660,26 +756,34 @@ Go 中没有直接对系统内核函数调用, 而是封装了 syscall.Syscall �
 func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
 ```
 
-```
-// func Syscall(trap int64, a1, a2, a3 uintptr) (r1, r2, err uintptr);
-// trap in AX, args in DI SI DX R10 R8 R9, return in AX DX
-// 注意, 这与 "标准" ABI 约定不同, 后者将在 CX 中传递第4个arg, 而不是R10.
 
+```cgo
+// func Syscall(trap int64, a1, a2, a3 uintptr) (r1, r2, err uintptr);
+// trap in AX, 
+// args in DI SI DX R10 R8 R9, 
+// return in AX DX
 TEXT ·Syscall(SB),NOSPLIT,$0-56
-	CALL	runtime·entersyscall(SB)
+	CALL	runtime·entersyscall(SB) # 系统调用的准备工作
 	MOVQ	a1+8(FP), DI
 	MOVQ	a2+16(FP), SI
 	MOVQ	a3+24(FP), DX
-	MOVQ	trap+0(FP), AX	// 系统调用号
-	SYSCALL                 // 系统调用
-	CMPQ	AX, $0xfffffffffffff001  // 0xfffffffffffff001 是 linux MAX_ERRNO 取反转无符号
-	JLS	ok
+	MOVQ	trap+0(FP), AX	# AX, 系统调用号
+	SYSCALL               
+	 
+	// 0xfffffffffffff001 是 -4095
+	// 从内核返回, 判断返回值, linux 使用 -1 ~ -4095 作为错误码
+	CMPQ	AX, $0xfffffffffffff001 
+	JLS	ok // AX < -4095
+	
+	// 系统调用返回错误, 准备返回值
 	MOVQ	$-1, r1+32(FP)
 	MOVQ	$0, r2+40(FP)
 	NEGQ	AX
 	MOVQ	AX, err+48(FP)
 	CALL	runtime·exitsyscall(SB)
 	RET
+	
+	// 系统调用返回错误
 ok:
 	MOVQ	AX, r1+32(FP)
 	MOVQ	DX, r2+40(FP)

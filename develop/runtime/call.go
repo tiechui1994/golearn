@@ -16,5 +16,5 @@ const (
 
 func main() {
 	sum(1, 2)
-	fmt.Println(Build)
+	fmt.Println(uintptr(0xfffffffffffff001))
 }
