@@ -499,36 +499,155 @@ TEXT runtime·morestack(SB),NOSPLIT,$0-0
 	JNE	3(PC) # 不相等
 	CALL	runtime·badmorestackgsignal(SB)
 	CALL	runtime·abort(SB)
-
-	# 保存 caller 的 SP, PC, g 到 m.morebuf 当中
+    
+    // f 是通过 call 调用 morestack_noctxt 的那个函数
+    // f's caller 是通过 call 调用 f 的那个函数
+    // 保存 f's caller 的信息到 m->morebuf
 	NOP	SP	// tell vet SP changed - stop checking offsets
-	MOVQ	8(SP), AX	// 调用者 PC 
+	// 这里的 SP 和 PC 的获取是 hard code 的.
+	// 因为 morestack_noctxt 函数是汇编编译插入到代码当中, 并且是在函数调用的开始的位置
+	// 而且插入的指令并没有占用栈空间. 那么 8(SP) 就是 f's caller 的 PC, 即调用 f 函数完成后的返回地址
+	// 16(SP) 就是 f's caller 的 SP, 即调用 f 函数的栈顶指针.
+	// 需要记录 f's caller 的 SP, 是因为当前 goroutine 要进行栈扩容, 那么就会发生栈内容的拷贝, 拷贝的结束位置就是
+	// f's caller 的 SP. 
+	// 需要记录 f's caller 的 PC, 是因为栈扩容完成之后, 需要重新将 PC 压人栈, 调用 f 函数.
+	MOVQ	8(SP), AX	// f's caller's PC 
 	MOVQ	AX, (m_morebuf+gobuf_pc)(BX)
-	LEAQ	16(SP), AX	// 调用者 SP
+	LEAQ	16(SP), AX	// f's caller's SP
 	MOVQ	AX, (m_morebuf+gobuf_sp)(BX)
 	get_tls(CX)
 	MOVQ	g(CX), SI
 	MOVQ	SI, (m_morebuf+gobuf_g)(BX)
-
-	// Set g->sched to context in f.
-	# 保存当前函数的 SP, PC, g, BP 到 g.sched 当中
-	MOVQ	0(SP), AX // f's PC
+    
+    // 保存 f 的信息到 g->sched
+	MOVQ	0(SP), AX // f's PC, 栈顶是函数的返回地址, 即当前函数返回后需要执行的指令
 	MOVQ	AX, (g_sched+gobuf_pc)(SI)
 	MOVQ	SI, (g_sched+gobuf_g)(SI)
-	LEAQ	8(SP), AX // f's SP
+	LEAQ	8(SP), AX // f's SP, f函数的栈顶指针
 	MOVQ	AX, (g_sched+gobuf_sp)(SI)
 	MOVQ	BP, (g_sched+gobuf_bp)(SI)
 	MOVQ	DX, (g_sched+gobuf_ctxt)(SI) # 0 
 
-	// Call newstack on m->g0's stack.
-	MOVQ	m_g0(BX), BX
-	MOVQ	BX, g(CX)
-	MOVQ	(g_sched+gobuf_sp)(BX), SP
-	CALL	runtime·newstack(SB)
+	// 调用 newstack 函数
+	MOVQ	m_g0(BX), BX // BX=m.g0
+	MOVQ	BX, g(CX)    // g=BX, 切换到 g0 上
+	MOVQ	(g_sched+gobuf_sp)(BX), SP // 恢复 g0.sched.sp 
+	CALL	runtime·newstack(SB) // 函数不会返回
 	CALL	runtime·abort(SB)	// crash if newstack returns
 	RET
-
 ```
+
+```cgo
+//go:nowritebarrierrec
+func newstack() {
+	thisg := getg() // g0
+	
+	... // 省略一些检查性的代码
+
+	gp := thisg.m.curg
+	
+    ... // 省略一些检查性的代码
+
+	morebuf := thisg.m.morebuf
+	thisg.m.morebuf.pc = 0
+	thisg.m.morebuf.lr = 0
+	thisg.m.morebuf.sp = 0
+	thisg.m.morebuf.g = 0
+
+	// 判断当前是否处于抢占调度当中
+	preempt := atomic.Loaduintptr(&gp.stackguard0) == stackPreempt
+
+	// Be conservative about where we preempt.
+	// We are interested in preempting user Go code, not runtime code.
+	// If we're holding locks, mallocing, or preemption is disabled, don't
+	// preempt.
+	// This check is very early in newstack so that even the status change
+	// from Grunning to Gwaiting and back doesn't happen in this case.
+	// That status change by itself can be viewed as a small preemption,
+	// because the GC might change Gwaiting to Gscanwaiting, and then
+	// this goroutine has to wait for the GC to finish before continuing.
+	// If the GC is in some way dependent on this goroutine (for example,
+	// it needs a lock held by the goroutine), that small preemption turns
+	// into a real deadlock.
+	if preempt {
+	    // 检查被抢占 goroutine 的 M 的状态
+		if !canPreemptM(thisg.m) {
+			// Let the goroutine keep running for now.
+			// gp->preempt is set, so it will be preempted next time.
+			// 还原 stackguard0 为正常值, 表示已经处理过了抢占请求了
+			gp.stackguard0 = gp.stack.lo + _StackGuard
+			// 不抢占, gogo 继续执行 m.curg, 不用调用 schedule() 函数挑选 g 了
+			gogo(&gp.sched) // never return
+		}
+	}
+
+	... // 省略一些检查性的代码 
+	
+	if preempt {
+		if gp == thisg.m.g0 {
+			throw("runtime: preempt g0")
+		}
+		if thisg.m.p == 0 && thisg.m.locks == 0 {
+			throw("runtime: g is running but p is not")
+		}
+        
+        // 收缩栈
+		if gp.preemptShrink {
+			gp.preemptShrink = false
+			shrinkstack(gp) // 栈收缩
+		}
+        
+        // 停止抢占, 但是也会进入下一轮调度
+		if gp.preemptStop {
+			preemptPark(gp) // never returns
+		}
+
+		// 其行为和 runtime.Gosched() 是一样的. gopreempt_m 和 gosched_m 函数的逻辑是一样的
+		// 响应抢占请求, 最终调用到 goschedImpl() 函数, 
+		// 设置 gp 的状态为 _Grunnable, 同时与 gp 与 m 解绑
+		// 进入到下一轮调度. 
+		gopreempt_m(gp) // never return
+	}
+    
+    // 下面的内容是扩容栈
+    // 栈扩容到原来的 2 倍
+	oldsize := gp.stack.hi - gp.stack.lo
+	newsize := oldsize * 2
+
+	// 确保我们的增长至少与适应新的frame所需的一样多.
+	// (这只是一个优化 - morestack 的调用者将在返回时重新检查边界)
+	if f := findfunc(gp.sched.pc); f.valid() {
+		max := uintptr(funcMaxSPDelta(f))
+		for newsize-oldsize < max+_StackGuard {
+			newsize *= 2
+		}
+	}
+    
+    // 栈溢出, 超过 1 个G
+	if newsize > maxstacksize {
+		print("runtime: goroutine stack exceeds ", maxstacksize, "-byte limit\n")
+		print("runtime: sp=", hex(sp), " stack=[", hex(gp.stack.lo), ", ", hex(gp.stack.hi), "]\n")
+		throw("stack overflow")
+	}
+
+	// 修改当前的 gp 的状态到 _Gcopystack
+	casgstatus(gp, _Grunning, _Gcopystack)
+    
+    // 栈内容拷贝. 创建新的栈, 相关内容拷贝, 释放掉旧的栈 
+    // 在由于 gp 的状态是 _Gcopystack, 因此 GC 不会扫描当前的栈
+	copystack(gp, newsize)
+	if stackDebug >= 1 {
+		print("stack grow done\n")
+	}
+	
+	// 切换回 gp 原来的状态, 并继续执行之前的代码
+	casgstatus(gp, _Gcopystack, _Grunning)
+	gogo(&gp.sched)
+}
+```
+
+抢占调度的过程, 在 sysmon 当中监控发现某个 g 运行时间过长(超过10ms), 则对该 g 设置抢占标记. 该 g 在下一次函数调用的
+时候, 在检查栈的时候会进行抢占调度. 
 
 
 #### 系统调用

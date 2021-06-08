@@ -1370,7 +1370,7 @@ func main() {
 	log.Println("Success")
 
 
-	var files = []string{"/home/user/Downloads/Typora-linux-x64.tar.gz"}
+	var files = []string{"/home/user/Downloads/gz/PgyVPN_Ubuntu_2.2.1_X86_64.deb"}
 	for _, file := range files {
 		log.Println("Starting CreateFile:", file)
 		files, err := CreateFile(org.OrganizationId, nodeid, spaces[0].SpaceId, org.DriveId, file)
