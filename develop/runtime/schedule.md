@@ -773,17 +773,17 @@ TEXT ·Syscall(SB),NOSPLIT,$0-56
 	// 0xfffffffffffff001 是 -4095
 	// 从内核返回, 判断返回值, linux 使用 -1 ~ -4095 作为错误码
 	CMPQ	AX, $0xfffffffffffff001 
-	JLS	ok // AX < -4095
+	JLS	ok  // AX < $0xfffffffffffff001
 	
-	// 系统调用返回错误, 准备返回值
+	// 系统调用异常返回
 	MOVQ	$-1, r1+32(FP)
 	MOVQ	$0, r2+40(FP)
-	NEGQ	AX
+	NEGQ	AX  // 错误码取反
 	MOVQ	AX, err+48(FP)
 	CALL	runtime·exitsyscall(SB)
 	RET
 	
-	// 系统调用返回错误
+	// 系统调用正常返回
 ok:
 	MOVQ	AX, r1+32(FP)
 	MOVQ	DX, r2+40(FP)
@@ -792,8 +792,16 @@ ok:
 	RET
 ```
 
-汇编代码先是执行了 runtime.entersyscall 方法, 然后进行系统调用, 最后执行 runtime.exitsyscall 方法. 字面上是进入
-系统调用先执行一些逻辑, 退出系统调用之后执行了一些逻辑.
+Syscall 函数主要依次做了三件事:
+
+- 调用 runtime.entersyscall 函数
+
+- 使用 SYSCALL 指令进入系统调用
+
+- 调用 runtime.exitsyscall 函数
+
+根据前面的分析猜测, exitsyscall 函数将会处理当前工作线程进入系统调用之后所拥有的 p 被监控线程抢占剥夺的情况. 但是 
+entersyscall 又会做啥呢?
 
 ```cgo
 func entersyscall() {
@@ -824,76 +832,267 @@ func entersyscall() {
 // 我们在触发 traceGoSysExit 之前等待该增量.
 // 
 // 注意: 即使未启用跟踪, 增量也会完成, 因为可以在syscall的中间启用跟踪. 我们不希望等待挂起.
+//go:nosplit
 func reentersyscall(pc, sp uintptr) {
-	_g_ := getg()
+	_g_ := getg() // 执行系统调用的 g 
 
-	// Disable preemption because during this function g is in Gsyscall status,
-	// but can have inconsistent g->sched, do not let GC observe it.
+	// 增加 m.locks 的值, 禁止抢占, 因此 g 处于 Gsyscall 状态, 但可以有不一致的 g.sched
 	_g_.m.locks++
 
-	// Entersyscall must not call any function that might split/grow the stack.
-	// (See details in comment above.)
-	// Catch calls that might, by replacing the stack guard with something that
-	// will trip any stack check and leaving a flag to tell newstack to die.
+    // Entersyscall 不得调用任何可能 split/grow stack 的函数.
+    // 通过将 stackguad0 设置为 stackPreempt 可以触发 stack 检查, 并设置 throwsplit 为 true 让
+    // newstack 函数抛出异常, 从而捕获可能的调用.
 	_g_.stackguard0 = stackPreempt
-	_g_.throwsplit = true
+	_g_.throwsplit = true // 此标志会导致 newstack 抛出异常.
 
-	// 保存执行现场
-	save(pc, sp)
+	// Leave SP around for GC and traceback.
+	// 保存当前 g 的 pc 和 sp, 之前分析过此函数
+	save(pc, sp) 
 	_g_.syscallsp = sp
 	_g_.syscallpc = pc
-	casgstatus(_g_, _Grunning, _Gsyscall) // 状态切换, _Gsyscall
-	// sp 合法性检查
+	
+	// g 的状态切换到 _Gsyscall
+	casgstatus(_g_, _Grunning, _Gsyscall) 
 	if _g_.syscallsp < _g_.stack.lo || _g_.stack.hi < _g_.syscallsp {
 		systemstack(func() {
 			print("entersyscall inconsistent ", hex(_g_.syscallsp), " [", hex(_g_.stack.lo), ",", hex(_g_.stack.hi), "]\n")
 			throw("entersyscall")
 		})
 	}
-
+    
+    // 追踪
 	if trace.enabled {
 		systemstack(traceGoSysCall)
-		// systemstack itself clobbers g.sched.{pc,sp} and we might
-		// need them later when the G is genuinely blocked in a
-		// syscall
 		save(pc, sp)
 	}
-
+    
+    // 需要等待监控
 	if atomic.Load(&sched.sysmonwait) != 0 {
 		systemstack(entersyscall_sysmon)
 		save(pc, sp)
 	}
 
+    // p 设置了安全检查函数
 	if _g_.m.p.ptr().runSafePointFn != 0 {
-		// runSafePointFn may stack split if run on this stack
+		// 如果在此堆栈上运行 runSafePointFn 可能将 stack 拆分
 		systemstack(runSafePointFn)
 		save(pc, sp)
 	}
 
-    // 保存 syscalltick, 同时将 g.oldp 设置为当前的 p, g.p 置空.
-    // p 和 m 解绑
-	_g_.m.syscalltick = _g_.m.p.ptr().syscalltick
+	_g_.m.syscalltick = _g_.m.p.ptr().syscalltick // 将 m 和 p 的 syscalltick 设置一致
 	_g_.sysblocktraced = true
+	
+	// 解除 m, p 之间的绑定关系
+	// 注意: 将 p 设置到了 m 的 oldp 上.
 	pp := _g_.m.p.ptr()
 	pp.m = 0
-	_g_.m.oldp.set(pp)
+	_g_.m.oldp.set(pp) 
 	_g_.m.p = 0
-	atomic.Store(&pp.status, _Psyscall) // 切换 P 的状态
+	
+	// 设置 p 的状态
+	atomic.Store(&pp.status, _Psyscall)
+	
+	// 需要等待 gc 
 	if sched.gcwaiting != 0 {
 		systemstack(entersyscall_gcwait)
 		save(pc, sp)
 	}
 
+    // 减少 m.locks 的值, 解除禁止抢占
 	_g_.m.locks--
 }
-
 ```
 
+有几个问题:
+
+- 有 sysmon 监控线程来抢占剥夺, 为什么这里还需要解除 m 和 p 之间的绑定关系? 原因在于这里主动解除 m 和 p 的绑定关系之
+后, sysmon 线程就不需要加锁或cas操作来修改 m.p 成员从而解除 m 和 p 直接的关系.
+
+- 为什么要记录工作线程进入系统调用前的所绑定的 p? 因为记录下来可以让工作线程从系统调用返回之后快速找到一个可能可用的 p,
+而不需要加锁从 sched 的 pidle 全局列表中去寻找空闲的 p
+
+
+exitsyscall 函数:
+
+```cgo
+//go:nosplit
+//go:nowritebarrierrec
+//go:linkname exitsyscall
+func exitsyscall() {
+	_g_ := getg()
+
+	_g_.m.locks++ 
+	if getcallersp() > _g_.syscallsp {
+		throw("exitsyscall: syscall frame is no longer valid")
+	}
+
+	_g_.waitsince = 0
+	oldp := _g_.m.oldp.ptr() // 进入系统调用前所绑定的 p
+	_g_.m.oldp = 0
+	
+	// 当前的 m 可以成功绑定到 oldp 或 sched.pilde 当中的 p
+	if exitsyscallfast(oldp) {
+		if trace.enabled {
+			if oldp != _g_.m.p.ptr() || _g_.m.syscalltick != _g_.m.p.ptr().syscalltick {
+				systemstack(traceGoStart)
+			}
+		}
+		// 增加 syscalltick 计数. sysmon 线程依据它判断是否是同一次系统调用
+		_g_.m.p.ptr().syscalltick++
+		casgstatus(_g_, _Gsyscall, _Grunning) // 切换 g 的状态
+
+		_g_.syscallsp = 0
+		_g_.m.locks-- // 解除禁止抢占
+		
+		// 如果当前 g 处于抢占当中, 设置 stackguard0 的值
+		if _g_.preempt {
+			// 恢复抢占请求, 以防我们在 newstack 中清除它
+			_g_.stackguard0 = stackPreempt
+		} else {
+		    // 恢复正常的 stackguard0, 因为在进入系统调用前, 破坏了该值
+			_g_.stackguard0 = _g_.stack.lo + _StackGuard
+		}
+		_g_.throwsplit = false  // 解除不允许 stack 分裂
+
+		if sched.disable.user && !schedEnabled(_g_) {
+			// Scheduling of this goroutine is disabled.
+			Gosched()
+		}
+
+		return
+	}
+    
+    // 当前没有空闲的 p 来绑定当前的 m
+	_g_.sysexitticks = 0
+	if trace.enabled {
+		// Wait till traceGoSysBlock event is emitted.
+		// This ensures consistency of the trace (the goroutine is started after it is blocked).
+		for oldp != nil && oldp.syscalltick == _g_.m.syscalltick {
+			osyield()
+		}
+		// We can't trace syscall exit right now because we don't have a P.
+		// Tracing code can invoke write barriers that cannot run without a P.
+		// So instead we remember the syscall exit time and emit the event
+		// in execute when we have a P.
+		_g_.sysexitticks = cputicks()
+	}
+
+	_g_.m.locks-- // 解除抢占
+
+    // 切换到 g0, 调用 exitsyscall0
+    // 将 gp 状态设置为 _Grunnable
+    // 解除 gp 与 m 的绑定关系
+    // 将 gp 放入到全局队列当中, 休眠当前的 m, 在 m 唤醒之后开启新一轮的调度
+	mcall(exitsyscall0)
+
+	// 调度程序返回, 所以我们现在可以运行了.
+    // 删除我们在系统调用期间留给垃圾收集器的 syscallsp 信息. 必须等到现在, 因为在 gosched 返回之前, 不能确定垃圾
+    // 收集器没有运行.
+	_g_.syscallsp = 0
+	_g_.m.p.ptr().syscalltick++
+	_g_.throwsplit = false
+}
+```
+
+
+```cgo
+//go:nosplit
+func exitsyscallfast(oldp *p) bool {
+	_g_ := getg()
+
+	// Freezetheworld sets stopwait but does not retake P's.
+	if sched.stopwait == freezeStopWait {
+		return false
+	}
+
+    // 尝试重新绑定 oldp
+	if oldp != nil && oldp.status == _Psyscall && atomic.Cas(&oldp.status, _Psyscall, _Pidle) {
+		wirep(oldp) // 当前 g 与 oldp 绑定
+		exitsyscallfast_reacquired() // 增加 p.syscalltick 计数
+		return true
+	}
+
+    // 尝试获取其他的空闲的 p
+	if sched.pidle != 0 {
+		var ok bool
+		systemstack(func() {
+		    // 从 sched.pidle 当中成功获取的 p, 并且绑定到当前的 m
+			ok = exitsyscallfast_pidle()
+			if ok && trace.enabled {
+				if oldp != nil {
+					// Wait till traceGoSysBlock event is emitted.
+					// This ensures consistency of the trace (the goroutine is started after it is blocked).
+					for oldp.syscalltick == _g_.m.syscalltick {
+						osyield()
+					}
+				}
+				traceGoSysExit(0)
+			}
+		})
+		if ok {
+			return true
+		}
+	}
+	
+	return false
+}
+```
+
+
+当没有空闲的 p 可供当前 m 进行绑定, 则需要切换到 g0 上, 执行 exitsyscall0 函数:
+
+```cgo
+//go:nowritebarrierrec
+func exitsyscall0(gp *g) {
+	_g_ := getg() // 当前就是 g0
+
+	casgstatus(gp, _Gsyscall, _Grunnable) // 切换 gp 的状态
+	dropg() // 将 gp 与 m 解绑
+	
+	lock(&sched.lock)
+	var _p_ *p
+	
+	// 当前 g0 是否可以被调度, 返回值是 true
+	if schedEnabled(_g_) {
+		_p_ = pidleget() // 尝试从 sched.pidle 当中获取 p
+	}
+	
+	if _p_ == nil {
+		// 仍然没有获取到 p, 只能将 gp 放入全局队列
+		globrunqput(gp)
+	} else if atomic.Load(&sched.sysmonwait) != 0 {
+		// 当前处于 sysmon 线程等待, 则需要唤醒 sysmon
+		atomic.Store(&sched.sysmonwait, 0)
+		notewakeup(&sched.sysmonnote)
+	}
+	unlock(&sched.lock)
+	if _p_ != nil {
+	    // 获取到了 p, 则将 p 与 m 绑定, 并且去执行当前的 gp 
+		acquirep(_p_)
+		execute(gp, false) // Never returns.
+	}
+	
+	if _g_.m.lockedg != 0 {
+		// 虽然没有获取的 p, 但是当前 m 锁定在 g (g0) 上.
+		// 休眠当前的 m, 等到唤醒时, 则与新的 p 进行了绑定, 则可以重新执行 gp
+		// 疑问: 这里 gp 不会被其他 m 调度执行吗?
+		stoplockedm()
+		execute(gp, false) // Never returns.
+	}
+	
+	// 比较悲催, 只能休眠当前的 m, 等到唤醒之后, 则与新的 p 绑定, 再次进入调度
+	// 注: 在这里 gp 已经放入全局队列, 可能已经被执行了.
+	stopm()
+	schedule() // Never returns.
+}
+```
 
 #### 常用的函数
 
 ```cgo
 wakep() // 在 sched.npidle >0 && sched.nmspinning == 0 的状况下启动一个自旋的 M, 也就是唤醒一个 P
+
+wirep(p) // 将当前的 m 与 p 绑定
 
 dropg() // 解除 curg 和 m 的绑定关系
 
