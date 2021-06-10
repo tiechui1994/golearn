@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"html"
 	"io"
 	"log"
 	"mime/multipart"
@@ -315,7 +316,141 @@ func LoginParams() (clientid, token, publickey string, err error) {
 	return clientid, token, publickey, errors.New("api change update")
 }
 
-// project
+//===================================== user  =====================================
+type Role struct {
+	ID             string   `json:"_id"`
+	OrganizationId string   `json:"_organizationId"`
+	Level          int      `json:"level"`
+	Permissions    []string `json:"-"`
+}
+
+func Roles() (list []Role, err error) {
+	ts := time.Now().UnixNano() / 1e6
+	u := www + fmt.Sprintf("/api/v2/roles?type=organization&_=%v", ts)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return list, err
+	}
+
+	var result struct {
+		Result struct {
+			Roles []Role `json:"roles"`
+		} `json:"result"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return list, err
+	}
+
+	return result.Result.Roles, nil
+}
+
+type Org struct {
+	OrganizationId string `json:"organizationId"`
+	DriveId        string `json:"driveId"`
+	AppId          string `json:"_appId"`
+	IsPersonal     bool   `json:"isPersonal"`
+	IsPublic       bool   `json:"isPublic"`
+	Name           string `json:"name"`
+	TotalSize      int64  `json:"totalSize"`
+	UsedSize       int64  `json:"usedSize"`
+}
+
+func Orgs(orgid string) (org Org, err error) {
+	u := pan + fmt.Sprintf("/pan/api/orgs/%v?orgId=%v", orgid, orgid)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return org, err
+	}
+
+	var result struct {
+		Data Org `json:"data"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return org, err
+	}
+
+	return result.Data, nil
+}
+
+type User struct {
+	Email          string `json:"email"`
+	Name           string `json:"name"`
+	Phone          string `json:"phone"`
+	PhoneForLogin  string `json:"phoneForLogin"`
+	ID             string `json:"_id"`
+	OrganizationId string `json:"_organizationId"`
+	Roleid         string `json:"roleid"`
+}
+
+func GetByUser(orgid string) (user User, err error) {
+	u := pan + fmt.Sprintf("/pan/api/orgs/%v/members/getByUser?orgId=%v", orgid, orgid)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return user, err
+	}
+
+	var result struct {
+		RoleId          string `json:"_roleId"`
+		BoundToObjectId string `json:"_boundToObjectId"`
+		UserInfo        User   `json:"userInfo"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return user, err
+	}
+
+	result.UserInfo.OrganizationId = result.BoundToObjectId
+	result.UserInfo.Roleid = result.RoleId
+
+	return result.UserInfo, nil
+}
+
+type MeConfig struct {
+	IsAdmin bool   `json:"isAdmin"`
+	OrgId   string `json:"tenantId"`
+	User    struct {
+		ID     string `json:"id"`
+		Email  string `json:"email"`
+		Name   string `json:"name"`
+		OpenId string `json:"openId"`
+	}
+}
+
+func Batches() (me MeConfig, err error) {
+	u := www + "/uiless/api/sdk/batch?scope[]=me"
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+	data, err := GET(u, header)
+	if err != nil {
+		return me, err
+	}
+	var result struct {
+		Result struct {
+			Me MeConfig `json:"me"`
+		} `json:"result"`
+	}
+
+	err = json.Unmarshal(data, &result)
+	return result.Result.Me, err
+}
+
+//===================================== project  =====================================
 type UploadInfo struct {
 	FileKey      string `json:"fileKey"`
 	FileName     string `json:"fileTame"`
@@ -323,12 +458,13 @@ type UploadInfo struct {
 	FileSize     int    `json:"fileSize"`
 	FileCategory string `json:"fileCategory"`
 	Source       string `json:"source"`
+	DownloadUrl  string `json:"downloadUrl"`
 }
 
-func Upload(token, path string) (url string, err error) {
+func UploadProjectFile(token, path string) (upload UploadInfo, err error) {
 	fd, err := os.Open(path)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
 	info, _ := fd.Stat()
@@ -359,31 +495,21 @@ func Upload(token, path string) (url string, err error) {
 
 	data, err := POST(u, &body, header)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
-	var result struct {
-		ChunkSize   int    `json:"chunkSize"`
-		Chunks      int    `json:"chunks"`
-		FileKey     string `json:"fileKey"`
-		FileName    string `json:"fileName"`
-		FileSize    int    `json:"fileSize"`
-		Storage     string `json:"storage"`
-		DownloadUrl string `json:"downloadUrl"`
-	}
-
-	err = json.Unmarshal(data, &result)
+	err = json.Unmarshal(data, &upload)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
-	return result.DownloadUrl, err
+	return upload, err
 }
 
-func UploadChunk(token, path string) (url string, err error) {
+func UploadProjectFileChunk(token, path string) (upload UploadInfo, err error) {
 	fd, err := os.Open(path)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
 	info, _ := fd.Stat()
@@ -398,24 +524,20 @@ func UploadChunk(token, path string) (url string, err error) {
 	fmt.Println(bin)
 	data, err := POST(u, bytes.NewBufferString(bin), header)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
 	fmt.Println("chunk", string(data), err)
 
 	var result struct {
-		ChunkSize   int    `json:"chunkSize"`
-		Chunks      int    `json:"chunks"`
-		FileKey     string `json:"fileKey"`
-		FileName    string `json:"fileName"`
-		FileSize    int    `json:"fileSize"`
-		Storage     string `json:"storage"`
-		DownloadUrl string `json:"downloadUrl"`
+		UploadInfo
+		ChunkSize int `json:"chunkSize"`
+		Chunks    int `json:"chunks"`
 	}
 
 	err = json.Unmarshal(data, &result)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
 	var wg sync.WaitGroup
@@ -453,15 +575,16 @@ func UploadChunk(token, path string) (url string, err error) {
 	fmt.Println("merge", string(data), err)
 
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
 	err = json.Unmarshal(data, &result)
 	if err != nil {
-		return url, err
+		return upload, err
 	}
 
-	return result.DownloadUrl, err
+	upload = result.UploadInfo
+	return upload, err
 }
 
 type Project struct {
@@ -471,6 +594,7 @@ type Project struct {
 	RootCollectionId string `json:"_rootCollectionId"`
 }
 
+// 注: 这个 orgid 比较特殊, 它是一个特殊的 orgid
 func Projects(orgid string) (list []Project, err error) {
 	ts := time.Now().UnixNano() / 1e6
 	u := www + fmt.Sprintf("/api/v2/projects?_organizationId=%v&selectBy=joined&orderBy=name&pageToken=&pageSize=20&_=%v",
@@ -496,6 +620,11 @@ func Projects(orgid string) (list []Project, err error) {
 	return result.Result, nil
 }
 
+const (
+	Object_Collection = "collection"
+	Object_Work       = "work"
+)
+
 type Collection struct {
 	ID              string `json:"_id"`
 	Pinyin          string `json:"pinyin"`
@@ -505,15 +634,19 @@ type Collection struct {
 	ObjectType      string `json:"objectType"`
 	CollectionCount int    `json:"collectionCount"`
 	WorkCount       int    `json:"workCount"`
+	Updated         string `json:"updated"`
 }
 
 type Work struct {
+	ID          string `json:"_id"`
 	FileKey     string `json:"fileKey"`
 	FileName    string `json:"fileName"`
+	FileSize    int    `json:"fileSize"`
 	DownloadUrl string `json:"downloadUrl"`
 	ProjectId   string `json:"_projectId"`
 	ParentId    string `json:"_parentId"`
 	ObjectType  string `json:"objectType"`
+	Updated     string `json:"updated"`
 }
 
 func Collections(rootcollid, projectid string) (list []Collection, err error) {
@@ -629,7 +762,17 @@ func CreateCollection(parentid, projectid, name string) error {
 	return err
 }
 
-func FindDir(dir, orgid string) (collection Collection, err error) {
+func Archive(nodeid string) (err error) {
+	body := `{}`
+	u := www + "api/works/" + nodeid + "/archive"
+	header := map[string]string{
+		"content-type": "application/json; charset=utf-8",
+	}
+	_, err = POST(u, bytes.NewBufferString(body), header)
+	return err
+}
+
+func FindProjectDir(dir, orgid string) (collection Collection, err error) {
 	dir = strings.TrimSpace(dir)
 	if !strings.HasPrefix(dir, "/") {
 		return collection, errors.New("invalid path")
@@ -681,7 +824,7 @@ func FindDir(dir, orgid string) (collection Collection, err error) {
 	return
 }
 
-func FindFile(path, orgid string) (work Work, err error) {
+func FindProjectFile(path, orgid string) (work Work, err error) {
 	path = strings.TrimSpace(path)
 	if !strings.HasPrefix(path, "/") {
 		return work, errors.New("invalid path")
@@ -689,7 +832,7 @@ func FindFile(path, orgid string) (work Work, err error) {
 
 	dir, name := filepath.Split(path)
 	dir = dir[:len(dir)-1]
-	c, err := FindDir(dir, orgid)
+	c, err := FindProjectDir(dir, orgid)
 	if err != nil {
 		return work, err
 	}
@@ -708,70 +851,38 @@ func FindFile(path, orgid string) (work Work, err error) {
 	return work, errors.New("not exist file:" + name)
 }
 
-type MeConfig struct {
-	IsAdmin bool   `json:"isAdmin"`
-	OrgId   string `json:"tenantId"`
-	User    struct {
-		ID     string `json:"id"`
-		Email  string `json:"email"`
-		Name   string `json:"name"`
-		OpenId string `json:"openId"`
-	}
-}
-
-func Batches() (me MeConfig, err error) {
-	u := www + "/uiless/api/sdk/batch?scope[]=me"
+func GetProjectToken(projectid, rootcollid string) (token string, err error) {
+	u := www + "/project/" + projectid + "/works/" + rootcollid
 	header := map[string]string{
-		"cookie":       cookies,
-		"content-type": "application/json; charset=utf-8",
+		"accept": "text/html",
 	}
 	data, err := GET(u, header)
 	if err != nil {
-		return me, err
-	}
-	var result struct {
-		Result struct {
-			Me MeConfig `json:"me"`
-		} `json:"result"`
+		return token, err
 	}
 
-	err = json.Unmarshal(data, &result)
-	return result.Result.Me, err
+	str := strings.Replace(string(data), "\n", "", -1)
+	reconfig := regexp.MustCompile(`<span\s+id="teambition-config".*?>(.*)</span>`)
+	raw := reconfig.FindAllStringSubmatch(str, 1)
+	if len(raw) == 1 && len(raw[0]) == 2 {
+		var result struct {
+			UserInfo struct {
+				StrikerAuth string `json:"strikerAuth"`
+			} `json:"userInfo"`
+		}
+		config, _ := url.QueryUnescape(html.UnescapeString(raw[0][1]))
+		err = json.Unmarshal([]byte(config), &result)
+		if err != nil {
+			return token, err
+		}
+
+		return result.UserInfo.StrikerAuth[7:], nil
+	}
+
+	return token, errors.New("no tokens")
 }
 
-// netdisk
-
-type Role struct {
-	ID             string   `json:"_id"`
-	OrganizationId string   `json:"_organizationId"`
-	Level          int      `json:"level"`
-	Permissions    []string `json:"-"`
-}
-
-func Roles() (list []Role, err error) {
-	ts := time.Now().UnixNano() / 1e6
-	u := www + fmt.Sprintf("/api/v2/roles?type=organization&_=%v", ts)
-	header := map[string]string{
-		"cookie":       cookies,
-		"content-type": "application/json; charset=utf-8",
-	}
-	data, err := GET(u, header)
-	if err != nil {
-		return list, err
-	}
-
-	var result struct {
-		Result struct {
-			Roles []Role `json:"roles"`
-		} `json:"result"`
-	}
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return list, err
-	}
-
-	return result.Result.Roles, nil
-}
+//===================================== pan  =====================================
 
 // 文件上传: CreateFolder -> CreateFile -> UploadUrl -> UploadPanFile
 type Node struct {
@@ -918,7 +1029,7 @@ type PanFile struct {
 	CcpParentFileId string   `json:"ccpParentFileId"` // ParentID
 }
 
-func CreateFile(orgid, parentid, spaceid, driverid, path string) (files []PanFile, err error) {
+func CreatePanFile(orgid, parentid, spaceid, driverid, path string) (files []PanFile, err error) {
 	type file struct {
 		Name        string `json:"name"`
 		ContentType string `json:"contentType"`
@@ -981,7 +1092,7 @@ type PanUpload struct {
 	} `json:"partInfoList"`
 }
 
-func UploadUrl(orgid string, panfile PanFile) (upload PanUpload, err error) {
+func CreatePanUpload(orgid string, panfile PanFile) (upload PanUpload, err error) {
 	var body struct {
 		DriveId         string `json:"driveId"`
 		OrgId           string `json:"orgId"`
@@ -1061,76 +1172,6 @@ func UploadPanFile(orgid string, upload PanUpload, path string) error {
 
 	_, err = POST(u, bytes.NewBuffer(bin), header)
 	return err
-}
-
-type Org struct {
-	OrganizationId string `json:"organizationId"`
-	DriveId        string `json:"driveId"`
-	AppId          string `json:"_appId"`
-	IsPersonal     bool   `json:"isPersonal"`
-	IsPublic       bool   `json:"isPublic"`
-	Name           string `json:"name"`
-	TotalSize      int64  `json:"totalSize"`
-	UsedSize       int64  `json:"usedSize"`
-}
-
-func Orgs(orgid string) (org Org, err error) {
-	u := pan + fmt.Sprintf("/pan/api/orgs/%v?orgId=%v", orgid, orgid)
-	header := map[string]string{
-		"cookie":       cookies,
-		"content-type": "application/json; charset=utf-8",
-	}
-	data, err := GET(u, header)
-	if err != nil {
-		return org, err
-	}
-
-	var result struct {
-		Data Org `json:"data"`
-	}
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return org, err
-	}
-
-	return result.Data, nil
-}
-
-type User struct {
-	Email          string `json:"email"`
-	Name           string `json:"name"`
-	Phone          string `json:"phone"`
-	PhoneForLogin  string `json:"phoneForLogin"`
-	ID             string `json:"_id"`
-	OrganizationId string `json:"_organizationId"`
-	Roleid         string `json:"roleid"`
-}
-
-func GetByUser(orgid string) (user User, err error) {
-	u := pan + fmt.Sprintf("/pan/api/orgs/%v/members/getByUser?orgId=%v", orgid, orgid)
-	header := map[string]string{
-		"cookie":       cookies,
-		"content-type": "application/json; charset=utf-8",
-	}
-	data, err := GET(u, header)
-	if err != nil {
-		return user, err
-	}
-
-	var result struct {
-		RoleId          string `json:"_roleId"`
-		BoundToObjectId string `json:"_boundToObjectId"`
-		UserInfo        User   `json:"userInfo"`
-	}
-	err = json.Unmarshal(data, &result)
-	if err != nil {
-		return user, err
-	}
-
-	result.UserInfo.OrganizationId = result.BoundToObjectId
-	result.UserInfo.Roleid = result.RoleId
-
-	return result.UserInfo, nil
 }
 
 type Space struct {
@@ -1215,7 +1256,254 @@ func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
 	return
 }
 
-func PanFindDir(dir string) (node Node, err error) {
+type FileSystem interface {
+	Init() error
+	DownloadUrl(filepath string) (string, error)
+	UploadFile(src, dst string) error
+	UploadDir(src, dst string) error
+}
+
+const (
+	Node_Dir  = 1
+	Node_File = 2
+)
+
+type FileNode struct {
+	Type     int                  `json:"type"`
+	Name     string               `json:"name"`
+	NodeId   string               `json:"nodeid"`
+	ParentId string               `json:"parentid"`
+	Updated  string               `json:"updated"`
+	Child    map[string]*FileNode `json:"child,omitempty"`
+	Url      string               `json:"url,omitempty"`
+	Size     int                  `json:"size,omitempty"`
+	Private  interface{}          `json:"private,omitempty"`
+}
+
+type ProjectFs struct {
+	Name  string
+	Orgid string
+
+	projectid  string
+	rootcollid string
+	token      string
+	fs         map[string]*FileNode
+}
+
+func (p *ProjectFs) Init() (err error) {
+	if p.Name == "" || p.Orgid == "" {
+		return
+	}
+
+	list, err := Projects(p.Orgid)
+	if err != nil {
+		fmt.Println(err, p.Orgid)
+		return err
+	}
+
+	for _, item := range list {
+		if item.Name == p.Name {
+			p.projectid = item.ID
+			p.rootcollid = item.RootCollectionId
+		}
+	}
+
+	if p.rootcollid == "" && p.projectid == "" {
+		return errors.New("invalid name")
+	}
+
+	key := filepath.Join(ConfDir, p.Name+"_"+p.projectid+".json")
+
+	p.token, err = GetProjectToken(p.projectid, p.rootcollid)
+	if err != nil {
+		return
+	}
+
+	var syncfs func(rootid string, root map[string]*FileNode, private interface{})
+	syncfs = func(rootid string, root map[string]*FileNode, private interface{}) {
+		colls, err := Collections(rootid, p.projectid)
+		if err == nil {
+			for _, coll := range colls {
+				node := &FileNode{
+					Type:     Node_Dir,
+					Name:     coll.Title,
+					NodeId:   coll.ID,
+					ParentId: coll.ParentId,
+					Updated:  coll.Updated,
+					Child:    make(map[string]*FileNode),
+					Private:  private,
+				}
+				syncfs(node.NodeId, node.Child, private)
+				root[coll.Title] = node
+			}
+		}
+
+		works, err := Works(rootid, p.projectid)
+		if err == nil {
+			for _, work := range works {
+				root[work.FileName] = &FileNode{
+					Type:     Node_File,
+					Name:     work.FileName,
+					NodeId:   work.ID,
+					ParentId: work.ParentId,
+					Url:      work.DownloadUrl,
+					Size:     work.FileSize,
+					Updated:  work.Updated,
+					Private:  private,
+				}
+			}
+		}
+	}
+
+	p.fs = make(map[string]*FileNode)
+	if ReadFile(key, &p.fs) == nil {
+		return nil
+	}
+	syncfs(p.rootcollid, p.fs, nil)
+	return WriteFile(key, p.fs)
+}
+
+func (p *ProjectFs) find(path string) (node *FileNode, prefix string, exist bool, err error) {
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, "/") {
+		return node, prefix, exist, errors.New("invalid path")
+	}
+	if strings.HasSuffix(path, "/") {
+		path = path[:len(path)-1]
+	}
+
+	if strings.HasPrefix(path, "/"+p.Name) {
+		path = path[len(p.Name)+1:]
+	}
+
+	path = path[1:]
+	tokens := strings.Split(path, "/")
+	root := p.fs
+
+	for idx, token := range tokens {
+		if val, ok := root[token]; ok {
+			node = val
+			root = val.Child
+		} else {
+			exist = false
+			return node, "/" + strings.Join(tokens[:idx], "/"), exist, nil
+		}
+
+		if idx == len(tokens)-1 {
+			exist = true
+			return node, "/" + strings.Join(tokens, "/"), exist, nil
+		}
+	}
+	return
+}
+
+func (p *ProjectFs) mkdir(path string) (node *FileNode, err error) {
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, "/") {
+		return node, errors.New("invalid path")
+	}
+	if strings.HasSuffix(path, "/") {
+		path = path[:len(path)-1]
+	}
+
+	if strings.HasPrefix(path, "/"+p.Name) {
+		path = path[len(p.Name)+1:]
+	}
+
+	accnode, prefix, exist, err := p.find(path)
+	if err != nil {
+		return node, err
+	}
+
+	if exist {
+		return accnode, nil
+	}
+
+	root := accnode
+	path = path[len(prefix)+1:]
+	tokens := strings.Split(path, "/")
+	for _, token := range tokens {
+		err = CreateCollection(root.NodeId, p.projectid, token)
+		if err != nil {
+			return node, err
+		}
+		list, err := Collections(root.NodeId, p.projectid)
+		if err != nil {
+			return node, err
+		}
+
+		if root.Child == nil {
+			root.Child = make(map[string]*FileNode)
+		}
+		for _, coll := range list {
+			if coll.Title == token {
+				root.Child[coll.Title] = &FileNode{
+					Type:     Node_Dir,
+					Name:     token,
+					ParentId: coll.ParentId,
+					NodeId:   coll.ID,
+					Updated:  coll.Updated,
+				}
+				root = root.Child[coll.Title]
+				break
+			}
+		}
+	}
+
+	key := filepath.Join(ConfDir, p.Name+"_"+p.projectid+".json")
+	return root, WriteFile(key, p.fs)
+}
+
+func (p *ProjectFs) UploadFile(src, dst string) error {
+	if !strings.HasPrefix(dst, "/") {
+		return errors.New("invalid dst")
+	}
+
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	node, _, exist, err := p.find(dst)
+	if err != nil {
+		return err
+	}
+
+	if exist {
+		cur, _, exist, err := p.find(filepath.Join(dst, info.Name()))
+		if exist && cur.Size == int(info.Size()) {
+			return nil
+		}
+
+		if exist {
+			err = Archive(node.NodeId)
+			if err != nil {
+				return err
+			}
+		}
+
+	} else {
+		node, err = p.mkdir(dst)
+		if err != nil {
+			return err
+		}
+	}
+
+	upload, err := UploadProjectFile(p.token, src)
+	if err != nil {
+		return err
+	}
+
+	return CreateWork(node.NodeId, upload)
+}
+func (p *ProjectFs) UploadDir(src, dst string) error {
+	return nil
+}
+func (p *ProjectFs) DownloadUrl(filepath string) (string, error) {
+	return "", nil
+}
+
+func FindPanDir(dir string) (node Node, err error) {
 	dir = strings.TrimSpace(dir)
 	if !strings.HasPrefix(dir, "/") {
 		return node, errors.New("invalid path")
@@ -1354,38 +1642,41 @@ func main() {
 	AutoLogin()
 	UserAgent = agents[0]
 
-	_, org, spaces, err := GetCacheData()
+	_, _, _, err := GetCacheData()
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	dir := "/packages"
-	log.Println("Making Dir", dir)
-	nodeid, err := PanMkdirP(dir)
-	if err != nil {
-		log.Println("PanMkdirP", err)
-		return
-	}
-	log.Println("Success")
+	p := ProjectFs{Name: "data", Orgid: "5f6707e0f0aab521364694ee"}
+	p.Init()
+	fmt.Println(p.UploadFile("/home/user/Desktop/hello.go", "/data/demo/a/b"))
 
-
-	var files = []string{"/home/user/Downloads/gz/PgyVPN_Ubuntu_2.2.1_X86_64.deb"}
-	for _, file := range files {
-		log.Println("Starting CreateFile:", file)
-		files, err := CreateFile(org.OrganizationId, nodeid, spaces[0].SpaceId, org.DriveId, file)
-		if err == nil {
-			log.Println("Starting UploadUrl ...")
-			upload, err := UploadUrl(org.OrganizationId, files[0])
-			if err == nil {
-				log.Println("Starting UploadPanFile ...")
-				UploadPanFile(org.OrganizationId, upload, file)
-				log.Println("Success")
-			}
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	time.Sleep(5 * time.Second)
+	//dir := "/packages"
+	//log.Println("Making Dir", dir)
+	//nodeid, err := PanMkdirP(dir)
+	//if err != nil {
+	//	log.Println("PanMkdirP", err)
+	//	return
+	//}
+	//log.Println("Success")
+	//
+	//var files = []string{"/home/user/Downloads/gz/PgyVPN_Ubuntu_2.2.1_X86_64.deb"}
+	//for _, file := range files {
+	//	log.Println("Starting CreateFile:", file)
+	//	files, err := CreatePanFile(org.OrganizationId, nodeid, spaces[0].SpaceId, org.DriveId, file)
+	//	if err == nil {
+	//		log.Println("Starting UploadUrl ...")
+	//		upload, err := CreatePanUpload(org.OrganizationId, files[0])
+	//		if err == nil {
+	//			log.Println("Starting UploadPanFile ...")
+	//			UploadPanFile(org.OrganizationId, upload, file)
+	//			log.Println("Success")
+	//		}
+	//	}
+	//
+	//	time.Sleep(500 * time.Millisecond)
+	//}
+	//
+	//time.Sleep(5 * time.Second)
 }
