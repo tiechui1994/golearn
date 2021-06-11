@@ -1610,9 +1610,10 @@ func (p *ProjectFs) UploadDir(srcdir, targetdir string) error {
 		for _, file := range files {
 			count++
 			wg.Add(1)
+			f := file
 			go func() {
 				defer wg.Done()
-				p.UploadFile(file, target)
+				p.UploadFile(f, target)
 			}()
 			if count == 5 {
 				wg.Wait()
@@ -1828,7 +1829,7 @@ func main() {
 
 	p := ProjectFs{Name: "data", Orgid: "5f6707e0f0aab521364694ee"}
 	fmt.Println(p.Init())
-	fmt.Println(p.DownloadUrl("/data/wx", "./"))
+	fmt.Println(p.UploadDir("/home/user/go/src/golearn/http","/wx"))
 
 	//dir := "/packages"
 	//log.Println("Making Dir", dir)
