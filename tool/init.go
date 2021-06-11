@@ -191,6 +191,34 @@ func GET(u string, header map[string]string) (raw json.RawMessage, err error) {
 	return request("GET", u, nil, header)
 }
 
+func File(u, method string, body io.Reader, header map[string]string, path string) (err error) {
+	fd, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+
+	request, _ := http.NewRequest(method, u, body)
+	if header != nil {
+		for k, v := range header {
+			request.Header.Set(k, v)
+		}
+	}
+	request.Header.Set("user-agent", UserAgent)
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	if response.StatusCode != 200 {
+		return CodeError(response.StatusCode)
+	}
+
+	buf := make([]byte, 8192)
+	_, err = io.CopyBuffer(fd, response.Body, buf)
+	return err
+}
+
 func WriteFile(filepath string, data interface{}) error {
 	fd, err := os.Create(filepath)
 	if err != nil {

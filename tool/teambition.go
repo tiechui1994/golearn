@@ -453,7 +453,7 @@ func Batches() (me MeConfig, err error) {
 //===================================== project  =====================================
 type UploadInfo struct {
 	FileKey      string `json:"fileKey"`
-	FileName     string `json:"fileTame"`
+	FileName     string `json:"fileName"`
 	FileType     string `json:"fileType"`
 	FileSize     int    `json:"fileSize"`
 	FileCategory string `json:"fileCategory"`
@@ -585,6 +585,66 @@ func UploadProjectFileChunk(token, path string) (upload UploadInfo, err error) {
 
 	upload = result.UploadInfo
 	return upload, err
+}
+
+func ArchiveProjectDir(token string, nodeid, projectid, name, targetdir string) (err error) {
+	u := www + fmt.Sprintf("/api/projects/%v/download-info?_collectionIds=%v&_workIds=&zipName=%v",
+		projectid, nodeid, name)
+	header := map[string]string{
+		"cookie":       cookies,
+		"content-type": "application/json; charset=utf-8",
+	}
+
+	data, err := GET(u, header)
+	if err != nil {
+		return err
+	}
+
+	type item struct {
+		Directories  []item   `json:"directories"`
+		DownloadUrls []string `json:"downloadUrls"`
+		Name         string   `json:"name"`
+	}
+	var result struct {
+		Directories  []item   `json:"directories"`
+		DownloadUrls []string `json:"downloadUrls"`
+		ZipName      string   `json:"zipName"`
+	}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		return err
+	}
+
+	value := url.Values{}
+	var dfs func(prefix string, it []item)
+	dfs = func(prefix string, it []item) {
+		for idx, item := range it {
+			key := prefix + fmt.Sprintf(`[%d][name]`, idx)
+			value.Set(key, item.Name)
+
+			keyprefix := prefix + fmt.Sprintf("[%d][directories]", idx)
+			dfs(keyprefix, item.Directories)
+
+			for _, val := range item.DownloadUrls {
+				key := prefix + fmt.Sprintf("[%d][downloadUrls][]", idx)
+				value.Set(key, val)
+			}
+		}
+
+	}
+
+	dfs("directories", result.Directories)
+	for _, val := range result.DownloadUrls {
+		key := "downloadUrls[]"
+		value.Set(key, val)
+	}
+	value.Set("zipName", result.ZipName)
+
+	u = "https://tcs.teambition.net/archive?Signature=" + token
+	header = map[string]string{
+		"content-type": "application/x-www-form-urlencoded",
+	}
+	return File(u, "POST", bytes.NewBufferString(value.Encode()), header, filepath.Join(targetdir, name+".zip"))
 }
 
 type Project struct {
@@ -1258,9 +1318,9 @@ func GetCacheData() (roles []Role, org Org, spaces []Space, err error) {
 
 type FileSystem interface {
 	Init() error
-	DownloadUrl(filepath string) (string, error)
-	UploadFile(src, dst string) error
-	UploadDir(src, dst string) error
+	DownloadUrl(srcpath, targetdir string) error
+	UploadFile(filepath, targetdir string) error
+	UploadDir(filepath, targetdir string) error
 }
 
 const (
@@ -1284,10 +1344,11 @@ type ProjectFs struct {
 	Name  string
 	Orgid string
 
+	mux        sync.Mutex
 	projectid  string
 	rootcollid string
 	token      string
-	fs         map[string]*FileNode
+	root       *FileNode
 }
 
 func (p *ProjectFs) Init() (err error) {
@@ -1312,62 +1373,27 @@ func (p *ProjectFs) Init() (err error) {
 		return errors.New("invalid name")
 	}
 
-	key := filepath.Join(ConfDir, p.Name+"_"+p.projectid+".json")
-
 	p.token, err = GetProjectToken(p.projectid, p.rootcollid)
 	if err != nil {
 		return
 	}
 
-	var syncfs func(rootid string, root map[string]*FileNode, private interface{})
-	syncfs = func(rootid string, root map[string]*FileNode, private interface{}) {
-		colls, err := Collections(rootid, p.projectid)
-		if err == nil {
-			for _, coll := range colls {
-				node := &FileNode{
-					Type:     Node_Dir,
-					Name:     coll.Title,
-					NodeId:   coll.ID,
-					ParentId: coll.ParentId,
-					Updated:  coll.Updated,
-					Child:    make(map[string]*FileNode),
-					Private:  private,
-				}
-				syncfs(node.NodeId, node.Child, private)
-				root[coll.Title] = node
-			}
-		}
-
-		works, err := Works(rootid, p.projectid)
-		if err == nil {
-			for _, work := range works {
-				root[work.FileName] = &FileNode{
-					Type:     Node_File,
-					Name:     work.FileName,
-					NodeId:   work.ID,
-					ParentId: work.ParentId,
-					Url:      work.DownloadUrl,
-					Size:     work.FileSize,
-					Updated:  work.Updated,
-					Private:  private,
-				}
-			}
-		}
+	p.root = &FileNode{
+		Type:   Node_Dir,
+		Name:   "/",
+		NodeId: p.rootcollid,
+		Child:  make(map[string]*FileNode),
 	}
-
-	p.fs = make(map[string]*FileNode)
-	if ReadFile(key, &p.fs) == nil {
-		return nil
-	}
-	syncfs(p.rootcollid, p.fs, nil)
-	return WriteFile(key, p.fs)
+	p.collections(p.root.NodeId, p.root.Child, nil)
+	return nil
 }
 
-func (p *ProjectFs) find(path string) (node *FileNode, prefix string, exist bool, err error) {
+func (p *ProjectFs) fixpath(path string) string {
 	path = strings.TrimSpace(path)
-	if !strings.HasPrefix(path, "/") {
-		return node, prefix, exist, errors.New("invalid path")
+	if path[0] != '/' {
+		return ""
 	}
+
 	if strings.HasSuffix(path, "/") {
 		path = path[:len(path)-1]
 	}
@@ -1376,52 +1402,122 @@ func (p *ProjectFs) find(path string) (node *FileNode, prefix string, exist bool
 		path = path[len(p.Name)+1:]
 	}
 
-	path = path[1:]
-	tokens := strings.Split(path, "/")
-	root := p.fs
+	return path
+}
+
+func (p *ProjectFs) collections(rootid string, root map[string]*FileNode, tokens []string, private ...interface{}) {
+	colls, err := Collections(rootid, p.projectid)
+	if err == nil {
+		for _, coll := range colls {
+			node := &FileNode{
+				Type:     Node_Dir,
+				Name:     coll.Title,
+				NodeId:   coll.ID,
+				ParentId: coll.ParentId,
+				Updated:  coll.Updated,
+				Child:    make(map[string]*FileNode),
+				Private:  private,
+			}
+			if len(tokens) > 0 && node.Name == tokens[0] {
+				p.collections(node.NodeId, node.Child, tokens[1:], private)
+			}
+			root[coll.Title] = node
+		}
+	}
+}
+
+func (p *ProjectFs) works(rootid string, root map[string]*FileNode, private ...interface{}) {
+	works, err := Works(rootid, p.projectid)
+	if err == nil {
+		for _, work := range works {
+			root[work.FileName] = &FileNode{
+				Type:     Node_File,
+				Name:     work.FileName,
+				NodeId:   work.ID,
+				ParentId: work.ParentId,
+				Url:      work.DownloadUrl,
+				Size:     work.FileSize,
+				Updated:  work.Updated,
+				Private:  private,
+			}
+		}
+	}
+}
+
+func (p *ProjectFs) find(path string) (node *FileNode, prefix string, exist bool, err error) {
+	newpath := p.fixpath(path)
+	if newpath == "" {
+		return node, prefix, exist, errors.New("invalid path")
+	}
+
+	defer func() {
+		if err == nil && node != nil && node.Child == nil {
+			node.Child = make(map[string]*FileNode)
+		}
+	}()
+
+	tokens := strings.Split(newpath[1:], "/")
+	node = p.root
+	root := p.root.Child
 
 	for idx, token := range tokens {
 		if val, ok := root[token]; ok {
 			node = val
 			root = val.Child
-		} else {
-			exist = false
-			return node, "/" + strings.Join(tokens[:idx], "/"), exist, nil
+			if idx == len(tokens)-1 {
+				exist = true
+				return node, "/" + strings.Join(tokens, "/"), exist, nil
+			}
+			continue
 		}
 
-		if idx == len(tokens)-1 {
-			exist = true
-			return node, "/" + strings.Join(tokens, "/"), exist, nil
+		exist = false
+		if idx == 0 {
+			return node, "", exist, nil
 		}
+
+		return node, "/" + strings.Join(tokens[:idx], "/"), exist, nil
 	}
+
 	return
 }
 
 func (p *ProjectFs) mkdir(path string) (node *FileNode, err error) {
-	path = strings.TrimSpace(path)
-	if !strings.HasPrefix(path, "/") {
+	newpath := p.fixpath(path)
+	if newpath == "" {
 		return node, errors.New("invalid path")
 	}
-	if strings.HasSuffix(path, "/") {
-		path = path[:len(path)-1]
-	}
 
-	if strings.HasPrefix(path, "/"+p.Name) {
-		path = path[len(p.Name)+1:]
-	}
-
-	accnode, prefix, exist, err := p.find(path)
+	// query path
+	accnode, prefix, exist, err := p.find(newpath)
 	if err != nil {
 		return node, err
 	}
-
 	if exist {
+		p.works(accnode.NodeId, accnode.Child)
 		return accnode, nil
 	}
 
+	p.mux.Lock()
+	defer p.mux.Unlock()
+
+	// sync accnode
+	tokens := strings.Split(newpath[len(prefix)+1:], "/")
+	p.collections(accnode.NodeId, accnode.Child, tokens)
+
+	// query again
+	accnode, prefix, exist, err = p.find(newpath)
+	if err != nil {
+		return node, err
+	}
+	if exist {
+		p.works(accnode.NodeId, accnode.Child)
+		return accnode, nil
+	}
+
+	// new path
 	root := accnode
-	path = path[len(prefix)+1:]
-	tokens := strings.Split(path, "/")
+	tokens = strings.Split(newpath[len(prefix)+1:], "/")
 	for _, token := range tokens {
 		err = CreateCollection(root.NodeId, p.projectid, token)
 		if err != nil {
@@ -1450,57 +1546,139 @@ func (p *ProjectFs) mkdir(path string) (node *FileNode, err error) {
 		}
 	}
 
-	key := filepath.Join(ConfDir, p.Name+"_"+p.projectid+".json")
-	return root, WriteFile(key, p.fs)
+	return root, nil
 }
 
-func (p *ProjectFs) UploadFile(src, dst string) error {
-	if !strings.HasPrefix(dst, "/") {
+func (p *ProjectFs) UploadFile(filepath, targetdir string) error {
+	if targetdir[0] != '/' {
 		return errors.New("invalid dst")
 	}
 
-	info, err := os.Stat(src)
+	info, err := os.Stat(filepath)
 	if err != nil {
 		return err
 	}
 
-	node, _, exist, err := p.find(dst)
+	node, err := p.mkdir(targetdir)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("node", node)
+
+	filenode, exist := node.Child[info.Name()]
+	if exist && filenode.Size == int(info.Size()) {
+		return nil
+	}
 	if exist {
-		cur, _, exist, err := p.find(filepath.Join(dst, info.Name()))
-		if exist && cur.Size == int(info.Size()) {
-			return nil
-		}
-
-		if exist {
-			err = Archive(node.NodeId)
-			if err != nil {
-				return err
-			}
-		}
-
-	} else {
-		node, err = p.mkdir(dst)
+		err = Archive(filenode.NodeId)
 		if err != nil {
 			return err
 		}
 	}
 
-	upload, err := UploadProjectFile(p.token, src)
+	upload, err := UploadProjectFile(p.token, filepath)
 	if err != nil {
 		return err
 	}
 
 	return CreateWork(node.NodeId, upload)
 }
-func (p *ProjectFs) UploadDir(src, dst string) error {
+func (p *ProjectFs) UploadDir(srcdir, targetdir string) error {
+	_, err := os.Stat(srcdir)
+	if err != nil {
+		return err
+	}
+
+	srcdir, _ = filepath.Abs(srcdir)
+	dirpaths := make(map[string][]string)
+	curdir := ""
+	filepath.Walk(srcdir, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			curdir = path
+			return nil
+		}
+
+		dirpaths[curdir] = append(dirpaths[curdir], path)
+		return nil
+	})
+
+	wg := sync.WaitGroup{}
+	count := 0
+	for dir, files := range dirpaths {
+		target := filepath.Join(targetdir, dir[len(srcdir):])
+		for _, file := range files {
+			count++
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				p.UploadFile(file, target)
+			}()
+			if count == 5 {
+				wg.Wait()
+				count = 0
+			}
+		}
+	}
+
+	if count > 0 {
+		wg.Wait()
+	}
+
 	return nil
 }
-func (p *ProjectFs) DownloadUrl(filepath string) (string, error) {
-	return "", nil
+func (p *ProjectFs) DownloadUrl(srcpath, targetdir string) (error) {
+	newpath := p.fixpath(srcpath)
+	if newpath == "" {
+		return errors.New("invalid path")
+	}
+
+	var tokens []string
+
+	// query first
+	accnode, prefix, exist, err := p.find(newpath)
+	if err != nil {
+		return err
+	}
+	if exist {
+		goto download
+	}
+
+	// sync dirs
+	p.mux.Lock()
+	tokens = strings.Split(newpath[len(prefix)+1:], "/")
+	p.collections(accnode.NodeId, accnode.Child, tokens)
+	p.mux.Unlock()
+
+	// query second
+	accnode, prefix, exist, err = p.find(newpath)
+	if err != nil {
+		return err
+	}
+	if exist {
+		goto download
+	}
+
+	// sync files
+	p.mux.Lock()
+	p.works(accnode.NodeId, accnode.Child)
+	p.mux.Unlock()
+
+	// query again
+	accnode, prefix, exist, err = p.find(newpath)
+	if err != nil || !exist {
+		if err == nil {
+			err = errors.New("not exist path")
+		}
+		return err
+	}
+	goto download
+
+download:
+	if accnode.Type == Node_File {
+		return File(accnode.Url, "GET", nil, nil, filepath.Join(targetdir, accnode.Name))
+	}
+	return ArchiveProjectDir(p.token, accnode.NodeId, p.projectid, accnode.Name, targetdir)
 }
 
 func FindPanDir(dir string) (node Node, err error) {
@@ -1649,8 +1827,8 @@ func main() {
 	}
 
 	p := ProjectFs{Name: "data", Orgid: "5f6707e0f0aab521364694ee"}
-	p.Init()
-	fmt.Println(p.UploadFile("/home/user/Desktop/hello.go", "/data/demo/a/b"))
+	fmt.Println(p.Init())
+	fmt.Println(p.DownloadUrl("/data/wx", "./"))
 
 	//dir := "/packages"
 	//log.Println("Making Dir", dir)
