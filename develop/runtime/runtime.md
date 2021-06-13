@@ -1109,7 +1109,7 @@ runtime.main 函数工作:
 
 5. 调用 exit 系统调用退出进程.
 
-从上述流程来看, runtime.main 在执行玩 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 这里
+从上述流程来看, runtime.main 在执行完 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 这里
 需要注意, runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, 而是在 `schedule() -> execute() ->
 gogo()` 这个调用链的 gogo 函数中使用汇编代码跳过来的, 从这个角度, goroutine 没有地方可以返回. 但是, 前面的分析当中
 得知, 在创建 goroutine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
