@@ -4,12 +4,13 @@
 存器值放入CPU对于的寄存器从而恢复该线程的运行.**
 
 万变不离其宗, 系统线程对 goroutine 的调度与内核对系统线程的调度原理是一样的, `实质都是通过保存和修改CPU寄存器的值来达
-到切换线程/gorotine的目的.`
+到切换线程/goroutine的目的.`
 
-因此, 为了实现对 gorotine 的调度, 需要引入一个数据结构来保存CPU寄存器的值以及goroutine的其他一些状态信息, 这个数据结
-构就是 g, 它保存了 goroutine 的所有信息, 该结构体的每一个实例对象都代表了一个 goroutine, 调度器代码可以通过 g 对象来
-对 goroutine 进行调度, 当 goroutine 被调离 CPU 时, 调度器代码负责把 CPU 寄存器的值保存在 g 对象的成员变量当中, 当
-goroutine 被调度起来运行时, 调度器代码负责把 g 对象的成员变量所保存的寄存器的值恢复到 CPU 寄存器.
+因此, 为了实现对 goroutine 的调度, 需要引入一个数据结构来保存CPU寄存器的值以及goroutine的其他一些状态信息, 这个数据结
+构就是g, 它保存了goroutine的所有信息, 该结构体的每一个实例对象都代表了一个goroutine, 调度器代码可以通过 g 对象来对
+goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 CPU 寄存器的值保存在g对象的成员变量当中, 当goroutine
+被调度起来运行时, 调度器代码负责把g对象的成员变量所保存的寄存器的值恢复到 CPU 寄存器.
+
 
 任何一个由编译型语言所编写的程序在被操作系统加载起来运行时都会顺序经过如下几个阶段:
 
@@ -755,7 +756,7 @@ save 函数保存了调度相关的所有信息, 包括最为重要的当前正�
 中? 难道下次切换到 g0 时需要从 `switch` 语句继续执行? 从 mstart 函数可以看到, switch 语句之后就要退出线程了!
 
 save 函数执行之后, 返回到 mstart1 继续其他跟 m 相关的一些初始化, 完成这些初始化后则调用调度系统的核心函数 schedule()
-完成 gorotine 的调度. 每次调度 goroutine 都是从 schedule 函数开始的.
+完成 goroutine 的调度. 每次调度 goroutine 都是从 schedule 函数开始的.
 
 
 ```cgo
@@ -821,7 +822,7 @@ top:
     
     // 开始查找 gp (需要调度的任务)
     if gp == nil {
-        // 保证调度的公平性, 每进行 61 次调度需要优先从全局运行队列中获取 gorotine
+        // 保证调度的公平性, 每进行 61 次调度需要优先从全局运行队列中获取 goroutine
         if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
             lock(&sched.lock)
             gp = globrunqget(_g_.m.p.ptr(), 1)
@@ -1111,7 +1112,7 @@ runtime.main 函数工作:
 从上述流程来看, runtime.main 在执行玩 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 这里
 需要注意, runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, 而是在 `schedule() -> execute() ->
 gogo()` 这个调用链的 gogo 函数中使用汇编代码跳过来的, 从这个角度, goroutine 没有地方可以返回. 但是, 前面的分析当中
-得知, 在创建 gorotine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
+得知, 在创建 goroutine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
 使用到这个返回地址, 其实这个地址是为非 main goroutine 准备的, 让其在执行完成之后返回到 goexit 继续执行.
 
 
