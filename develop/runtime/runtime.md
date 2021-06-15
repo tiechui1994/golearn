@@ -41,31 +41,31 @@ goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 C
 
 // runtime/asm_amd64.s
 
-```cgo
+```asm
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
     ....
     
-    # 给 g0 分配栈空间, 大约是64k
-    MOVQ	$runtime·g0(SB), DI  # DI=g0 
-    LEAQ	(-64*1024+104)(SP), BX # 预分配大约64k的栈
-    MOVQ	BX, g_stackguard0(DI) # g0.stackguard0=BX
-    MOVQ	BX, g_stackguard1(DI) # g0.stackguard1=BX
-    MOVQ	BX, (g_stack+stack_lo)(DI) # g0.stack.lo=BX
-    MOVQ	SP, (g_stack+stack_hi)(DI) # g0.stack.hi=SP
+    // 给 g0 分配栈空间, 大约是64k
+    MOVQ	$runtime·g0(SB), DI  // DI=g0 
+    LEAQ	(-64*1024+104)(SP), BX // 预分配大约64k的栈
+    MOVQ	BX, g_stackguard0(DI) // g0.stackguard0=BX
+    MOVQ	BX, g_stackguard1(DI) // g0.stackguard1=BX
+    MOVQ	BX, (g_stack+stack_lo)(DI) // g0.stack.lo=BX
+    MOVQ	SP, (g_stack+stack_hi)(DI) // g0.stack.hi=SP
     
     ....
     
-    # 开始初始化tls, settls本质上是通过系统调用 arch_prctl 实现的.
-    LEAQ	runtime·m0+m_tls(SB), DI # DI=&m0.tls
-    CALL	runtime·settls(SB) # 调用 settls 设置本地存储, settls 的参数在 DI 当中
+    // 开始初始化tls, settls本质上是通过系统调用 arch_prctl 实现的.
+    LEAQ	runtime·m0+m_tls(SB), DI // DI=&m0.tls
+    CALL	runtime·settls(SB) // 调用 settls 设置本地存储, settls 的参数在 DI 当中
     
-    # 测试settls 是否可以正常工作
-    get_tls(BX) # 获取fs段寄存器地址并放入 BX 寄存器, 其实就是 m0.tls[1] 的地址
-    MOVQ	$0x123, g(BX) # 将 0x123 拷贝到 fs 段寄存器的地址偏移-8的内存位置, 也就是 m0.tls[0]=0x123 
-    MOVQ	runtime·m0+m_tls(SB), AX # AX=m0.tls[0]
-    CMPQ	AX, $0x123 # 检查 m0.tls[0] 是否是通过本地存储存入的 0x123 来验证功能是否正常
-    JEQ 2(PC) # 相等
-    CALL	runtime·abort(SB) # 线程本地存储功能不正常, 退出程序
+    // 测试settls 是否可以正常工作
+    get_tls(BX) // 获取fs段寄存器地址并放入 BX 寄存器, 其实就是 m0.tls[1] 的地址
+    MOVQ	$0x123, g(BX) // 将 0x123 拷贝到 fs 段寄存器的地址偏移-8的内存位置, 也就是 m0.tls[0]=0x123 
+    MOVQ	runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
+    CMPQ	AX, $0x123 // 检查 m0.tls[0] 是否是通过本地存储存入的 0x123 来验证功能是否正常
+    JEQ 2(PC) // 相等
+    CALL	runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
 ok:
     // set the per-goroutine and per-mach "registers"
     get_tls(BX) // 获取fs段基地址BX寄存器
@@ -77,13 +77,12 @@ ok:
     MOVQ	CX, m_g0(AX) # m0.g0=&g0 
     MOVQ	AX, g_m(CX) # g0.m=&m0
     
-    # 到此位置, m0与g0绑定在一起, 之后主线程可以通过 get_tls 获取到 g0, 通过 g0 又获取到 m0 
-    # 这样就实现了 m0, g0 与主线程直接的关联. 
-        
-    CLD				// convention is D is always left cleared
+    // 到此位置, m0与g0绑定在一起, 之后主线程可以通过 get_tls 获取到 g0, 通过 g0 又获取到 m0 
+    // 这样就实现了 m0, g0 与主线程直接的关联.
+    CLD		// convention is D is always left cleared
     CALL	runtime·check(SB)
     
-    # 命令行参数拷贝
+    // 命令行参数拷贝
     MOVL	16(SP), AX		// copy argc
     MOVL	AX, 0(SP)
     MOVQ	24(SP), AX		// copy argv
@@ -95,10 +94,21 @@ ok:
     CALL	runtime·schedinit(SB) // 调度系统初始化
 ```
 
+> rt0_go() 函数工作:
+>
+> 测试 tls: 先调用 settls(m0.tls), 然后获取 tls, get_tls() 并将 0x123 设置到 tls 当中. 
+> 最后比较 `m0.tls[0]` 和 0x123 是否相等, 当不相等时, 程序退出. 相等时, 则将 g0 设置到 m0.tls 当中
+>
+> m0 和 g0 进行绑定.  
+>
+> 调用 runtime·args() 函数解析 args
+> 调用 runtime·osinit() os初始化, 只做一件事 ncpu 的初始化.
+> 调用 runtime·schedinit() 调度初始化.
+
 > M0 是什么? 程序会启动多个 M, 第一个启动的是 M0
 >
-> G0 是什么? G 分为三种, 第一种是用户任务的叫做 G. 第二种是执行 runtime 下调度工作的叫 G0, 每一个 M 都绑定一个 
-> G0. 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
+> G0 是什么? G 分为三种, 第一种是用户任务的叫做 G. 第二种是执行 runtime 下调度工作的叫 G0, 每一个 M 都绑定一个 G0. 
+> 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
 
 
 ### runtime.osinit(SB) 针对系统环境的初始化
@@ -109,7 +119,9 @@ ok:
 
 schedinit 做的重要事情:
 
-- 初始化 m0, mcommoninit函数
+- 初始化 m0, mcommoninit() 函数, 通用 m 初始化.
+
+- 调用 msigsave() 初始化 m0.gsignal
 
 - 创建和初始化 allp, procresize 函数, 并将 m0 绑定到 `allp[0]` 即 `m0.p = allp[0], allp[0].m = m0` 
 
@@ -152,7 +164,7 @@ func schedinit() {
 ```
 
 前面汇编当中, g0的地址已经被设置到了本地存储之中, schedinit通过 getg 函数(getg函数是编译器实现的, 源码当中找不到其定
-义的)从本地存储中获取当前正在运行的 g, 这里获取的是 g0, 然后调用 mcommoninit() 函数对 m0 进行必要的初始化, 对 m0 
+义的)从本地存储中获取当前正在运行的 g, 这里获取的是 g0, 然后调用 mcommoninit() 函数对 m0 进行必要的初始化, 对 m0
 初始化完成之后, 调用 procresize() 初始化系统需要用到的 p 结构体对象. 它的数量决定了最多同时有多少个 goroutine 同时
 并行运行. 
 
@@ -211,7 +223,7 @@ func mcommoninit(mp *m, id int64) {
 }
 ````
 
-mcommoninit 函数重点就是初始化了 m0 的 `id, fastrand, gsignal ...` 等变量,  然后 m0 放入到全局链表 allm 之中, 
+mcommoninit() 函数重点就是初始化了 m0 的 `id, fastrand, gsignal ...` 等变量,  然后 m0 放入到全局链表 allm 之中, 
 然后就返回了.
 
 
@@ -253,7 +265,8 @@ func procresize(nprocs int32) *p {
         atomicstorep(unsafe.Pointer(&allp[i]), unsafe.Pointer(pp)) // 存储到allp对应的位置
     }
     
-    _g_ := getg() // 当前处于初始化状况下 _g_ = g0, 并且此时 m0.p 还未初始化, 因此在这里会初始化 m0.p
+    // 当前处于初始化状况下 _g_ = g0, 并且此时 m0.p 还未初始化, 因此在这里会初始化 m0.p
+    _g_ := getg() 
     if _g_.m.p != 0 && _g_.m.p.ptr().id < nprocs {
         _g_.m.p.ptr().status = _Prunning
         _g_.m.p.ptr().mcache.prepareForSweep()
@@ -334,7 +347,8 @@ procresize 函数主要干的事情:
 
 - 使用循环初始化 nprocs 个 p 结构体对象并依次保存在 allp 切片之中.
 
-- 把 m0 和 `allp[0]` 绑定在一起, 即 `m0.p = allp[0], allp[0].m = m0` (比较关键)
+- 给当前的 m 绑定一个 p. 如果当前 m 和 p 已经绑定, 设置一下 m.p 的状态. 否则, 把 m0 和 `allp[0]` 绑定在一起, 即
+`m0.p = allp[0], allp[0].m = m0`
 
 - 把除了 `allp[0]` 之外的所有 p 放入全局变量 sched 的 pidle 空闲队列之中. 对于非空闲的 p 组装成一个链表, 并返回.
 
