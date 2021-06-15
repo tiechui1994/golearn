@@ -1669,27 +1669,27 @@ stop:
 ```cgo
 // 从 _p_ 当中偷取 g 放入到 p2
 func runqsteal(_p_, p2 *p, stealRunNextG bool) *g {
-	t := _p_.runqtail
-	// 从 p2 当中偷取 g 存放到_p_ 当中, t 是 _p_ 当中存储的开始位置
-	// 返回偷取的数量
-	n := runqgrab(p2, &_p_.runq, t, stealRunNextG)
-	if n == 0 {
-		return nil
-	}
-	
-	// 至少偷取了一个, 将偷取到的最后一个位置的 gp 返回
-	n--
-	gp := _p_.runq[(t+n)%uint32(len(_p_.runq))].ptr()
-	if n == 0 {
-		return gp
-	}
-	// 调整 _p_ 的 runqtail 的值.
-	h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with consumers
-	if t-h+n >= uint32(len(_p_.runq)) {
-		throw("runqsteal: runq overflow")
-	}
-	atomic.StoreRel(&_p_.runqtail, t+n) // store-release, makes the item available for consumption
-	return gp
+    t := _p_.runqtail
+    // 从 p2 当中偷取 g 存放到_p_ 当中, t 是 _p_ 当中存储的开始位置
+    // 返回偷取的数量
+    n := runqgrab(p2, &_p_.runq, t, stealRunNextG)
+    if n == 0 {
+        return nil
+    }
+    
+    // 至少偷取了一个, 将偷取到的最后一个位置的 gp 返回
+    n--
+    gp := _p_.runq[(t+n)%uint32(len(_p_.runq))].ptr()
+    if n == 0 {
+        return gp
+    }
+    // 调整 _p_ 的 runqtail 的值.
+    h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with consumers
+    if t-h+n >= uint32(len(_p_.runq)) {
+        throw("runqsteal: runq overflow")
+    }
+    atomic.StoreRel(&_p_.runqtail, t+n) // store-release, makes the item available for consumption
+    return gp
 }
 ```
 
@@ -1702,63 +1702,63 @@ runqgrab() 完成偷取工作:
 ```cgo
 // batchHead 是开始的位置, stealRunNextG 是否尝试偷取 runnext 
 func runqgrab(_p_ *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool) uint32 {
-	for {
-		h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
-		t := atomic.LoadAcq(&_p_.runqtail) // load-acquire, synchronize with the producer
-		
-		n := t - h // 计算队列中有多少个 goroutine
-		n = n - n/2 // 取队列中 goroutine 个数的一半
-		if n == 0 {
-			if stealRunNextG {
-				// 尝试从 _p_.runnext 当中 steal 
-				if next := _p_.runnext; next != 0 {
-				    // 当前的 _p_ 处于运行中的
-					if _p_.status == _Prunning {
-						// 休眠以确保 _p_ 不会 run 我们将要窃取的 g.
+    for {
+        h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
+        t := atomic.LoadAcq(&_p_.runqtail) // load-acquire, synchronize with the producer
+        
+        n := t - h // 计算队列中有多少个 goroutine
+        n = n - n/2 // 取队列中 goroutine 个数的一半
+        if n == 0 {
+            if stealRunNextG {
+                // 尝试从 _p_.runnext 当中 steal 
+                if next := _p_.runnext; next != 0 {
+                    // 当前的 _p_ 处于运行中的
+                    if _p_.status == _Prunning {
+                        // 休眠以确保 _p_ 不会 run 我们将要窃取的 g.
                         // 这里的重要用例是当 _p_ 中的一个 gp 正在运行在 ready() 中(g0栈, 将 gp 变为 _Grunnable), 
                         // 其他一个 g 几乎同时被阻塞. 不要在此期间中偷取 gp 当中 runnext, 而是退后给 _p_ 一个调
                         // 度 runnext 的机会. 这将避免在不同 Ps 之间传递 gs.
                         // 同步 chan send/recv 在写入时需要约 50ns, 因此 3us 会产生约 50 次写入.
-						if GOOS != "windows" {
-							usleep(3)
-						} else {
-							// 在 windows 系统定时器粒度是 1-15ms
-							osyield() // windows 系统
-						}
-					}
-					
-					if !_p_.runnext.cas(next, 0) {
-						continue
-					}
-					
-					// 成功偷取 runnext
-					batch[batchHead%uint32(len(batch))] = next
-					return 1
-				}
-			}
-			return 0
-		}
-		
-		// 细节: 按理说队列中的goroutine个数最多就是 len(_p_.runq)
-		// 所以n的最大值也就是len(_p_.runq)/2, 这里的判断是为啥?
-		// 读取 runqhead 和 runqtail 是两个操作而非一个原子操作, 当读取 runhead 之后未读取 runqtail
-		// 之前, 如果其他线程快速的增加这两个值(其他偷取者偷取g会增加 runqhead, 队列所有者添加 g 会增加 runqtail), 
-		// 则导致读取出来的 runqtail 已经远远大于之前读取到的放在局部变量的 h 里面的 runqhead 了, 也就是说 h 和 t 
-		// 已经不一致了.
-		if n > uint32(len(_p_.runq)/2) { // read inconsistent h and t
-			continue
-		}
-		
-		// 获取 n 个 goroutine, 将其存放在 batch 当中
-		for i := uint32(0); i < n; i++ {
-			g := _p_.runq[(h+i)%uint32(len(_p_.runq))]
-			batch[(batchHead+i)%uint32(len(batch))] = g
-		}
-		// 修改 _p_ 本地队列的 runqhead
-		if atomic.CasRel(&_p_.runqhead, h, h+n) { // cas-release, commits consume
-			return n
-		}
-	}
+                        if GOOS != "windows" {
+                            usleep(3)
+                        } else {
+                            // 在 windows 系统定时器粒度是 1-15ms
+                            osyield() // windows 系统
+                        }
+                    }
+                    
+                    if !_p_.runnext.cas(next, 0) {
+                        continue
+                    }
+                    
+                    // 成功偷取 runnext
+                    batch[batchHead%uint32(len(batch))] = next
+                    return 1
+                }
+            }
+            return 0
+        }
+        
+        // 细节: 按理说队列中的goroutine个数最多就是 len(_p_.runq)
+        // 所以n的最大值也就是len(_p_.runq)/2, 这里的判断是为啥?
+        // 读取 runqhead 和 runqtail 是两个操作而非一个原子操作, 当读取 runhead 之后未读取 runqtail
+        // 之前, 如果其他线程快速的增加这两个值(其他偷取者偷取g会增加 runqhead, 队列所有者添加 g 会增加 runqtail), 
+        // 则导致读取出来的 runqtail 已经远远大于之前读取到的放在局部变量的 h 里面的 runqhead 了, 也就是说 h 和 t 
+        // 已经不一致了.
+        if n > uint32(len(_p_.runq)/2) { // read inconsistent h and t
+            continue
+        }
+        
+        // 获取 n 个 goroutine, 将其存放在 batch 当中
+        for i := uint32(0); i < n; i++ {
+            g := _p_.runq[(h+i)%uint32(len(_p_.runq))]
+            batch[(batchHead+i)%uint32(len(batch))] = g
+        }
+        // 修改 _p_ 本地队列的 runqhead
+        if atomic.CasRel(&_p_.runqhead, h, h+n) { // cas-release, commits consume
+            return n
+        }
+    }
 }
 ```
 
@@ -1783,26 +1783,26 @@ func runqgrab(_p_ *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool
 
 ```cgo
 func stopm() {
-	_g_ := getg() // 当前是 g0
+    _g_ := getg() // 当前是 g0
     
     // 当前运行的 M 的状态判断(未锁定, 与p绑定, 非自旋)
-	if _g_.m.locks != 0 {
-		throw("stopm holding locks")
-	}
-	if _g_.m.p != 0 {
-		throw("stopm holding p")
-	}
-	if _g_.m.spinning {
-		throw("stopm spinning")
-	}
-
-	lock(&sched.lock)
-	mput(_g_.m) // 将 M 放入全局 sched.midle 当中
-	unlock(&sched.lock)
-	notesleep(&_g_.m.park)  // 当前工作线程休眠在 park 成员上, 直到唤醒才返回.
-	noteclear(&_g_.m.park)  // 唤醒之后的清理工作
-	acquirep(_g_.m.nextp.ptr()) // 唤醒之后, 将 m 与 m.nextp 绑定, 并开始运行
-	_g_.m.nextp = 0
+    if _g_.m.locks != 0 {
+        throw("stopm holding locks")
+    }
+    if _g_.m.p != 0 {
+        throw("stopm holding p")
+    }
+    if _g_.m.spinning {
+        throw("stopm spinning")
+    }
+    
+    lock(&sched.lock)
+    mput(_g_.m) // 将 M 放入全局 sched.midle 当中
+    unlock(&sched.lock)
+    notesleep(&_g_.m.park)  // 当前工作线程休眠在 park 成员上, 直到唤醒才返回.
+    noteclear(&_g_.m.park)  // 唤醒之后的清理工作
+    acquirep(_g_.m.nextp.ptr()) // 唤醒之后, 将 m 与 m.nextp 绑定, 并开始运行
+    _g_.m.nextp = 0
 }
 ```
 
@@ -1816,25 +1816,25 @@ note 的底层实现机制与操作系统相关, 不同操作系统不同机制.
 
 ```cgo
 func notesleep(n *note) {
-	gp := getg() // 当前的 g0 
-	if gp != gp.m.g0 {
-		throw("notesleep not on g0")
-	}
-	ns := int64(-1) // 休眠的时间, ns
-	if *cgo_yield != nil {
-		// Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
-		ns = 10e6 // cgo 当中的单位是 ms
-	}
-	
-	// 为了防止意外唤醒, 使用了 for 循环. 也就是说, 当处于休眠状态 n.key 的值一直是 0
-	for atomic.Load(key32(&n.key)) == 0 {
-		gp.m.blocked = true
-		futexsleep(key32(&n.key), 0, ns) // 系统调用
-		if *cgo_yield != nil {
-			asmcgocall(*cgo_yield, nil)
-		}
-		gp.m.blocked = false
-	}
+    gp := getg() // 当前的 g0 
+    if gp != gp.m.g0 {
+        throw("notesleep not on g0")
+    }
+    ns := int64(-1) // 休眠的时间, ns
+    if *cgo_yield != nil {
+        // Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+        ns = 10e6 // cgo 当中的单位是 ms
+    }
+    
+    // 为了防止意外唤醒, 使用了 for 循环. 也就是说, 当处于休眠状态 n.key 的值一直是 0
+    for atomic.Load(key32(&n.key)) == 0 {
+        gp.m.blocked = true
+        futexsleep(key32(&n.key), 0, ns) // 系统调用
+        if *cgo_yield != nil {
+            asmcgocall(*cgo_yield, nil)
+        }
+        gp.m.blocked = false
+    }
 }
 ```
 
@@ -1842,17 +1842,17 @@ Linux下线程休眠系统调用: 当 addr 的值为 val 时, 线程休眠
 
 ```cgo
 func futexsleep(addr *uint32, val uint32, ns int64) {
-	// ns < 0, 一直进行休眠. 
-	// op 的值为 _FUTEX_WAIT_PRIVATE
-	if ns < 0 {
-		futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, nil, nil, 0)
-		return
-	}
+    // ns < 0, 一直进行休眠. 
+    // op 的值为 _FUTEX_WAIT_PRIVATE
+    if ns < 0 {
+        futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, nil, nil, 0)
+        return
+    }
     
     // ns >= 0, 休眠时间为 ns
-	var ts timespec
-	ts.setNsec(ns)
-	futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, unsafe.Pointer(&ts), nil, 0)
+    var ts timespec
+    ts.setNsec(ns)
+    futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, unsafe.Pointer(&ts), nil, 0)
 }
 ```
 
@@ -1862,31 +1862,31 @@ futex 是使用汇编实现的, 这里不再展开了.
 
 ```cgo
 func notewakeup(n *note) {
-	old := atomic.Xchg(key32(&n.key), 1)
-	if old != 0 {
-		print("notewakeup - double wakeup (", old, ")\n")
-		throw("notewakeup - double wakeup")
-	}
-	futexwakeup(key32(&n.key), 1)
+    old := atomic.Xchg(key32(&n.key), 1)
+    if old != 0 {
+        print("notewakeup - double wakeup (", old, ")\n")
+        throw("notewakeup - double wakeup")
+    }
+    futexwakeup(key32(&n.key), 1)
 }
 
 
 func futexwakeup(addr *uint32, cnt uint32) {
-	// 系统调用, op 的值为 _FUTEX_WAKE_PRIVATE
-	ret := futex(unsafe.Pointer(addr), _FUTEX_WAKE_PRIVATE, cnt, nil, nil, 0)
-	if ret >= 0 {
-		return
-	}
+    // 系统调用, op 的值为 _FUTEX_WAKE_PRIVATE
+    ret := futex(unsafe.Pointer(addr), _FUTEX_WAKE_PRIVATE, cnt, nil, nil, 0)
+    if ret >= 0 {
+        return
+    }
     
     // 下面是系统调用异常, 则程序退出
-	// I don't know that futex wakeup can return
-	// EAGAIN or EINTR, but if it does, it would be
-	// safe to loop and call futex again.
-	systemstack(func() {
-		print("futexwakeup addr=", addr, " returned ", ret, "\n")
-	})
-
-	*(*int32)(unsafe.Pointer(uintptr(0x1006))) = 0x1006 // 访问非法地址, 让程序退出
+    // I don't know that futex wakeup can return
+    // EAGAIN or EINTR, but if it does, it would be
+    // safe to loop and call futex again.
+    systemstack(func() {
+        print("futexwakeup addr=", addr, " returned ", ret, "\n")
+    })
+    
+    *(*int32)(unsafe.Pointer(uintptr(0x1006))) = 0x1006 // 访问非法地址, 让程序退出
 }
 ```
 
@@ -1906,56 +1906,56 @@ func futexwakeup(addr *uint32, cnt uint32) {
 // 如果p == nil, 则尝试获取一个空闲p, 如果没有空闲 p, 则直接返回, 也就是说所有的 p 都绑定了 m, 无需再启动 m 了.
 // 如果设置了spinning, 则调用者已增加nmspinning, 而startm将减少nmspinning或在新启动的M中设置m.spinning.
 func startm(_p_ *p, spinning bool) {
-	lock(&sched.lock)
-	if _p_ == nil {
-	    // 从空闲的 p 当中获取一个 p
-		_p_ = pidleget()
-		if _p_ == nil {
-			unlock(&sched.lock)
-			if spinning {
-				if int32(atomic.Xadd(&sched.nmspinning, -1)) < 0 {
-					throw("startm: negative nmspinning")
-				}
-			}
-			return
-		}
-	}
-	
+    lock(&sched.lock)
+    if _p_ == nil {
+        // 从空闲的 p 当中获取一个 p
+        _p_ = pidleget()
+        if _p_ == nil {
+            unlock(&sched.lock)
+            if spinning {
+                if int32(atomic.Xadd(&sched.nmspinning, -1)) < 0 {
+                    throw("startm: negative nmspinning")
+                }
+            }
+            return
+        }
+    }
+    
     // 获取一个空闲的 M
-	mp := mget()
-	if mp == nil {
-		// 没有可用的M, 此时调用newm. 但是, 我们已经拥有一个P来分配给M.
+    mp := mget()
+    if mp == nil {
+        // 没有可用的M, 此时调用newm. 但是, 我们已经拥有一个P来分配给M.
         //
         // 释放sched.lock后, 另一个G(例如,在系统调用中)可能找不到空闲的P, 而checkdead发现可运行的G但没有运行的M, 
         // 因为此新M尚未启动, 因此引发了明显的死锁.
         //
         // 通过为新M预先分配ID来避免这种情况, 从而在释放 sched.lock 之前将其标记为 "正在运行". 这个新的M最终将运行
         // 调度程序以执行所有排队的G.
-		id := mReserveID()
-		unlock(&sched.lock)
-
-		var fn func()
-		if spinning {
-			// The caller incremented nmspinning, so set m.spinning in the new M.
-			fn = mspinning
-		}
-		newm(fn, _p_, id)
-		return
-	}
-	unlock(&sched.lock)
-	if mp.spinning {
-		throw("startm: m is spinning")
-	}
-	if mp.nextp != 0 {
-		throw("startm: m has p")
-	}
-	if spinning && !runqempty(_p_) {
-		throw("startm: p has runnable gs")
-	}
-	// The caller incremented nmspinning, so set m.spinning in the new M.
-	mp.spinning = spinning
-	mp.nextp.set(_p_)
-	notewakeup(&mp.park) // 唤醒 M
+        id := mReserveID()
+        unlock(&sched.lock)
+    
+        var fn func()
+        if spinning {
+            // The caller incremented nmspinning, so set m.spinning in the new M.
+            fn = mspinning
+        }
+        newm(fn, _p_, id)
+        return
+    }
+    unlock(&sched.lock)
+    if mp.spinning {
+        throw("startm: m is spinning")
+    }
+    if mp.nextp != 0 {
+        throw("startm: m has p")
+    }
+    if spinning && !runqempty(_p_) {
+        throw("startm: p has runnable gs")
+    }
+    // The caller incremented nmspinning, so set m.spinning in the new M.
+    mp.spinning = spinning
+    mp.nextp.set(_p_)
+    notewakeup(&mp.park) // 唤醒 M
 }
 ```
 
@@ -1967,37 +1967,37 @@ func startm(_p_ *p, spinning bool) {
 func newm(fn func(), _p_ *p, id int64) {
     // 在堆上分配一个 m, 并且与 _p_ 进行绑定. 
     // 注: allocm() 在创建 m 的同时会创建 g0, 并且分配相关的栈内存
-	mp := allocm(_p_, fn, id)
-	mp.nextp.set(_p_) // 将 m.nextp 也设置为 _p_
-	mp.sigmask = initSigmask
-	
-	// 当前处于锁定的 m, 则不能通过clone 当前的 m 来创建系统线程. 
-	// 对于已经创建的 mp 对象, 会被添加对象, 则被添加到 newmHandoff.new 队列当中. 
-	if gp := getg(); gp != nil && gp.m != nil && (gp.m.lockedExt != 0 || gp.m.incgo) && GOOS != "plan9" {
-		// 当前处于锁定的m 或 可能由C启动的线程上. 此线程的内核状态可能很奇怪(用户可能已为此目的将其锁定).
-		// 我们不想将其克隆到另一个线程中. 而是要求一个已知良好的线程为我们创建线程.	
-		lock(&newmHandoff.lock)
-		if newmHandoff.haveTemplateThread == 0 {
-			throw("on a locked thread with no template thread")
-		}
-		// 将 mp 添加到 newmHandoff.newm 链表当中
-		mp.schedlink = newmHandoff.newm
-		newmHandoff.newm.set(mp)
-		if newmHandoff.waiting {
-			newmHandoff.waiting = false
-			notewakeup(&newmHandoff.wake)
-		}
-		unlock(&newmHandoff.lock)
-		return
-	}
-	
-	// 创建系统线程, 并且与 mp 进行关联起来
-	newm1(mp)  
+    mp := allocm(_p_, fn, id)
+    mp.nextp.set(_p_) // 将 m.nextp 也设置为 _p_
+    mp.sigmask = initSigmask
+    
+    // 当前处于锁定的 m, 则不能通过clone 当前的 m 来创建系统线程. 
+    // 对于已经创建的 mp 对象, 会被添加对象, 则被添加到 newmHandoff.new 队列当中. 
+    if gp := getg(); gp != nil && gp.m != nil && (gp.m.lockedExt != 0 || gp.m.incgo) && GOOS != "plan9" {
+        // 当前处于锁定的m 或 可能由C启动的线程上. 此线程的内核状态可能很奇怪(用户可能已为此目的将其锁定).
+        // 我们不想将其克隆到另一个线程中. 而是要求一个已知良好的线程为我们创建线程.	
+        lock(&newmHandoff.lock)
+        if newmHandoff.haveTemplateThread == 0 {
+            throw("on a locked thread with no template thread")
+        }
+        // 将 mp 添加到 newmHandoff.newm 链表当中
+        mp.schedlink = newmHandoff.newm
+        newmHandoff.newm.set(mp)
+        if newmHandoff.waiting {
+            newmHandoff.waiting = false
+            notewakeup(&newmHandoff.wake)
+        }
+        unlock(&newmHandoff.lock)
+        return
+    }
+    
+    // 创建系统线程, 并且与 mp 进行关联起来
+    newm1(mp)  
 }
 
 func newm1(mp *m) {
     // 当前需要创建 cgo 使用的系统线程
-	if iscgo {
+    if iscgo {
         var ts cgothreadstart
         if _cgo_thread_start == nil {
             throw("_cgo_thread_start missing")
@@ -2013,31 +2013,31 @@ func newm1(mp *m) {
         execLock.runlock()
         return
     }
-	
-	// 创建正常的工作线程
-	execLock.rlock() 
-	newosproc(mp) // 真正的创建工作
-	execLock.runlock()
+    
+    // 创建正常的工作线程
+    execLock.rlock() 
+    newosproc(mp) // 真正的创建工作
+    execLock.runlock()
 }
 
 // 创建系統内核线程, 初始化运行的函数是 mstart. 
 func newosproc(mp *m) {
     // g0 的栈顶位置
-	stk := unsafe.Pointer(mp.g0.stack.hi)
-	
-	// 在进行系统线程 clone 期间中禁用 signal, 这样新线程可以从禁用的信号开始,
-	// 之后它将调用 minit 
-	var oset sigset
-	sigprocmask(_SIG_SETMASK, &sigset_all, &oset)
-	// 系统调用 clone 函数, 克隆一个新的系统线程
-	// 第一个参数 cloneFlags 克隆的 flags, 是否共享内存等
-	// 第二个参数 stk, 设置新线程的栈顶
-	// 第三个参数是 mp
-	// 第四个参数是 g0
-	// 第五个参数是新线程启动之后开始执行的函数地址. 这里设置的是 mstart, 在程序启动时, 最后一步调用的也是 mstart
-	// 这个函数.
-	ret := clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))
-	sigprocmask(_SIG_SETMASK, &oset, nil) // 启用信号
+    stk := unsafe.Pointer(mp.g0.stack.hi)
+    
+    // 在进行系统线程 clone 期间中禁用 signal, 这样新线程可以从禁用的信号开始,
+    // 之后它将调用 minit 
+    var oset sigset
+    sigprocmask(_SIG_SETMASK, &sigset_all, &oset)
+    // 系统调用 clone 函数, 克隆一个新的系统线程
+    // 第一个参数 cloneFlags 克隆的 flags, 是否共享内存等
+    // 第二个参数 stk, 设置新线程的栈顶
+    // 第三个参数是 mp
+    // 第四个参数是 g0
+    // 第五个参数是新线程启动之后开始执行的函数地址. 这里设置的是 mstart, 在程序启动时, 最后一步调用的也是 mstart
+    // 这个函数.
+    ret := clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))
+    sigprocmask(_SIG_SETMASK, &oset, nil) // 启用信号
 }
 
 
@@ -2048,53 +2048,53 @@ func newosproc(mp *m) {
 //
 // 此函数即使没有调用者也被允许有写障碍, 因为它借用了_p_.
 func allocm(_p_ *p, fn func(), id int64) *m {
-	_g_ := getg()
-	acquirem() // 当前的 m 禁止抢占
-	
-	// 当的 m 没有绑定任何 p, 则需要绑定一个 p 
-	if _g_.m.p == 0 {
-		acquirep(_p_) 
-	}
-
-	// 开始是否 sched.freem 当中 m.g0 的栈空间
-	if sched.freem != nil {
-		lock(&sched.lock)
-		var newList *m // 记录不能被释放 m.g0 栈空间的 m 列表
-		for freem := sched.freem; freem != nil; {
-			if freem.freeWait != 0 {
-				next := freem.freelink
-				freem.freelink = newList
-				newList = freem
-				freem = next
-				continue
-			}
-			stackfree(freem.g0.stack) // 释放 g0 stack
-			freem = freem.freelink
-		}
-		sched.freem = newList // 设置新的 freem 列表
-		unlock(&sched.lock)
-	}
-
-	mp := new(m)
-	mp.mstartfn = fn   // 在 M 启动之后, 调度之前执行的函数
-	mcommoninit(mp, id) // 开始初始化m, 将 mp 添加到全局队列当中
+    _g_ := getg()
+    acquirem() // 当前的 m 禁止抢占
+    
+    // 当的 m 没有绑定任何 p, 则需要绑定一个 p 
+    if _g_.m.p == 0 {
+        acquirep(_p_) 
+    }
+    
+    // 开始是否 sched.freem 当中 m.g0 的栈空间
+    if sched.freem != nil {
+        lock(&sched.lock)
+        var newList *m // 记录不能被释放 m.g0 栈空间的 m 列表
+        for freem := sched.freem; freem != nil; {
+            if freem.freeWait != 0 {
+                next := freem.freelink
+                freem.freelink = newList
+                newList = freem
+                freem = next
+                continue
+            }
+            stackfree(freem.g0.stack) // 释放 g0 stack
+            freem = freem.freelink
+        }
+        sched.freem = newList // 设置新的 freem 列表
+        unlock(&sched.lock)
+    }
+    
+    mp := new(m)
+    mp.mstartfn = fn   // 在 M 启动之后, 调度之前执行的函数
+    mcommoninit(mp, id) // 开始初始化m, 将 mp 添加到全局队列当中
     
     // 创建 g0, 并将 g0 与 m 进行绑定.
-	// 如果是 cgo 或 Solaris 或 illumos 或 Darwin, pthread_create 将创建堆栈.
+    // 如果是 cgo 或 Solaris 或 illumos 或 Darwin, pthread_create 将创建堆栈.
     // Windows 和 Plan9 将调度的堆栈安排在OS堆栈上.
-	if iscgo || GOOS == "solaris" || GOOS == "illumos" || GOOS == "windows" || GOOS == "plan9" || GOOS == "darwin" {
-		mp.g0 = malg(-1)
-	} else {
-		mp.g0 = malg(8192 * sys.StackGuardMultiplier) // 8K
-	}
-	mp.g0.m = mp
-
-	if _p_ == _g_.m.p.ptr() {
-		releasep() // 释放掉前面临时绑定的 p 
-	}
-	releasem(_g_.m) // 取消抢占
-
-	return mp
+    if iscgo || GOOS == "solaris" || GOOS == "illumos" || GOOS == "windows" || GOOS == "plan9" || GOOS == "darwin" {
+        mp.g0 = malg(-1)
+    } else {
+        mp.g0 = malg(8192 * sys.StackGuardMultiplier) // 8K
+    }
+    mp.g0.m = mp
+    
+    if _p_ == _g_.m.p.ptr() {
+        releasep() // 释放掉前面临时绑定的 p 
+    }
+    releasem(_g_.m) // 取消抢占
+    
+    return mp
 }
 ```
 
@@ -2104,62 +2104,62 @@ systemstack() 函数: 切换到 g0 栈上, 执行函数 func
 ```cgo
 // func systemstack(fn func())
 TEXT runtime·systemstack(SB), NOSPLIT, $0-8
-	MOVQ	fn+0(FP), DI	// DI = fn
-	get_tls(CX)
-	MOVQ	g(CX), AX	// AX = g
-	MOVQ	g_m(AX), BX	// BX = g.m, 当前工作线程 m
-
-	CMPQ	AX, m_gsignal(BX) // g == m.gsignal
-	JEQ	noswitch // 相等跳转到 noswitch
-
-	MOVQ	m_g0(BX), DX // DX = m.g0
-	CMPQ	AX, DX // g == m.g0
-	JEQ	noswitch // 相等则跳转 noswitch, 当前在 g0 栈上
-
-	CMPQ	AX, m_curg(BX) // g == m.curg
-	JNE	bad // 不相等, 程序异常
-
-	// 切换 stack, 从 curg 切换到 g0
-	// 将 curg 保存到 sched 当中
-	MOVQ	$runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
-	MOVQ	SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
-	MOVQ	SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
-	MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
-	MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
-
-	MOVQ	DX, g(CX) // 切换 tls 到 g0
-	MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
-	
-	// 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止回溯
-	SUBQ	$8, BX
-	MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
-	MOVQ	DX, 0(BX) // 将 runtime·mstart 函数地址入栈
-	MOVQ	BX, SP // 调整当前的 SP 
-
-	// 调用 target 函数
-	MOVQ	DI, DX   // DX=fn 
-	MOVQ	0(DI), DI // 判断 fn 非空
-	CALL	DI // 函数调用, 没有参数和返回值
-
-	// 函数调用完成, 切换到 curg 栈上
-	get_tls(CX)
-	MOVQ	g(CX), AX   
-	MOVQ	g_m(AX), BX // BX=m
-	MOVQ	m_curg(BX), AX // AX=m.curg
-	MOVQ	AX, g(CX) // 设置本地保存 m.curg 
-	MOVQ	(g_sched+gobuf_sp)(AX), SP // SP = m.curg.sched.sp
-	MOVQ	$0, (g_sched+gobuf_sp)(AX) // m.curg.sched.sp = 0
-	RET
+    MOVQ	fn+0(FP), DI	// DI = fn
+    get_tls(CX)
+    MOVQ	g(CX), AX	// AX = g
+    MOVQ	g_m(AX), BX	// BX = g.m, 当前工作线程 m
+    
+    CMPQ	AX, m_gsignal(BX) // g == m.gsignal
+    JEQ	noswitch // 相等跳转到 noswitch
+    
+    MOVQ	m_g0(BX), DX // DX = m.g0
+    CMPQ	AX, DX // g == m.g0
+    JEQ	noswitch // 相等则跳转 noswitch, 当前在 g0 栈上
+    
+    CMPQ	AX, m_curg(BX) // g == m.curg
+    JNE	bad // 不相等, 程序异常
+    
+    // 切换 stack, 从 curg 切换到 g0
+    // 将 curg 保存到 sched 当中
+    MOVQ	$runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
+    MOVQ	SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
+    MOVQ	SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
+    MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
+    MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
+    
+    MOVQ	DX, g(CX) // 切换 tls 到 g0
+    MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
+    
+    // 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止回溯
+    SUBQ	$8, BX
+    MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
+    MOVQ	DX, 0(BX) // 将 runtime·mstart 函数地址入栈
+    MOVQ	BX, SP // 调整当前的 SP 
+    
+    // 调用 target 函数
+    MOVQ	DI, DX   // DX=fn 
+    MOVQ	0(DI), DI // 判断 fn 非空
+    CALL	DI // 函数调用, 没有参数和返回值
+    
+    // 函数调用完成, 切换到 curg 栈上
+    get_tls(CX)
+    MOVQ	g(CX), AX   
+    MOVQ	g_m(AX), BX // BX=m
+    MOVQ	m_curg(BX), AX // AX=m.curg
+    MOVQ	AX, g(CX) // 设置本地保存 m.curg 
+    MOVQ	(g_sched+gobuf_sp)(AX), SP // SP = m.curg.sched.sp
+    MOVQ	$0, (g_sched+gobuf_sp)(AX) // m.curg.sched.sp = 0
+    RET
 
 noswitch:
-	// 当前已经在 g0 栈上了, 直接调用函数
-	MOVQ	DI, DX
-	MOVQ	0(DI), DI
-	JMP	DI
+    // 当前已经在 g0 栈上了, 直接调用函数
+    MOVQ	DI, DX
+    MOVQ	0(DI), DI
+    JMP	DI
 
 bad:
-	// Bad: g is not gsignal, not g0, not curg. What is it?
-	MOVQ	$runtime·badsystemstack(SB), AX
-	CALL	AX
-	INT	$3
+    // Bad: g is not gsignal, not g0, not curg. What is it?
+    MOVQ	$runtime·badsystemstack(SB), AX
+    CALL	AX
+    INT	$3
 ```
