@@ -1,6 +1,6 @@
-# CGO 常见的问题
+## CGO 常见的问题
 
-1. 明明已经指定动态库目录, 编译通过后, 运行错误: `找不到so目录`
+### 明明已经指定动态库目录, 编译通过后, 运行错误: `找不到so目录`
 
 ```
 error while loading shared libraries: libheader.so: cannot open shared object file: No such file 
@@ -18,14 +18,14 @@ or directory
 
 解决方案:
 
-> 1.`//#cgo LDFLAGS: -L ./ -l xxx -Wl,-rpath -Wl,/path/to/lib` 编译时指定动态库路径.
+> 1.`//#cgo LDFLAGS: -L ./ -lxxx -Wl,-rpath -Wl,/path/to/lib` 编译时指定动态库路径.
 > 
 > 2.设置系统动态库的路径. 在 `/etc/ld.so.conf` 目录下添加动态库的路径(运行的机器)
 >
 > 3.用 C 手动打开动态库. 将编译的动态库添加到系统动态库 `/usr/local/lib` 下.
 
 
-2. C 代码抽出来后, 运行时提示找不到函数
+### C 代码抽出来后, 运行时提示找不到函数
 
 ```
 /tmp/go-build649472735/b001/_x002.o: In function `_cgo_4167bb085d83_Cfunc_SayHello':
@@ -42,7 +42,7 @@ collect2: error: ld returned 1 exit status
 > 进入到目标执行 go build xxx, 然后执行
 
 
-3. 头文件声明变量, 提示重复定义错误
+### 头文件声明变量, 提示重复定义错误
 
 ```
 duplicate symbol _a in:
@@ -123,3 +123,32 @@ go run main.go bar.go
 >
 > 2.使用动态链接库, 编译的时候添加 `-fPIC` 参数, 这样会生产与位置无关的内容. (参考error下面的编译方式)
  
+
+### 提示找不到头文件
+
+```
+fatal error: libxxx.h: No such file or directory
+#include "libxxx.h"
+          ^~~~~~~~~
+compilation terminated.
+```
+
+原因分析: `libxxx.h` 没有添加到系统 include 下, 也没有设置编译查找路径.
+
+解决方案:
+
+> 增加编译选项 `#cgo CFLAGS: -I /path/to/header`
+
+
+### 导出函数名称错误
+
+```
+export comment has wrong name "xxx", want "xxx"
+```
+
+在 Go 当中导出函数的限制:
+
+- "Go函数名称" 和 "导出的C函数名称" 必须保持一致, 否则无导出.
+
+-  导出的 Go 函数参数或返回值当中不能包含自定义的结构体(string, int, slice, array, map, chan, interface的别名
+struct不算)

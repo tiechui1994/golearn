@@ -30,12 +30,14 @@
 -dumpdep  dump symbol dependency graph
 
 -buildid id 设置编译唯一标识, 使用 file 命令可以查看次标识
--buildmode mode 设置编译mode
--linkmode mode 设置链接mode
+-buildmode mode 设置编译mode, mode的值是c-shared和c-archive, 分别代表编译成动态库和静态库.
+-linkmode mode  设置 link mode (internal, external, auto), 具体描述在 cmd/cgo/doc.go
+
+-linkshared 链接到已安装的 Go 共享库(实验性)
 
 -extar string  存档程序, buildmode=c-archive
--extld linker  在external mode下链接时使用的链接器.
--extldflasgs flags 将链接参数传递给外部链接器
+-extld linker  设置外部连接器(默认值是"clang" 或 "gcc")
+-extldflasgs flags 设置外部连接器参数
 
 -o file 将输出写入到指定文件
 
@@ -45,7 +47,7 @@
 -w 禁止生成 DWARF 
 -v 打印link的追踪
 
--r path 设置 ELF 动态链接搜索路径, dir1:dir2:...
+-r path 设置 ELF 动态链接搜索路径, dir1:dir2:..., 相当于 gcc 当中 `-Wl,-rpath -Wl,dir1:dir2` 的作用
 -pluginpath string 插件路径
 ```
 
