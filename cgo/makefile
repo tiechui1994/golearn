@@ -15,3 +15,18 @@ env:
 	@echo SHELL=$(SHELL)
 	@echo MAKEFLAGS=$(MAKEFLAGS)
 	@echo TEST=$(TEST)
+
+libwx.a: clean
+	go build -buildmode=c-archive -o libwx.a export1.go
+
+libwx.so: clean
+	go build -buildmode=c-shared -o libwx.so export1.go
+
+main: libwx.so
+	go build -o main export2.go
+
+clean:
+	rm -rf libwx.*
+	rm -rf main
+
+all: libwx.a libwx.so

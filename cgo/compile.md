@@ -202,6 +202,22 @@ gcc main.c -static -o main -l pthread
 > cgo 动态编译执行经常会用到 `-Wl,-rpath -Wl,/path/to/lib` 动态链接选项
 
 
+### 动态库与静态库
+
+- 编译产生静态库
+
+```cgo
+gcc -c xxx.c // 编译, 产生 .o 文件, 位置无关
+ar -r libxxx.a xxx.o // 转换成 .a 文件
+```
+
+
+- 编译产生动态库
+
+```cgo
+gcc -c -Wall -Werror -fPIC xxx.c // 编译, 产生 .o 文件, 位置无关
+gcc -shared -o xxx.so xxx.o  // 产生 .so 文件
+```
 
 ## GCC 编译器的环境变量
 

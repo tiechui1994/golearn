@@ -2,7 +2,7 @@ package main
 
 /*
 #cgo CFLAGS: -I ./
-#cgo LDFLAGS: -l wx -L ./ -Wl,-rpath -Wl,. -shared
+#cgo LDFLAGS: -shared -L. -lwx -Wl,-rpath -Wl,.
 
 #include "libwx.h"
 */

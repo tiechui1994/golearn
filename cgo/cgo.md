@@ -103,7 +103,7 @@ func main() {
 > 2.对于C语言库(`.h` 文件定义内容 和 `.c` 文件实现 `.h` 的定义), 在CGO当中引用 `.h` 文件, 必须采用 `动态库/静态库` 
 > 链接的方式, 否则可能无法编译通过.  
 >
-> 3.上述的 `CFLAGS`, `LDFLAGS` 和 `go build` 当中的 `-gcflags`, `-ldflags` 之间基本上没啥关系, 不要混淆两者.
+> 3.上述的 `CFLAGS`, `LDFLAGS` 会设置到编译环境变量 `CGO_LDFLAGS`, `CGO_CFLAGS` 当中, 作为 gcc 编译和链接的参数.
 
 
 ## 常用的cgo类型

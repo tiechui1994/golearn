@@ -1,6 +1,6 @@
 ## Go 导出库
 
-- 导出的 Go 函数满足的条件:
+### 导出的 Go 函数满足的条件
 
 1. 必须在 `main` 包当中导出.
 
@@ -42,7 +42,7 @@ func main() {}
 
 案例2: 导出 Go 类型方法
 
-```cgo 
+```cgo
 package main
 
 //export Add
@@ -75,7 +75,21 @@ func (i *Int) Inc(j int) {
 func main() {}
 ```
 
-- 导出命令:
+需要做一点补充说明: 对于导出的 Go 函数的参数或返回值是 Go 类型的, 它们在 C 头文件当中对应的类型的关系如下:
+
+| Go 函数参数的类型 | C 头文件定义的类型 |
+| --- | --- |
+| int | `GoInt` |
+| int8 | `GoInt8` |
+| float32 | `GoFloat32` |
+| unitptr | `GoUintptr` |
+| string | `_GoString_` 或 `GoString` |
+| map | `GoMap` |
+| chan | `GoChan` |
+| interface{} | `GoInterface` |
+| slice | `GoSlice` |
+
+### 导出命令:
 
 动态库:
 
@@ -93,3 +107,91 @@ go build -buildmode=c-archive -o libxxx.a xxx.go
 go build -ldflags='-buildmode=c-archive' -o libxxx.a xxx.go
 ```
 
+### 常用的调用模式 
+
+- Go => C => Go => C 模式
+
+案例:
+
+```cgo
+package main
+
+/*
+static int c_add(int a, int b) {
+	return a+b;
+}
+
+static int go_add_proxy(int a, int b) {
+	extern int GoAdd(int a, int b);
+	return GoAdd(a,b);
+}
+*/
+import "C"
+import "fmt"
+
+
+//export GoAdd
+func GoAdd(a, b C.int) C.int {
+	return C.c_add(a, b)
+}
+
+// Go => C => Go => C
+func main() {
+	fmt.Println(C.go_add_proxy(1, 7))
+}
+```
+
+
+### go 编译过程
+
+cgo 编译过程:
+
+- cgo 编译 main.go, 生成 `_cgo_export.c`, `_cgo_export.h`, `_cgo_main.c`, `main.cgo1.go`, `main.cgo2.c`,
+`_cgo_gotypes.go` 
+
+> `_cgo_export.h` Go导出的函数声明, Go类型的声明.
+> `_cgo_export.c`, 对于 `_cgo_export.h` 的"实现"
+
+> `_cgo_main.c`, main 函数, cgo 相关函数的空实现.
+> `main.cgo1.go`, main.go, 将 `C.xxx` 的变量和函数使用 go 代码进行替换. 具体的实现在 `_cgo_gotypes.go` 当中.
+> `main.cgo2.c`, 内置的 cgo 转换函数的定义, `GoString()`, `GoBytes()`, `CSting()`, `CBytes()` 等. 在这里去
+调用最终的 C 函数.
+> `_cgo_gotypes.go`, `main.cgo1.go` 当中被替换函数的 go 实现. 主要使用了 `go:cgo_import_static` 和 `go:linkname` 
+魔法.
+
+- gcc 编译, 先将 `_cgo_export.c`, `main.cgo2.c`, `xxx.c`, `_cgo_main.c` 分别编译成 `*.o`, 然后 `*.o` 文件
+合并生成 `_cgo_.o`, 其中 `xxx.c` 文件是外部依赖的 C 源文件.
+
+> 注: 如果是库依赖, 则不需要编译 `xxx.c` 文件, 直接依赖库即可.
+
+- cgo 根据 `_cgo_.o` 生成 `_cgo_import.go` 文件(文件当中包含了 cgo 需要导入的系统动态库), 这是 `_cgo_.o` 文件的唯
+一用途. 
+
+- compile 编译 `importcfg` 和 `_cgo_gotypes.go`, `main.cgo1.go`, `_cgo_import.go`, 生成 `_pkg_.a` 文件.
+
+> 注: 这里的 importcfg 是 main 函数所直接依赖的包
+
+- pack 打包 `*.o` (这里是 `_cgo_export.c`, `main.cgo2.c`, `xxx.c` 编译的文件) 文件到 `_pkg_.a` 当中(这一步很
+关键).
+
+- link 链接 `importcfg.link` 到 `_pkg_.a` 文件, 生成 `a.out`
+
+> 注: importcfg.link = `importcfg 包` + `importcfg依赖包` + `_pkg_.a`
+
+- 对 `a.out` 重命名输出.
+
+
+---
+
+
+go 编译过程:
+
+- compile 编译 `importcfg` 生成 `_pkg_.a` 文件.
+
+> 注: 这里的 importcfg 是 main 函数所直接依赖的包
+
+- link 链接 `importcfg.link` 到 `_pkg_.a` 文件, 生成 `a.out`
+
+> 注: importcfg.link = `importcfg 包` + `importcfg依赖包` + `_pkg_.a`
+
+- 对 `a.out` 重命名输出.

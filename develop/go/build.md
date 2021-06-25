@@ -1,70 +1,106 @@
-## go 条件编译
+## go 命令
 
-### 文件命名约定
+### go build
 
-如果一个 `go` 源文件的文件名, 去掉扩展名和可能存在的 `_test` 后缀之后, 符合下面的格式, 则只在特定操作系统或架构编译.
+常用的参数:
 
-- `_GOOS`
+- `-a` 用于强制重新编译所有涉及的 Go 语言代码包(包括Go语言标准库的代码包), 即使它们已经是最新的了. 该标记可以让我们有机会
+通过改动底层的代码包做一些实验.
 
-- `_GOARCH`
+- `-n` 仅打印执行过程中用到的所有命令, 而不去真正执行命令.
 
-- `_GOOS_GOARCH` 
+- `-x` 打印命令执行过程中用到的所有命令, 并同时执行命令.
 
-案例:
+- `-race` 用于检测并报告指定 Go 语言程序存在的数据竞争问题. 当用 Go 语言编写并发程序的时候, 这是很重要的检测手段.
 
-```
-xxx_windows_amd64.go
-```
+- `-v` 打印命令执行过程中涉及的代码包. 
 
+- `-work` 打印命令执行时使用的临时工作目录的名字, 且命令执行完成后不删除它. 这个目录下的文件可以从侧面了解命令的执行过程. 
+如果没有此标记, 那么临时目录会在命令执行完毕前删除.
 
-### 条件构建标记
+- `-compiler name` 设置使用的编译器, 作为 runtime.Compiler (gc 或 gccgo), 默认值是 gc
 
-条件构建标识通过代码注释的形式实现.
+- `-buildmode mode` 设置编译模式(archive, c-archive, c-shared, default, shared, exe, plugin), 详细内容参
+考 `go help buildmode` 
 
-条件构建标识以 `// +build` 开头, **必须写在文件的最顶端, 前面只能有空白行或其他注释行, 构建标识与 `package` 之间必须
-有一个空白行**
+- `-mod mode` 模块下载的模式(readonly, vendor, mod), 详细参考 `go help modules` 说明.
 
-规则:
+- `-gccgoflags '[pattern=]arg list'` 传递给 gccgo 编译器/连接器的参数.
 
-- 不同的 tag 之间以空格分割, tag与tag之间关系是 OR 关系
-- 不同的 tag 之间以逗号分割, tag与tag之间关系是 AND 关系
-- tag 由字母和数据区分, 以 `!` 开头表示条件非
-- 当一个文件存在多个 tag 时, tag与tag之间的关系是AND
+- `-asmflags '[pattern=]arg list'` 传递给 `go tool asm` 调用的参数.
 
-案例:
+- `-ldflags '[pattern=]arg list'` 用于传递每个 `go tool link` 调用的参数. (gc编译器)
 
 ```
-// +build linux,386 drawin,!cgo
+-I linker  添加搜索header文件的目录
+-L directory 将指定目录添加到库路径
+-X definition 使用 importpath.name=value 增加定义值
 
-package main
+-c        dump call graph
+-n        dump symbol table
+-dumpdep  dump symbol dependency graph
+
+-buildid id 设置编译唯一标识, 使用 file 命令可以查看次标识
+
+-buildmode mode 设置编译模式(archive, c-archive, c-shared, default, shared, exe, plugin), 详细内容参考 
+                `go help buildmode`, 默认值是 exe
+
+-linkmode mode  设置 link mode (internal, external, auto), 具体描述在 cmd/cgo/doc.go
+
+-linkshared 链接到已安装的 Go 共享库(实验性)
+
+-extar string  存档程序, buildmode=c-archive
+-extld linker  设置外部连接器(默认值是"clang" 或 "gcc"), 默认值是 gcc
+-extldflasgs flags 设置外部连接器参数
+
+-o file 将输出写入到指定文件
+
+-race 启用竞态检测
+
+-s 禁止生成符号表(symbol table)
+-w 禁止生成 DWARF 
+-v 打印link的追踪
+
+-r path 设置 ELF 动态链接搜索路径, dir1:dir2:..., 相当于 gcc 当中 `-Wl,-rpath -Wl,dir1:dir2` 的作用
+-pluginpath string 插件路径
 ```
 
-> 表示 (linux AND 386) OR (darwin AND !cgo)
-
-
-```
-// +build linux drawin
-// +build 386
-
-package main
-```
-
-> 表示 (linux OR darwin) AND 386
-
+- `-gcflags '[pattern=]arg list'` 用于传递每个 `go tool compile` 调用的参数. (gc编译器)
 
 ```
-// +build ignore
+-B 禁止边界检测
+-C 禁止打印错误消息的行
 
-package main
+-D path 设置本地导入的相对路径.
+-I directory 将directory添加到导入搜索的目录
+-E 调试符号表导出
+
+-N 禁止编译器优化
+-l 禁止内联
+
+-S 打印汇编(assembly)结果
+-V 打印版本并退出
+
+-W debug parse tree after type checking
+-w debug type checking
+
+-asmhdr file 将汇编的header写入到文件file
+
+-m 打印优化的决策
+
+
+-std 编译标准库
 ```
 
-> 特例: 表示该文件在任何状况下都不被构建
+## 编译压缩
 
-在一次特定构建中, 条件构建标识需要满足以下条件:
+- 编译使用 `-ldflags='-w -s'` 压缩编译内容
 
-- `runtime.GOOS` 中对操作系统的定义
-- `runtime.GOARCH` 中对CPU架构的定义
-- 使用的编译器, `gc` 或 `gccgo`
-- 如果 `ctx.CgoEnabled` 为 true, 支持 cgo
-- `go1.N` 代表 Go 编译器版本大于 `1.N` 时编译
-- `ctx.BuildTags` 当中的其它标识.
+- 编译完成后, 可以使用 upx 进行压缩(`upx EXEC`).
+
+upx 安装:
+
+```
+sudo apt-get install upx
+```
+
