@@ -4,7 +4,10 @@ package main
 extern void SayHello(_GoString_ s);
 */
 import "C"
-import "fmt"
+import (
+	"fmt"
+	"net"
+)
 
 // 文档: https://chai2010.cn/gopherchina2018-cgo-talk/#/7/11
 // https://bbs.huaweicloud.com/blogs/117132
@@ -32,4 +35,5 @@ func SayHello(s string) {
 
 func main() {
 	C.SayHello("AA")
+	net.ParseIP("")
 }

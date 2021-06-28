@@ -144,20 +144,48 @@ func main() {
 
 ### go 编译过程
 
-cgo 编译过程:
+go 导入/导出符号表:
 
-- cgo 编译 main.go, 生成 `_cgo_export.c`, `_cgo_export.h`, `_cgo_main.c`, `main.cgo1.go`, `main.cgo2.c`,
-`_cgo_gotypes.go` 
+> go:cgo_export_dynamic <local> <remote>
+> 
+> 在 internal 链接模式下, 将名为 <local> 的 Go 符号作为 <remote> 放入程序导出的符号表中. 以便 C 代码可以通过该名称引
+用它. 这种机制使得 C 代码可以调用 Go 或共享 Go 的数据.
 
+> go:cgo_export_static <local> <remote>
+>
+> 在 external 链接模式下. 将名为 <local> 的 Go 符号作为 <remote> 放入程序导出的符号表中. 以便 C 代码可以通过该名称引
+用它. 这种机制使得 C 代码可以调用 Go 或共享 Go 的数据.
+
+> //go:cgo_import_static <local>
+>
+> 在 external 链接模式下, 在为主机链接器准备的 go.o 目标文件中允许对 <local> 的未解析引用, 假设 <local> 将由将与 go.o 
+> 链接的其他目标文件提供. 
+>
+> Example:
+> //go:cgo_import_static puts_wrapper
+
+cgo 编译过程: (cgo预处理 -> gcc编译 -> compile编译 -> pack打包 -> link链接)
+
+![image](/images/cgo_call.png)
+
+- cgo 预处理 main.go, 生成 `_cgo_flags`, `main.cgo1.go`, `main.cgo2.c`, `_cgo_gotypes.go`, `_cgo_main.c`
+`_cgo_export.c`, `_cgo_export.h`.
+
+> `_cgo_flags`, gcc 编译的参数.
+> `_cgo_main.c`, main 函数, cgo 相关函数的空实现.
 > `_cgo_export.h` Go导出的函数声明, Go类型的声明.
 > `_cgo_export.c`, 对于 `_cgo_export.h` 的"实现"
 
-> `_cgo_main.c`, main 函数, cgo 相关函数的空实现.
-> `main.cgo1.go`, main.go, 将 `C.xxx` 的变量和函数使用 go 代码进行替换. 具体的实现在 `_cgo_gotypes.go` 当中.
-> `main.cgo2.c`, 内置的 cgo 转换函数的定义, `GoString()`, `GoBytes()`, `CSting()`, `CBytes()` 等. 在这里去
-调用最终的 C 函数.
-> `_cgo_gotypes.go`, `main.cgo1.go` 当中被替换函数的 go 实现. 主要使用了 `go:cgo_import_static` 和 `go:linkname` 
-魔法.
+> `main.cgo2.c`, 内置 cgo 函数的定义, `GoString()`, `GoBytes()`, `CSting()`, `CBytes()` 等. 用户导出函数的
+具体真实调用.
+
+> `main.cgo1.go`, 用户 Go 代码部分, 使用 `_Cfunc_xxx` 或 `_Ctype_xxx` 替换了 `C.xxx`(xxx部分是函数或变量). 而
+且 `Cfunc_xxx` 或 `Ctype_xxx` 是在 `_cgo_gotypes.go` 当中定义或实现.
+
+> `_cgo_gotypes.go`, CGO 交互的桥梁. 导入(C)函数和导出(Go)函数的入口. 对于导入函数, 使用 `go:cgo_import_static`
+将 C 符号表导入到 Go 当中, 以供 Go 使用 runtime.cgocall() 调用 C 函数; 对于导出函数, 使用 `go:cgo_export_dynamic`
+和 `go:cgo_export_static` 将 Go 符号表导出, 然后供外部 C 调用 (runtime.cgocallback()).
+
 
 - gcc 编译, 先将 `_cgo_export.c`, `main.cgo2.c`, `xxx.c`, `_cgo_main.c` 分别编译成 `*.o`, 然后 `*.o` 文件
 合并生成 `_cgo_.o`, 其中 `xxx.c` 文件是外部依赖的 C 源文件.
@@ -195,3 +223,15 @@ go 编译过程:
 > 注: importcfg.link = `importcfg 包` + `importcfg依赖包` + `_pkg_.a`
 
 - 对 `a.out` 重命名输出.
+
+
+
+cgo 预处理:
+
+```
+src="/tmp/cgo"
+WORK="/tmp/out"
+mkdir -p ${WORK}/b001
+cd ${src}
+CGO_LDFLAGS='"-g" "-O2"' /opt/share/local/go/pkg/tool/linux_amd64/cgo -objdir $WORK/b001/ -importpath _${src} -- -I $WORK/b001/ -g -O2 ./main.go
+```
