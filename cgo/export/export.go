@@ -1,39 +1,26 @@
 package main
 
-/*
-extern void SayHello(_GoString_ s);
-*/
+
 import "C"
-import (
-	"fmt"
-	"net"
-)
 
-// 文档: https://chai2010.cn/gopherchina2018-cgo-talk/#/7/11
-// https://bbs.huaweicloud.com/blogs/117132
+//export Jdk
+type Jdk struct {
 
-//export SayHello
-func SayHello(s string) {
-	fmt.Println(s)
 }
 
-//// Go => C => Go => C
-//func main1() {
-//	fmt.Println(C.c_add(1, 7))
-//}
-//
-//// Go => C
-//func main2() {
-//	fmt.Println(C.c_add(1, 10))
-//}
 
-//// Go => C => Go
-//func main3()  {
-//	var x interface{} = "java"
-//	C.SayHello(x)
-//}
+//export Add
+func Add(i, j C.int) C.int {
+	return i+j
+}
+
+//export Chan
+func Chan(c chan string)  {
+	c <- "AA"
+	c <- "BB"
+
+	//fmt.Println(reflect.ValueOf(c).Type())
+}
 
 func main() {
-	C.SayHello("AA")
-	net.ParseIP("")
 }

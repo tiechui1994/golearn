@@ -2,17 +2,19 @@
 
 ### 导出的 Go 函数满足的条件
 
-1. 必须在 `main` 包当中导出.
+1. 需要引入 "C" 包, 这样导出包才能生成 `libxxx.h` 文件.
 
-2. 必须包含 `main()` 函数.
+2. 必须在 `main` 包当中导出.
 
-3. `//export Function` 导出函数标记. 注: `//` 和 `export` 之间没有任何空格. 导出的 `Function` 名称和 Go函数
+3. 必须包含 `main()` 函数.
+
+4. `//export Function` 导出函数标记. 注: `//` 和 `export` 之间没有任何空格. 导出的 `Function` 名称和 Go函数
 名称必须一致.
 
-4. 导出的 Go 函数参数或返回值当中不能包含自定义的struct(不包含 string, int, slice, array, map, chan 的别名). 
+5. 导出的 Go 函数参数或返回值当中不能包含自定义的struct(不包含 string, int, slice, array, map, chan 的别名). 
 对于自定义的结构体, 可以使用 interface{} 或 unsafe.Pointer 替换.
 
-5. 可以导出struct的方法, 但是这些 struct 必须是 string, int, slice, array, map, chan 的别名. 即:
+6. 可以导出struct的方法, 但是这些 struct 必须是 string, int, slice, array, map, chan 的别名. 即:
 
 ```go 
 type String string
@@ -24,6 +26,13 @@ type Chan chan struct{}
 ```
 
 除此之外, 其他的结构体方法不能导出.
+
+> 关于 Go 导出函数的细节:
+1. 导出的函数建议使用 C 类型的参数, 这样方便外部函数进行调用.
+2. 如果导出函数的类型是 Go 内置的类型(int,float,map,interface,slice,chan), `函数导出` 和 `函数调用` 要分离, 否则
+会存在类型未定义的错误. 对于 string 类型, 建议最好使用 *C.char 类型进行替换, 否则存在一些问题.
+3. 在导出的函数中, 
+
 
 案例1: 导出 C 类型参数函数
 
@@ -113,32 +122,63 @@ go build -ldflags='-buildmode=c-archive' -o libxxx.a xxx.go
 
 案例:
 
+//add.h
+```cgo
+extern int add(int i, int j);
+```
+
+//add.c
+```cgo
+int add(int i, int j) {
+    return i+j;
+}
+```
+
+//export.go
 ```cgo
 package main
 
 /*
-static int c_add(int a, int b) {
-	return a+b;
+#cgo CFLAGS:-I.
+#cgo LDFLAGS:-l add -L. -Wl,-rpath -Wl,.
+
+#include "add.h"
+*/
+import "C"
+
+//export Add
+func Add(a, b C.int) C.int {
+	return C.add(a, b)
 }
 
-static int go_add_proxy(int a, int b) {
-	extern int GoAdd(int a, int b);
-	return GoAdd(a,b);
-}
+func main() {}
+```
+
+//main.go
+```cgo
+package main
+
+/*
+#cgo CFLAGS:-I.
+#cgo LDFLAGS:-l goadd -L. -Wl,-rpath -Wl,.
+
+#include "libgoadd.h"
 */
 import "C"
 import "fmt"
 
-
-//export GoAdd
-func GoAdd(a, b C.int) C.int {
-	return C.c_add(a, b)
-}
-
 // Go => C => Go => C
 func main() {
-	fmt.Println(C.go_add_proxy(1, 7))
+	fmt.Println(C.Add(1, 7))
 }
+```
+
+编译:
+
+```
+gcc -shared -o libadd.so add.c
+go build -o libgoadd.so -buildmode=c-shared export.go
+go build -o main main.go
 ```
 
 
