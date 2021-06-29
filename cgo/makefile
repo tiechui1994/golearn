@@ -22,11 +22,17 @@ libwx.a: clean
 libwx.so: clean
 	go build -buildmode=c-shared -o libwx.so export1.go
 
-main: libwx.so
-	go build -o main export2.go
+test1: libwx.so
+	go build -work -o test1 test1.go
+	./test1
+
+test2: clean
+	go build -work -v -x -o test2 test2.go
+	./test2
+
 
 clean:
 	rm -rf libwx.*
-	rm -rf main
+	rm -rf test1 test2
 
 all: libwx.a libwx.so

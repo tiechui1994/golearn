@@ -27,11 +27,12 @@ type Chan chan struct{}
 
 除此之外, 其他的结构体方法不能导出.
 
-> 关于 Go 导出函数的细节:
+> 关于 Go 导出函数的看法:
 1. 导出的函数建议使用 C 类型的参数, 这样方便外部函数进行调用.
-2. 如果导出函数的类型是 Go 内置的类型(int,float,map,interface,slice,chan), `函数导出` 和 `函数调用` 要分离, 否则
-会存在类型未定义的错误. 对于 string 类型, 建议最好使用 *C.char 类型进行替换, 否则存在一些问题.
-3. 在导出的函数中, 
+2. 如果导出函数的类型是 Go 内置的类型(int,float,map,interface,slice,chan), `函数导出` 和 `函数调用` 要分离, 否
+则会存在类型未定义的错误. 对于 string 类型, 建议最好使用 *C.char 类型进行替换, 否则存在一些问题.
+3. 在导出的函数中, 不建议将(map,interface,chan)类型作为参数进行传递, 因为它们会失去 Go 本身自带的一些属性, 导致一些
+异常的行为发生.
 
 
 案例1: 导出 C 类型参数函数
@@ -274,4 +275,157 @@ WORK="/tmp/out"
 mkdir -p ${WORK}/b001
 cd ${src}
 CGO_LDFLAGS='"-g" "-O2"' /opt/share/local/go/pkg/tool/linux_amd64/cgo -objdir $WORK/b001/ -importpath _${src} -- -I $WORK/b001/ -g -O2 ./main.go
+```
+
+### 常用的内置函数实现
+
+// CString() 和 GoString()
+
+```
+func _Cfunc_CString(s string) *_Ctype_char {
+    p := _cgo_cmalloc(uint64(len(s)+1)) // 调用 C 的 malloc 进行内存分配, 在 stdlib.h 当中
+    pp := (*[1<<30]byte)(p) // 转换为 byte 数组的一个指针.
+    copy(pp[:], s) // 内容拷贝
+    pp[len(s)] = 0 // 设置尾端为 NULL, 这是 C 当中对于字符串的定义.
+    return (*_Ctype_char)(p)
+}
+
+//go:cgo_import_static _cgo_212663114200_Cfunc__Cmalloc
+//go:linkname __cgofn__cgo_212663114200_Cfunc__Cmalloc _cgo_212663114200_Cfunc__Cmalloc
+var __cgofn__cgo_212663114200_Cfunc__Cmalloc byte
+var _cgo_212663114200_Cfunc__Cmalloc = unsafe.Pointer(&__cgofn__cgo_212663114200_Cfunc__Cmalloc)
+
+//go:cgo_unsafe_args
+func _cgo_cmalloc(p0 uint64) (r1 unsafe.Pointer) {
+    // 使用 runtime.cgocall() 调用 malloc 函数
+    _cgo_runtime_cgocall(_cgo_212663114200_Cfunc__Cmalloc, uintptr(unsafe.Pointer(&p0)))
+    if r1 == nil {
+        runtime_throw("runtime: C malloc failed")
+    }
+    return
+}
+
+//go:linkname _cgo_runtime_gostring runtime.gostring
+func _cgo_runtime_gostring(*_Ctype_char) string
+
+func _Cfunc_GoString(p *_Ctype_char) string {
+    // 直接调用 runtime.gostring() 进行转换
+    return _cgo_runtime_gostring(p)
+}
+
+// runtime.gostring
+func gostring(p *byte) string {
+	l := findnull(p) // 查找 NULL 的位置
+	if l == 0 {
+		return ""
+	}
+	s, b := rawstring(l) // 在 go 内存上分配一个 l 长度的内存空间
+	memmove(unsafe.Pointer(&b[0]), unsafe.Pointer(p), uintptr(l)) // 内存拷贝
+	return s
+}
+```
+
+
+`_Cfunc_CString` 是 cgo 内置的 `Go String` 到 `C char*` 类型转换函数:
+
+- 使用 `_cgo_cmalloc` 在 C 空间申请内存
+
+- 使用该段 C 内存转换成一个 `*[1<<30]byte` 对象
+
+- 将 string 拷贝到 byte 数组当中.
+
+- 最后是返回 C 内存地址.
+
+
+与 `_Cfunc_CString` 对于的是 `_Cfunc_GoString`, 将`C char*`转换为`Go String`, 它是直接调用了 runtime.gostring() 
+函数, 转换过程与 `_Cfunc_CString` 类似.
+
+C.CString() 函数简单安全, 但是它涉及了一次 Go 到 C 空间的内存拷贝, 对于长字符串这将是不可忽视的开销.
+
+Go 当中 string 类型是 "不可变的", 实际当中可以发现, 除了常量字符串会在编译期被分配到只读段, 其他动态生成的字符串实际上
+都是在堆上.
+
+因此, 如果能够获取到 string 的内存缓存区地址, 就可以使用类似数组的方式将字符串指针和长度直接传递给 C 使用. 这其实就使用
+到了 string 底层数据结构:
+
+```cgo
+type StringHeader struct{
+    Data unitptr
+    Len int
+}
+```
+
+### Go => C 原理
+
+//test.go
+```cgo
+package main
+
+/*
+int sum(int a, int b) {
+	return a+b;
+}
+*/
+import "C"
+
+func main() {
+	println(C.sum(11, 12))
+}
+```
+
+
+// `test.cgo2.c`
+```cgo
+void _cgo_9a439e687ff9_Cfunc_sum(void *v)
+{
+        struct {
+                int p0;
+                int p1;
+                int r;
+                char __pad12[4];
+        } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
+        char *_cgo_stktop = _cgo_topofstack();
+        __typeof__(_cgo_a->r) _cgo_r;
+        _cgo_tsan_acquire();
+        _cgo_r = sum(_cgo_a->p0, _cgo_a->p1); // 调用 sum 函数
+        _cgo_tsan_release();
+        _cgo_a = (void*)((char*)_cgo_a + (_cgo_topofstack() - _cgo_stktop));
+        _cgo_a->r = _cgo_r;
+        _cgo_msan_write(&_cgo_a->r, sizeof(_cgo_a->r));
+}
+```
+
+// `_cgo_gotypes.c`
+
+```cgo
+//go:linkname _Cgo_always_false runtime.cgoAlwaysFalse
+var _Cgo_always_false bool
+//go:linkname _Cgo_use runtime.cgoUse
+func _Cgo_use(interface{})
+
+type _Ctype_int int32    // int
+type _Ctype_void [0]byte // void 
+
+
+//go:linkname _cgo_runtime_cgocall runtime.cgocall
+func _cgo_runtime_cgocall(unsafe.Pointer, uintptr) int32
+
+//go:linkname _cgo_runtime_cgocallback runtime.cgocallback
+func _cgo_runtime_cgocallback(unsafe.Pointer, unsafe.Pointer, uintptr, uintptr)
+
+
+//go:cgo_import_static _cgo_9a439e687ff9_Cfunc_sum
+//go:linkname __cgofn__cgo_9a439e687ff9_Cfunc_sum _cgo_9a439e687ff9_Cfunc_sum
+var __cgofn__cgo_9a439e687ff9_Cfunc_sum byte
+var _cgo_9a439e687ff9_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_9a439e687ff9_Cfunc_sum)
+
+//go:cgo_unsafe_args
+func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
+        _cgo_runtime_cgocall(_cgo_9a439e687ff9_Cfunc_sum, uintptr(unsafe.Pointer(&p0)))
+        if _Cgo_always_false {
+                _Cgo_use(p0)
+                _Cgo_use(p1)
+        }
+        return
+}
 ```
