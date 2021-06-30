@@ -429,6 +429,12 @@ func _cgo_runtime_cgocall(unsafe.Pointer, uintptr) int32
 func _cgo_runtime_cgocallback(unsafe.Pointer, unsafe.Pointer, uintptr, uintptr)
 
 
+//go:linkname _cgoCheckPointer runtime.cgoCheckPointer
+func _cgoCheckPointer(interface{}, interface{}) // 检查传入C的指针,防止传入了指向Go指针的Go指针
+
+//go:linkname _cgoCheckResult runtime.cgoCheckResult
+func _cgoCheckResult(interface{}) // 检查返回值,防止返回一个Go指针.
+
 //go:cgo_import_static _cgo_9a439e687ff9_Cfunc_sum
 //go:linkname __cgofn__cgo_9a439e687ff9_Cfunc_sum _cgo_9a439e687ff9_Cfunc_sum
 var __cgofn__cgo_9a439e687ff9_Cfunc_sum byte
@@ -453,4 +459,183 @@ Go 当中变量可以分配在栈上或堆上. 栈中变量的地址随着 go �
 `_Cgo_use` 以 interface 类型为参数, 编译器很难在编译器知道, 变量最好会是什么类型, 因此它的参数都会被分配在堆上. 这是
 在 `_Cfunc_sum` 当中调用 `_Cgo_use` 的原因.
 
-`_cgo_runtime_cgocall` 是从 Go 调用 C 的关键函数, 
+`_cgo_runtime_cgocall` 是从 Go 调用 C 的关键函数, 该函数通过 `go:linkname` 从 runtime.cgocall 链接而来.
+
+// runtime/cgocall.go
+
+```cgo
+// Call from Go to C.
+//
+// 这里使用 nosplit, 是因为它用于某些平台上的系统调用. 系统调用可能在栈上有 untyped 参数, 因此 grow 或 scan
+// 只能都是不安全的. 
+//
+//go:nosplit
+func cgocall(fn, arg unsafe.Pointer) int32 {
+	if !iscgo && GOOS != "solaris" && GOOS != "illumos" && GOOS != "windows" {
+		throw("cgocall unavailable")
+	}
+    
+    // 函数检查
+	if fn == nil {
+		throw("cgocall nil")
+	}
+
+	if raceenabled {
+		racereleasemerge(unsafe.Pointer(&racecgosync))
+	}
+
+	mp := getg().m // 获取当前的 m
+	mp.ncgocall++  // 统计 m 调用 CGO 的次数
+	mp.ncgo++      // 周期内调用的次数
+
+	// Reset traceback.
+	mp.cgoCallers[0] = 0 // 如果在 cgo 中 crash. 记录 CGO 的 traceback
+
+	// 进入系统调用, 以便调度程序创建新的 M 来执行 G
+	// 对于 asmcgocall 的调用保证不会增加 stack 并且不会分配内存, 因此在超出 $GOMAXPROCS
+	// 之外的 "系统调用中" 中调用是安全的.
+	// fn 可能会会掉到 Go 代码中, 这种情况下, 将退出 "system call", 运行 Go 代码(可能会增加堆栈),
+	// 然后重新进入 "system call". PC和SP在这里被保存.
+	entersyscall() // 进入系统调用前期准备工作. M, P 分离, 防止系统调用阻塞 P 的调度, 保存上下文.
+
+	// 告诉异步抢占我们正在进入外部代码. 在 entersyscall 之后这样做, 因为这可能会阻塞并导致异步抢占失败,
+	// 但此时同步抢占会成功(尽管这不是正确性的问题)
+	osPreemptExtEnter(mp) // 在 linux 当中是空函数
+
+	mp.incgo = true
+	errno := asmcgocall(fn, arg) // 切换到 g0, 调用 C 函数 fn, 汇编实现
+
+	// Update accounting before exitsyscall because exitsyscall may
+	// reschedule us on to a different M.
+	mp.incgo = false
+	mp.ncgo--
+
+	osPreemptExtExit(mp) // 在 linux 当中是空函数
+
+	exitsyscall() // 退出系统调用, 寻找 P 来绑定 M
+
+	// Note that raceacquire must be called only after exitsyscall has
+	// wired this M to a P.
+	if raceenabled {
+		raceacquire(unsafe.Pointer(&racecgosync))
+	}
+    
+    // 防止 Go 的 gc, 在 C 函数执行期间回收相关参数, 用法与前述_Cgo_use类似
+	KeepAlive(fn) 
+	KeepAlive(arg)
+	KeepAlive(mp)
+
+	return errno
+}
+```
+
+Go 调入 C 之后, 程序的运行将不受 Go 的 runtime 的管控. 一个正常的 Go 函数是需要 runtime 的管控的, 即函数的运行时间
+过长导致 goroutine 的抢占, 以及 GC 的执行会导致所有的 goroutine 被挂起.
+
+C 程序的执行, 限制了 Go 的 runtime 的调度行为. 为此, Go 的 runtime 会在进入 C 程序之前, 标记这个运行 C 的线程 M,
+将其排除在调度之外.
+
+由于正常的 Go 程序运行在一个 2k 的栈上, 而 C 程序需要一个无穷大的栈, 因此在进入 C 函数之前需要把当前线程的栈从 2k 切换
+到线程本身的系统栈上, 即切换到 g0.
+
+asmcgocall 采用汇编实现:
+
+// runtime/asm_amd64.s
+
+```cgo
+// func asmcgocall(fn, arg unsafe.Pointer) int32
+// 在 g0 上调用 fn(arg) 函数.
+TEXT ·asmcgocall(SB),NOSPLIT,$0-20
+	MOVQ	fn+0(FP), AX
+	MOVQ	arg+8(FP), BX
+
+	MOVQ	SP, DX // 保存当前的 SP 到 DX
+
+	// Figure out if we need to switch to m->g0 stack.
+	// We get called to create new OS threads too, and those
+	// come in on the m->g0 stack already.
+	// 切换 g 之前的检查
+	get_tls(CX)
+	MOVQ	g(CX), R8 // R8 = g
+	CMPQ	R8, $0    // g == 0
+	JEQ	nosave // 相等跳转, 则说明当前 g 为空
+	MOVQ	g_m(R8), R8 // 当前 m
+	MOVQ	m_g0(R8), SI // SI = m.g0
+	MOVQ	g(CX), DI    // DI = g  
+	CMPQ	SI, DI // m.g0 == g
+	JEQ	nosave // 相等跳转, 当前在 g0 上
+	MOVQ	m_gsignal(R8), SI // SI = m.gsignal
+	CMPQ	SI, DI // m.gsignal == g
+	JEQ	nosave // 相等跳转, 当前 m.gsignal 上
+
+	// 切换到 g0 上
+	MOVQ	m_g0(R8), SI // SI=m.g0
+	CALL	gosave<>(SB) // 调用 gosave, 参数是 gobuf
+	MOVQ	SI, g(CX) // 切换到 g0
+	MOVQ	(g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
+
+	// Now on a scheduling stack (a pthread-created stack).
+	// Make sure we have enough room for 4 stack-backed fast-call
+	// registers as per windows amd64 calling convention.
+	SUBQ	$64, SP     // SP=SP-64
+	ANDQ	$~15, SP	// SP=SP+16, 偏移 gcc ABI
+	MOVQ	DI, 48(SP)	// 保存 g 
+	MOVQ	(g_stack+stack_hi)(DI), DI // DI=g.stack.hi
+	SUBQ	DX, DI       // 计算 g 栈大小, 保存到 DI 当中
+	MOVQ	DI, 40(SP)	// 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
+	MOVQ	BX, DI		// DI = first argument in AMD64 ABI
+	MOVQ	BX, CX		// CX = first argument in Win64
+	CALL	AX          // 调用函数, 参数 DI, SI, CX, DX, R8
+
+	// 函数调用完成, 恢复到 g, stack
+	get_tls(CX)
+	MOVQ	48(SP), DI // DI=g
+	MOVQ	(g_stack+stack_hi)(DI), SI // SI=g.stack.hi
+	SUBQ	40(SP), SI // SI=SI-size
+	MOVQ	DI, g(CX)  // tls 保存, 恢复到 g 
+	MOVQ	SI, SP     // 恢复 SP
+
+	MOVL	AX, ret+16(FP) // 函数返回错误码
+	RET
+
+nosave:
+	// 在系统栈上运行, 甚至可能没有 g.
+    // 在线程创建或线程拆除期间可能没有 g 发生(例如, 参见 Solaris 上的 needm/dropm).
+    // 这段代码和上面的代码作用是一样的, 但没有saving/restoring g, 并且不用担心 stack 移动(因为我们在系统栈上,
+    // 而不是在 goroutine 堆栈上).
+    // 如果上面的代码已经在系统栈上, 则可以直接使用, 但是通过此代码的唯一路径在 Solaris 上很少见.
+	SUBQ	$64, SP
+	ANDQ	$~15, SP
+	MOVQ	$0, 48(SP)	// where above code stores g, in case someone looks during debugging
+	MOVQ	DX, 40(SP)	// save original stack pointer
+	MOVQ	BX, DI		// DI = first argument in AMD64 ABI
+	MOVQ	BX, CX		// CX = first argument in Win64
+	CALL	AX
+	MOVQ	40(SP), SI	// restore original stack pointer
+	MOVQ	SI, SP
+	MOVL	AX, ret+16(FP)
+	RET
+```
+
+
+**当Go调用C函数时, 会单独占用一个系统线程. 因此如果在 Go协程中并发调用C函数, 而C函数中又存在阻塞操作,就很可能会造成Go
+程序不停的创建新的系统线程,而Go并不会回收系统线程,过多的线程会拖垮整个系统**
+
+
+
+下面介绍一下将 C 符号导入 Go:
+
+```cgo
+//go:cgo_import_static _cgo_9a439e687ff9_Cfunc_sum
+//go:linkname __cgofn__cgo_9a439e687ff9_Cfunc_sum _cgo_9a439e687ff9_Cfunc_sum
+var __cgofn__cgo_9a439e687ff9_Cfunc_sum byte
+var _cgo_9a439e687ff9_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_9a439e687ff9_Cfunc_sum)
+```
+
+- `go:cgo_import_static` 将 C 函数的 `_cgo_9a439e687ff9_Cfunc_sum` 加载到 Go 空间中.
+
+- `go:linkname`, 将 Go 的 byte 对象 `__cgofn__cgo_9a439e687ff9_Cfunc_sum` 的内存地址链接到 C 函数的 `_cgo_9a439e687ff9_Cfunc_sum`
+内存空间
+
+- 创建 Go 对象的 `_cgo_9a439e687ff9_Cfunc_sum` 并赋值 C 函数地址.
+
