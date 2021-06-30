@@ -281,7 +281,7 @@ CGO_LDFLAGS='"-g" "-O2"' /opt/share/local/go/pkg/tool/linux_amd64/cgo -objdir $W
 
 // CString() 和 GoString()
 
-```
+```cgo
 func _Cfunc_CString(s string) *_Ctype_char {
     p := _cgo_cmalloc(uint64(len(s)+1)) // 调用 C 的 malloc 进行内存分配, 在 stdlib.h 当中
     pp := (*[1<<30]byte)(p) // 转换为 byte 数组的一个指针.
@@ -357,7 +357,7 @@ type StringHeader struct{
 
 ### Go => C 原理
 
-//test.go
+// `test.go`
 ```cgo
 package main
 
@@ -373,9 +373,17 @@ func main() {
 }
 ```
 
+按照上面的 CGO 编译过程, 会生成 `test.cgo1.go`, `test.cgo2.c`, `_cgo_gotypes.go`, `_cgo_export.c`, `_cgo_export.h`
+`cgo_flags` 文件. 这里重点介绍 `test.cgo2.c` 和 `_cgo_gotypes.go`, 它们是核心.
+
+在 `test.cgo2.c` 当中, 这里只有一个方法 `_cgo_9a439e687ff9_Cfunc_sum`, 它直接进行了 `sum()` (C方法) 的调用.
 
 // `test.cgo2.c`
 ```cgo
+
+// 声明了 _cgo_topofstack 函数
+extern char* _cgo_topofstack(void);
+
 void _cgo_9a439e687ff9_Cfunc_sum(void *v)
 {
         struct {
@@ -384,7 +392,7 @@ void _cgo_9a439e687ff9_Cfunc_sum(void *v)
                 int r;
                 char __pad12[4];
         } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
-        char *_cgo_stktop = _cgo_topofstack();
+        char *_cgo_stktop = _cgo_topofstack(); // 获取栈顶
         __typeof__(_cgo_a->r) _cgo_r;
         _cgo_tsan_acquire();
         _cgo_r = sum(_cgo_a->p0, _cgo_a->p1); // 调用 sum 函数
@@ -395,13 +403,20 @@ void _cgo_9a439e687ff9_Cfunc_sum(void *v)
 }
 ```
 
+上述的 `_cgo_9a439e687ff9_Cfunc_sum` 函數是一个通用的模板实例, 所有的 Go 调用 C 都会有这样的一个模板实例. 模板函数
+做的工作:
+
+- 准备调用 C 的参数, 该参数包含了三部分, 函数参数, 函数返回值, padding.
+
+
 // `_cgo_gotypes.c`
 
 ```cgo
 //go:linkname _Cgo_always_false runtime.cgoAlwaysFalse
-var _Cgo_always_false bool
+var _Cgo_always_false bool // 一个常亮, 正常状况下值永远是 false
+
 //go:linkname _Cgo_use runtime.cgoUse
-func _Cgo_use(interface{})
+func _Cgo_use(interface{}) // 抛出一个 Error
 
 type _Ctype_int int32    // int
 type _Ctype_void [0]byte // void 
@@ -421,11 +436,21 @@ var _cgo_9a439e687ff9_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_9a439e687ff9_Cfun
 
 //go:cgo_unsafe_args
 func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
-        _cgo_runtime_cgocall(_cgo_9a439e687ff9_Cfunc_sum, uintptr(unsafe.Pointer(&p0)))
-        if _Cgo_always_false {
-                _Cgo_use(p0)
-                _Cgo_use(p1)
-        }
-        return
+    _cgo_runtime_cgocall(_cgo_9a439e687ff9_Cfunc_sum, uintptr(unsafe.Pointer(&p0)))
+    if _Cgo_always_false {
+        _Cgo_use(p0) // 逃逸 p1
+        _Cgo_use(p1) // 逃逸 p2
+    }
+    return
 }
 ```
+
+Go 当中变量可以分配在栈上或堆上. 栈中变量的地址随着 go 调度, 发生变化. 堆当中的变量则不会.
+
+当程序进入 C 空间后, 会脱离 Go 的调度机制, 所以必须保证 C 函数的参数分配在堆上. Go 通过编译器里做逃逸分析来决定一个对象
+放在栈上还是堆上, 不逃逸的对象放在栈上, 可能逃逸的放在堆上. 
+
+`_Cgo_use` 以 interface 类型为参数, 编译器很难在编译器知道, 变量最好会是什么类型, 因此它的参数都会被分配在堆上. 这是
+在 `_Cfunc_sum` 当中调用 `_Cgo_use` 的原因.
+
+`_cgo_runtime_cgocall` 是从 Go 调用 C 的关键函数, 
