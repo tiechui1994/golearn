@@ -58,7 +58,8 @@ func writeCode(code, file string) {
 	log.Printf("Success write %v", file)
 }
 
-func getCode1(u string) string {
+func getCode1() string {
+	u := "http://idea.94goo.com"
 	data, err := GET(u, nil)
 	if err != nil {
 		log.Println(err)
@@ -81,7 +82,7 @@ func getCode2() string {
 		return ""
 	}
 
-	str := strings.Replace(string(data),"\n","",-1)
+	str := strings.Replace(string(data), "\n", "", -1)
 	var token string
 	re := regexp.MustCompile(`<input type="hidden" name="csrfmiddlewaretoken" value="(.*?)">`)
 	tokens := re.FindAllStringSubmatch(str, 1)
@@ -117,7 +118,7 @@ func getCode2() string {
 
 func validCode(code string) bool {
 	tokens := strings.Split(code, "-")
-	if len(tokens) < 2 {
+	if len(tokens) != 4 {
 		return false
 	}
 
@@ -171,7 +172,7 @@ func main() {
 	dir := flag.String("path", "/root", "jetbrains work dir")
 	flag.Parse()
 
-	code := getCode1("http://idea.94goo.com")
+	code := getCode1()
 	if !validCode(code) {
 		code = getCode2()
 	}
@@ -179,7 +180,7 @@ func main() {
 		log.Println("no code")
 		return
 	}
-	
+
 	paths := searchFile(*dir)
 	for _, path := range paths {
 		writeCode(code, path)
