@@ -1,4 +1,4 @@
-package optimization
+package main
 
 import (
 	"math/rand"

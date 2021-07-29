@@ -76,7 +76,7 @@ func Code() {
 
 	plain := []byte("Hello")
 	ciphertext, _ := rsa.EncryptPKCS1v15(rand.Reader, public, plain)
-	fmt.Println(hex.EncodeToString(ciphertext))
+	fmt.Println(hex.EncodeToString(ciphertext), len(ciphertext), public.Size())
 
 	plaintext, _ := rsa.DecryptPKCS1v15(rand.Reader, private, ciphertext)
 	fmt.Println(string(plaintext))
