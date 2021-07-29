@@ -21,7 +21,7 @@ total {{ (len $) }}
 {{- if (eq .Type 1) }} 
 	{{- $x = "d" }}
 {{- end }}
-{{printf "%s  %24s  %s" $x .Updated .Name}}
+{{ (printf "%s  %24s  %s" $x .Updated .Name) }}
 {{- end }}
 `
 	tpl = strings.Trim(tpl, "\n")

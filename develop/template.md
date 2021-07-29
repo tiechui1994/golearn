@@ -106,6 +106,8 @@ lt arg1 arg2 <=> arg1 < arg2
 gt arg1 arg2 <=> arg1 > arg2
 ```
 
+> 一般情况下函数调用方式是 `{{ (NAME arg1 arg2 ...) }}`, NAME 是函数名称, arg1, arg2 等是函数参数
+
 
 案例1: 比较
 ```
@@ -128,7 +130,7 @@ total {{ (len $) }}
 {{- if (eq .Type 1) }} 
 	{{- $x = "d" }}
 {{- end }}
-{{printf "%s  %24s  %s" $x .Updated .Name}}
+{{ (printf "%s  %24s  %s" $x .Updated .Name) }}
 {{- end }}
 ```
 
