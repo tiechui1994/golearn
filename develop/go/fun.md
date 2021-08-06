@@ -1,4 +1,4 @@
-## go 底层函数
+## Go 底层函数
 
 
 ### typedmemmove() VS memmove()

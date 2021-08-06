@@ -1,4 +1,4 @@
-## go 命令
+## go build
 
 ### go build
 
@@ -24,6 +24,37 @@
 考 `go help buildmode` 
 
 - `-mod mode` 模块下载的模式(readonly, vendor, mod), 详细参考 `go help modules` 说明.
+
+`go get` 命令更新 go.mod 以更改构建中使用的模块版本. 一个模块的升级意味着其它模块的升级, 同样, 一个模块的降级可能意味
+着其它模块的降级. `go get` 命令也会进行这些隐含的更改. 如果直接编辑 go.mod, 像 `go build`, `go list`, `go run`,
+`go test` 这样的命令将假定是故意升级的, 并自动进行任何隐含的升级并更新go.mod以反应它们.
+
+1) `-mod=readonly`, 则禁止 go 命令进行 go.mod 的隐式自动更新. 相反, 当需要对 go.mod 进行任何更改时, 它会失败. 此
+设置对于检查 go.mod 是否不需要更新最有用. 例如在持续集成和测试系统中. 即使使用 `-mod=readonly`, `go get` 命令仍然允
+许更新 go.mod.
+
+2) `-mod=vendor`, go命令从main modules的vendor目录加载包, 而不是从module cache加载包. go 命令假定 vendor 目录
+包含正确的依赖项副本, 并且它不会从go.mod文件计算所需的模块版本集. 但是, go命令会检查vendor/modules.txt(由`go mod vendor`
+生成)是否包含与go.mod一致的元数据.
+
+3) `-mod=mod`, 即使存在 vendor 目录, go 命令也会从 module cache 中加载包.
+
+注: 如果 go 命令未使用 `-mod` 标志, 并且 vendor 目录存在, 且 go.mod 中的 go 版本为 1.14或更高, 则 go 命令默认使
+用 `-mod=vendor` 标志.
+
+> go mod download 会根据 go.mod 文件下载模块到 module cache 当中.
+> go mod vendor 会根据 go.mod 文件将依赖模块copy到vendor目录当中, 同时生成 vendor/modules.txt 文件. 如果模块不
+存在(module cache当中), 则会隐式执行 `go mod download`.
+
+
+> 对于细粒度的 modules 控制, go 命令使用环境变量 GO111MODULE 进行控制.
+> - GO111MODULE=on, 则 go 命令开启使用 modules, 不再访问 GOPATH. 称为 "module-aware mode".
+> - GO111MODULE=off, 则 go 命令不支持使用 modules, 它会在 vendor目录和 GOPATH 当中查找依赖项. 
+> - GO111MODULE=auto或未设置, 则 go 命令根据当前目录开启/禁用modules. 仅当当前目录包含了 go.mod 文件或位于包含
+go.mod 文件的目录下时才启用modules.
+>
+> 在 "module-aware mode" 下, GOPATH 不再定义构建期间导入的含义, 但它仍然存储下载的依赖项($GOPATH/pkg/mod中)和
+安装命令(在$GOPATH/bin, 除非手动设置了 GOBIN).
 
 - `-gccgoflags '[pattern=]arg list'` 传递给 gccgo 编译器/连接器的参数.
 
