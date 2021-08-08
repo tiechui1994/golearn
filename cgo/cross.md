@@ -57,7 +57,7 @@ GOOS=linux GOARCH=arm64 GOARM=7 go build -o xxx *.go
 
 下面是 arm 交叉汇编工具 (Ubuntu下):
 
-| tool | armhf                   | arm64                 | eabi                  | 
+| tool | armhf(arm32)            | arm64                 | eabi                  | 
 | ---- | ---                     | ---                   | ---                   |
 | gcc  | gcc-arm-linux-gnueabihf | gcc-aarch64-linux-gnu | gcc-arm-linux-gnueabi | 
 | g++  | g++-arm-linux-gnueabihf | g++-aarch64-linux-gnu | g++-arm-linux-gnueabi |
@@ -96,3 +96,5 @@ go build -o xxx *.go
 > `arm-linux-gnueabi`,`arm-linux-gnueabihf`目录下的文件作为交叉编译工具.
 
 至于针对其他的汇编平台, 可以类比, 但是注意选择交叉编译工具.
+
+

@@ -2,13 +2,14 @@ package qrcode
 
 import (
 	"bytes"
-	"golang.org/x/image/bmp"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"os"
+
+	"golang.org/x/image/bmp"
 )
 
 type Qrcode struct {
@@ -394,10 +395,8 @@ func (q *Qrcode) AddData(data interface{}, optimize int) {
 		origin = data.([]byte)
 	case string:
 		origin = []byte(data.(string))
-	case int:
-		origin = []byte(string(data.(int)))
-	case uint:
-		origin = []byte(string(data.(uint)))
+	case rune:
+		origin = []byte(string(data.(rune)))
 	default:
 		panic("invalid data type")
 	}
