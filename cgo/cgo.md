@@ -302,10 +302,10 @@ func main() {
 }
 ```
 
-在 C 代码当中, 定义了一个 `typedef struct option` 类型, 然后在 `call()` 函数当中需要的参数类型分别是 `option`和
-`*option `. `call()` 函数代码就是打印参数里的值.
+在 C 代码当中, 定义了一个 `typedef struct option` 类型, 然后在 call() 函数当中需要的参数类型分别是 `option` 和
+`*option`, call() 函数代码就是打印参数里的值.
 
-在 Go 代码当中, 就是调用 C 语言的 `call()` 函数. Go当中定义了和 C 一致的结构体 `option`, 创建一个 `option` 类型
+在 Go 代码当中, 就是调用 C 语言的 call() 函数. Go当中定义了和 C 一致的结构体 `option`, 创建一个 `option` 类型
 的变量, 使用 `unsafe` 包直接将 `option` 变量直接转换成 `C.struct_option`(call函数参数 arg1).
 
 而对于 call 函数参数 arg2, 转换相对复杂了一些, 详细步骤参考代码当中的的注释.
@@ -325,6 +325,34 @@ func main() {
 
 5. 在调用 C 语言函数时, 若参数类型需要转换成 `*C.struct_xxx`, 必须按照 `C数组` 的方式进行转换. 即 `确定内存长度`,
 `malloc分配内存`, `unsafe包转换成数组`, `对数组的元素进行赋值`. 这一点非常的重要.
+
+
+> 关于 C 类型的定义:
+
+```
+1. 自定义数据类型, 方便移植
+
+typedef struct XXX {
+    
+} XXX;
+
+或
+
+typedef struct XXX {
+} 
+
+// 使用的类型: "Xxx x", "Xxx* x"
+
+
+2. 别名
+
+struct XXX {
+    
+} XXX;
+
+// 使用的类型: "struct Xxx x", "struct Xxx* x" 
+```
+
 
 #### 联合类型
 
