@@ -8,7 +8,7 @@
 
 3. 必须包含 `main()` 函数.
 
-4. `//export Function` 导出函数标记. 注: `//` 和 `export` 之间没有任何空格. 导出的 `Function` 名称和 Go函数
+4. `//export Function` 导出函数标记. 注: `//` 和 `export` 之间没有任何空格. 导出的 `Function` 名称和 Go 函数
 名称必须一致.
 
 5. 导出的 Go 函数参数或返回值当中不能包含自定义的struct(不包含 string, int, slice, array, map, chan 的别名). 
@@ -181,7 +181,6 @@ gcc -shared -o libadd.so add.c
 go build -o libgoadd.so -buildmode=c-shared export.go
 go build -o main main.go
 ```
-
 
 ### go 编译过程
 
@@ -357,7 +356,7 @@ type StringHeader struct{
 
 ### Go => C 原理
 
-// `test.go`
+// `export/export2_go_c.go`
 ```cgo
 package main
 

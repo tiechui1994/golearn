@@ -119,7 +119,7 @@ go run main.go bar.go
 
 原因分析:
 
-> 重复引用头文件导致的. 这和 cgo 的编译相关. 运行 `go run -x main.go` 可以看到 (linux下的错误) 
+> 重复引用头文件导致的. 这和 cgo 的编译相关. 运行 `go run -x main.go` 可以看到 (linux下的错误)
 > /tmp/go-build/bar/_obj/bar.o: (.data+0x0): multiple define of 'a' /tmp/go-build/bar/_obj/bar.cgo
 > 2.o:(.data+0x0): first defined here. 每个文件是先单独编译成 .o 文件, 然后合并头的时候文件就被引用了两次, 所
 > 以重复定义了.
@@ -130,7 +130,7 @@ go run main.go bar.go
 > 1.去掉 header.c 的 `#include "header.h"` 就行了, cgo 会自动查找同名 c 文件. 如果要使用 header.h 里面定义的变
 > 量 a, 使用 `extern int a;` 即可.
 >
-> 2.使用动态链接库, 编译的时候添加 `-fPIC` 参数, 这样会生产与位置无关的内容. (参考error下面的编译方式)
+> 2.使用动态链接库, 编译的时候添加 `-fPIC` 参数, 这样会生产与位置无关的内容. (参考cgo/question案例)
  
 
 ### 提示找不到头文件

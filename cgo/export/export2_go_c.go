@@ -8,5 +8,6 @@ int sum(int a, int b) {
 import "C"
 
 func main() {
+	// Go => C
 	println(C.sum(11, 12))
 }

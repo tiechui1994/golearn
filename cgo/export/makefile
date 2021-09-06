@@ -9,12 +9,29 @@ cgo: clean
 	cd ${SRC}
 	${GODIR}/pkg/tool/linux_amd64/cgo -debug-gcc -objdir ${WORK}/b001/ -importpath ${SRC}  -- -I  ${WORK}/b001/ -g -O2 -I . ./export.go
 
-build: clean
-	go build -x -o libgoadd.so -buildmode=c-shared ./export.go
-	go build -race -x -o main ./main.go
+# export1
+export1: clean
+	go build -o libgomodule.so -buildmode=c-shared export1.go
+	go build -x -o export1_main export1_main.go
+	./export1_main
+
+# export2
+libwx.a: clean
+	go build -buildmode=c-archive -o libwx.a export2.go
+
+libwx.so: clean
+	go build -buildmode=c-shared -o libwx.so export2.go
+
+export2_go_c: libwx.so
+	go build -work -o export2_go_c export2_go_c.go
+	./export2_go_c
+
+export2_go_c_go: libwx.so
+	go build -work -v -x -o export2_go_c_go export2_go_c_go.go
+	./export2_go_c_go
 
 clean:
-	rm -rf main
+	rm -rf export1_main libgomodule.* export2_go_c export2_go_c_go libwx.*
 	rm -rf ${WORK}
 
 .PHONY: init cgo

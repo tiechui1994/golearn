@@ -17,8 +17,10 @@ func Link(a, b *C.char) {
 }
 
 func main() {
+	// outlink: Go => C => Go
 	ans := C.Concat(C.CString("aa"), C.CString("bb"))
 	println(ans)
 
+	// inlink: Go => C => Go
 	C.Link(C.CString("aa"), C.CString("xx"))
 }

@@ -4,10 +4,12 @@ SRC=$(wildcard *.c)
 
 main: libheader.so
 	go build -o main main.go
+	./main
 
-libheader.so:
+libheader.so: clean
 	$(CC) -fPIC -shared -o libheader.so  $(SRC)
 
-.PYTHON: clean
 clean:
 	-rm -rf *.a *.o *.so main
+
+.PYTHON: clean

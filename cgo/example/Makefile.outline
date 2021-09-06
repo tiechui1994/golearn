@@ -1,6 +1,0 @@
-outline:
-	go build -o outline -ldflags '-w -s' outline_c.go
-
-.PHONY:clean
-clean:
-	-rm -rf outline
