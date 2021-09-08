@@ -67,32 +67,34 @@ GOOS=linux GOARCH=arm64 GOARM=7 go build -o xxx *.go
 
 交叉汇编 linux 系统 arm64 架构的目标文件:
 
-```bash
-GOOS=linux && \
-GOARCH=arm64 && \
-GOARM=7 && \
-CGO_ENABLED=1 && \
-CC=aarch64-linux-gnu-gcc && \
-CXX=aarch64-linux-gnu-g++ && \
-AR=aarch64-linux-gnu-ar && \
-go build -o xxx *.go
+```makefile
+arm64:
+	GOOS=linux \
+	GOARCH=arm64 \
+	GOARM=7 \
+	CGO_ENABLED=1 \
+	CC=aarch64-linux-gnu-gcc \
+	CXX=aarch64-linux-gnu-g++ \
+	AR=aarch64-linux-gnu-ar \
+	go build -o xxx *.go
 ```
 
 
 交叉汇编 linux 系统 armhf 架构的目标文件:
 
-```bash
-GOOS=linux && \ 
-GOARCH=arm64 && \
-GOARM=7 && \
-CGO_ENABLED=1 && \
-CC=arm-linux-gnueabihf-gcc && \
-CXX=arm-linux-gnueabihf-g++ && \
-AR=arm-linux-gnueabihf-ar && \
-go build -o xxx *.go
+```makefile
+arm64:
+	GOOS=linux \
+	GOARCH=arm64 \
+	GOARM=7 \
+	CGO_ENABLED=1 \
+	CC=arm-linux-gnueabihf-gcc \
+	CXX=arm-linux-gnueabihf-g++ \
+	AR=arm-linux-gnueabihf-ar \
+	go build -o xxx *.go
 ```
 
-> arm 交叉汇编下载地址: http://releases.linaro.org/components/toolchain/binaries,选择`aarch64-linux-gnu`
+> arm 交叉汇编下载地址: http://releases.linaro.org/components/toolchain/binaries, 选择 `aarch64-linux-gnu`
 > `arm-linux-gnueabi`,`arm-linux-gnueabihf`目录下的文件作为交叉编译工具.
 
 至于针对其他的汇编平台, 可以类比, 但是注意选择交叉编译工具.
