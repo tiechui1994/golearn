@@ -106,7 +106,7 @@ func main() {}
 ```bash
 go build -buildmode=c-shared -o libxxx.so xxx.go
 
-go build -ldflags='-buildmode=c-shared' -o libxxx.a xxx.go
+go build -ldflags='-buildmode=c-shared' -o libxxx.so xxx.go
 ```
 
 静态库:
