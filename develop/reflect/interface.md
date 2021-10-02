@@ -168,8 +168,8 @@ type itab struct {
 
 type interfacetype struct {
 	typ     _type
-	pkgpath name
-	mhdr    []imethod
+	pkgpath name      // 汇编当中对应为: type..importpath."".+0
+	mhdr    []imethod // 比较复杂
 }
 
 type name struct {
@@ -180,19 +180,53 @@ type imethod struct {
 	ityp int32
 }
 
+// go1.13 之前的版本
 type _type struct {
 	size       uintptr
 	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
 	hash       uint32
 	tflag      uint8
 	align      uint8
-	fieldalign uint8
+	fieldAlign uint8
 	kind       uint8
-	alg        uintptr
+	alg        *typeAlg // 包含了 hash 和 hash 两个方法.
 	gcdata     *byte
-	str        int32
-	ptrToThis  int32
+	str        int32 // nameOff
+    ptrToThis  int32 // typeOff
 }
+
+type typeAlg struct {
+	// hashing objects of this type (ptr to object, seed) -> hash
+	hash func(unsafe.Pointer, uintptr) uintptr
+	// comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+	equal func(unsafe.Pointer, unsafe.Pointer) bool
+}
+
+// go1.14 版本之后
+type _type struct {
+	size       uintptr
+	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+	hash       uint32
+	tflag      uint8
+	align      uint8
+	fieldAlign uint8
+	kind       uint8
+	// equal: comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+	// 可能的值: 
+	// runtime.interequal, iface
+	// runtime.nilinterequal, eface
+	// runtime.memequal64, 结构体, 指针,  
+	// runtime.strequal, 专门针对 str 的优化
+	// runtime.interequal, 专门针对 int 的优化
+	equal func(unsafe.Pointer, unsafe.Pointer) bool 
+	// gcdata: 存储垃圾收集器的 GC 类型数据. 如果 KindGCProg 位在 kind 中设置, 则 gcdata 是一个 GC 程序.
+	// 否则它是一个 ptrmask 位图.
+	gcdata     *byte
+	str        int32 // nameOff
+	ptrToThis  int32 // typeOff
+}
+
+
 ```
 
 `iface` 维护两个指针, `tab` 指向一个 `itab` 实体, 它表示接口的类型 以及赋值给这个接口的实体类型. `data` 则指向接口

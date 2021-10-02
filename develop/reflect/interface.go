@@ -122,16 +122,16 @@ func NilTestCase() {
 
 //==================================================================================================
 
-type Person interface {
+type Language interface {
 	grow()
 }
 
-type Student struct {
+type Java struct {
 	Age  int    `json:"age"`
 	Name string `json:"name"`
 }
 
-func (p Student) grow() {
+func (p Java) grow() {
 	p.Age += 1
 	return
 }
@@ -142,7 +142,7 @@ func ConvertCase() {
 	// _ = Interface(x)
 	// 其中 Interface 是 iface
 	// 接口转换
-	v1 := Person(Student{Age: 108, Name: "abc"}) // runtime.convT2I
+	v1 := Language(Java{Age: 108, Name: "abc"}) // runtime.convT2I
 	val := io.ByteScanner(&bytes.Buffer{})
 	v6 := io.ByteReader(val) // runtime.convI2I
 	fmt.Println(v1, v6)
@@ -152,13 +152,13 @@ func ConvertCase() {
 	// _, _ = x.(T)
 	// 其中 Interface 可以是 eface, 也可以是iface
 	// 接口断言
-	var eface interface{} = Student{}
-	v2, _ := eface.(Person) // runtime.assertE2I2
-	v3 := eface.(Person)    // runtime.assertE2I
+	var eface interface{} = Java{}
+	v2, _ := eface.(Language) // runtime.assertE2I2
+	v3 := eface.(Language)    // runtime.assertE2I
 
-	var iface Person = Student{} // runtime.convT2E
-	v4, _ := iface.(Person)      // runtime.assertI2I2
-	v5 := iface.(Person)         // runtime.assertI2I
+	var iface Language = Java{} // runtime.convT2E
+	v4, _ := iface.(Language)      // runtime.assertI2I2
+	v5 := iface.(Language)         // runtime.assertI2I
 
 	fmt.Println(v2, v3, v4, v5)
 }
