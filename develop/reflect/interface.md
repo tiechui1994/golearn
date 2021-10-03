@@ -66,7 +66,7 @@ func main() {
 ## 值接收者和指针接收者
 
 结论: **实现了接收者是值类型的方法, 相当于自动实现了接收者是指针类型的方法; 而实现了接收者是指针类型的方法, 不会自动生成
-对应接收者是值类型的方法**
+对应接收者是值类型的方法**.
 
 
 举个例子:
@@ -136,6 +136,9 @@ func main() {
 记住下面的结论:
 
 > 如果实现了接收者是值类型的方法, 会隐含地实现了接收者是指针类型的方法.
+
+在实际的汇编当中, 对于接收者是值类型的方法, go 会自动添加接收者是指针类型的方法, 但是对于接收者是指针类型的方法, 却只添加
+其本身.
 
 
 ## `eface` vs `iface`
@@ -225,8 +228,6 @@ type _type struct {
 	str        int32 // nameOff
 	ptrToThis  int32 // typeOff
 }
-
-
 ```
 
 `iface` 维护两个指针, `tab` 指向一个 `itab` 实体, 它表示接口的类型 以及赋值给这个接口的实体类型. `data` 则指向接口
@@ -250,6 +251,35 @@ type _type struct {
 
 ![image](/images/develop_interface_eface.png)
 
+
+顺便说一下: `_type` 是所有类型原始信息的元信息. 例如:
+
+```
+type arraytype struct {
+	typ   _type
+	elem  *_type
+	slice *_type
+	len   uintptr
+}
+
+type chantype struct {
+	typ  _type
+	elem *_type
+	dir  uintptr
+}
+
+type interfacetype struct {
+	typ     _type     // 类型元信息
+	pkgpath name      // 包路径和描述信息等等
+	mhdr    []imethod // 方法
+}
+```
+
+在 arraytype, chantype 等中保存类型的元信息靠的是 _type. interfacetype(interface)的定义也是类似的. 由于 Go 当
+中函数方法是以包为单位隔离的. 因此 interfacetype 除了保存 _type 还需要保存包路径等描述信息. mhdr 保存的是 interface
+函数方法在段内的偏移 offset.
+
+这些类型的 _type 信息是在编译的时候确定的. 可以通过汇编代码查找到相关类型的 _type 的详情.
 
 ## 接口的动态类型和动态值
 
@@ -478,7 +508,7 @@ func main() {
 下面看一下其中几个代表性的函数源码:
 
 ```cgo
-// 源码位置 src/runtime/iface.go
+// src/runtime/iface.go
 var (
 	uint64Eface interface{} = uint64InterfacePtr(0)
 	stringEface interface{} = stringInterfacePtr("")
@@ -678,7 +708,7 @@ func main() {
 
 ```cgo
 // iface -> iface
-// inter 是目标的接口类型, i 是源 iface, r 是最终转换的 iface
+// inter 是接口类型, i 是源 iface, r 是最终转换的 iface
 func convI2I(inter *interfacetype, i iface) (r iface) {
 	tab := i.tab
 	if tab == nil {
@@ -699,8 +729,8 @@ func convI2I(inter *interfacetype, i iface) (r iface) {
 `itab` 值.
 
 ```cgo
-// inter是接口的类型, typ是值的类型, canfail表示转换是否可接受失败.
-// 如果不接受失败, 也就是canfail为false, 在转换失败的状况下会 panic
+// inter 接口类型, typ 值类型, canfail表示转换是否可接受失败.
+// 当canfail为false, 在获取不到 itab 状况下会 panic
 func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	if len(inter.mhdr) == 0 {
 		throw("internal error - misuse of itab")
@@ -717,7 +747,6 @@ func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	}
 
 	var m *itab
-
     // 首先, 查看现有表(itabTable, 一个保存了 itab 的全局未导出的变量) 以查看是否可以找到所需的itab.
     // 在这种状况下, 不要使用锁.(常识)
     // 
@@ -804,7 +833,7 @@ func (t *itabTableType) find(inter *interfacetype, typ *_type) *itab {
 	for i := uintptr(1); ; i++ {
 		p := (**itab)(add(unsafe.Pointer(&t.entries), h*sys.PtrSize))
 		
-		// 在这里使用atomic read, 因此如果我们看到m != nil, 我们还将看到m字段的初始化.
+		// 在这里使用atomic read, 因此如果我们看到 m != nil, 我们还将看到m字段的初始化.
 		// m := *p
 		m := (*itab)(atomic.Loadp(unsafe.Pointer(p)))
 		if m == nil {
@@ -837,6 +866,7 @@ func itabAdd(m *itab) {
 
 		// copy
         // 注意: 在复制时, 其他线程可能会寻找itab并找不到它. 没关系, 然后他们将尝试获取 itab 锁, 结果请等到复制完成.
+        // 这里调用的是 t2.add 表示向 t2 当中添加 *itab. 遍历的是 itabTable 列表.
 		iterate_itabs(t2.add)
 		if t2.count != t.count {
 			throw("mismatched count during itab table copy")
@@ -847,24 +877,25 @@ func itabAdd(m *itab) {
 		t = itabTable
 		// Note: the old table can be GC'ed here.
 	}
-	t.add(m)
+	t.add(m) // 将当前的 m 添加到 itabTable 当中.
 }
 ```
 
-`iterate_itabs` 就是一个迭代拷贝. `add`的逻辑和`find`的逻辑是十分类似的, 有兴趣的可以区看下代码, 这里不再过多的介绍
+`iterate_itabs` 就是一个迭代拷贝. `add`的逻辑和`find`的逻辑是十分类似的.
 了.
 
 
-还有一个函数, 就是 `itab` 的初始化函数 `init`, 稍微有点复杂, 下面看看吧.
+还有一个函数, 就是 `itab` 的初始化函数 `init`, 该函数只在新添加 itab 的时候调用, 稍微有点复杂, 下面看看吧.
 
 ```cgo
-// init用 m.inter/m._type 对的所有代码指针填充 m.fun数组. 
+// init用 m.inter/m._type 对的所有代码指针填充 m.fun 数组. 
 // 如果该类型未实现该接口, 将 m.fun[0]设置为0, 并返回缺少的接口函数的名称.
 // 可以在同一 m 上多次调用此函数, 甚至可以同时调用.
 func (m *itab) init() string {
+    // 注: 调用此函数的时候, inter, _type, hash 已经赋值.
 	inter := m.inter
 	typ := m._type
-	x := typ.uncommon()
+	x := typ.uncommon() // 根据 kind 生成相应的类型.
 
 	// both inter and typ have method sorted by name,
 	// and interface names are unique,
@@ -873,8 +904,10 @@ func (m *itab) init() string {
 	ni := len(inter.mhdr)
 	nt := int(x.mcount)
 	
-	methods := (*[1 << 16]unsafe.Pointer)(unsafe.Pointer(&m.fun[0]))[:ni:ni] // 接口方法(用于绑定对应于值当中方法)
-	xmhdr := (*[1 << 16]method)(add(unsafe.Pointer(x), uintptr(x.moff)))[:nt:nt] // 值当中的方法
+	// 接口方法(用于绑定对应于值当中方法)
+	methods := (*[1 << 16]unsafe.Pointer)(unsafe.Pointer(&m.fun[0]))[:ni:ni] 
+	// 值方法
+	xmhdr := (*[1 << 16]method)(add(unsafe.Pointer(x), uintptr(x.moff)))[:nt:nt] 
 	var fun0 unsafe.Pointer
 	j := 0
 	
@@ -882,8 +915,8 @@ imethods:
 	for k := 0; k < ni; k++ {
 	    // 获取接口当中方法 i, itype, iname, ipkg
 		i := &inter.mhdr[k]
-		itype := inter.typ.typeOff(i.ityp)
-		name := inter.typ.nameOff(i.name)
+		itype := inter.typ.typeOff(i.ityp) // 解析接口方法类型
+		name := inter.typ.nameOff(i.name)  // 解析接口方法名称
 		iname := name.name()
 		ipkg := name.pkgPath()
 		if ipkg == "" {
@@ -924,6 +957,39 @@ imethods:
 }
 ```
 
+断言函数:
+
+```
+// eface => iface
+func assertE2I(inter *interfacetype, e eface) (r iface) 
+func assertE2I2(inter *interfacetype, e eface) (r iface, b bool)
+
+// iface => iface
+func assertI2I(inter *interfacetype, i iface) (r iface）
+func assertI2I2(inter *interfacetype, i iface) (r iface, b bool)
+```
+
+转换函数:
+
+```
+// 内置类型转换
+func convT16(val uint16) (x unsafe.Pointer) 
+func convT32(val uint32) (x unsafe.Pointer)
+func convT64(val uint64) (x unsafe.Pointer)
+func convTstring(val string) (x unsafe.Pointer)
+func convTslice(val []byte) (x unsafe.Pointer)
+
+// _type => eface
+func convT2E(t *_type, elem unsafe.Pointer) (e eface)
+func convT2Enoptr(t *_type, elem unsafe.Pointer) (e eface)
+
+// itab => iface
+func convT2I(tab *itab, elem unsafe.Pointer) (i iface)
+func convT2Inoptr(tab *itab, elem unsafe.Pointer) (i iface)
+
+// interfacetype => iface
+func convI2I(inter *interfacetype, i iface) (r iface)
+```
 
 总结:
 

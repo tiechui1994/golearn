@@ -145,6 +145,28 @@ func Test_Structure() {
 
 }
 
+func Test_Kind() {
+	type flag uintptr
+	type value struct {
+		typ *_type
+		ptr unsafe.Pointer
+		flag
+	}
+
+	var x uint64 = 10
+	//var y func(string) string
+	//var z string
+	t := reflect.ValueOf(&x)
+	fmt.Println(t.Type())
+	v := (*value)(unsafe.Pointer(&t))
+	fmt.Printf("%b\n", v.flag)
+
+	fmt.Printf("FUNC  : %05b\n", reflect.Func)
+	fmt.Printf("UINT64: %05b\n", reflect.Uint64)
+	fmt.Printf("String: %05b\n", reflect.String)
+	fmt.Printf("PTR   : %05b\n", reflect.Ptr)
+}
+
 func main() {
-	Test_Structure()
+	Test_Kind()
 }

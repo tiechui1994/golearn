@@ -163,11 +163,134 @@ empty = w
 `reflect` 包里定义了一个接口和一个结构体, 即 `reflect.Type` 和 `reflect.Value`, 它们提供很多函数来获取存储接口里
 的类型信息.
 
-`reflect.Type` 主要提供关于类型相关的信息, 所以它和 `_type` 关联比较紧密;
+`reflect.Type` 主要提供关于类型相关的信息, 所以它和 `_type` 关联比较紧密(前面说过, `_type` 保存了 Go 所有类型的元
+信息, 这些信息是在编译的时候已经确定的.);
 
 `reflect.Value` 则结合 `_type` 和 `data` 两者, 因此程序可获取甚至改变类型的值.
 
-`reflect.Typeof` 函数用于提取一个接口中值的类型信息.  
+`reflect.Typeof` 函数用于提取一个接口中值的"类型信息". 调用此函数, 实参会先被转换为 `interface{}` 类型, 这样. 实参
+的类型信息, 方法集, 值信息都会存储到 `interface{}` 变量当中了.
+
+```cgo
+func TypeOf(i interface{}) Type {
+	eface := *(*emptyInterface)(unsafe.Pointer(&i))
+	return toType(eface.typ)
+}
+```
+
+这里的 `emptyInterface` 和 `eface` 是一回事, 且在不同的源码包. 前者在 `reflect`, 后者在 `runtime`. eface.typ
+就是动态类型. 对于 toType 函数, 只是做了个类型转换.
+
+```cgo
+// eface
+type emptyInterface struct {
+	typ  *rtype
+	word unsafe.Pointer
+}
+
+// iface: src/runtime/iface.go
+type nonEmptyInterface struct {
+	itab *struct {
+		ityp *rtype // static interface type
+		typ  *rtype // dynamic concrete type
+		hash uint32 // copy of typ.hash
+		_    [4]byte
+		fun  [100000]unsafe.Pointer // method table
+	}
+	word unsafe.Pointer
+}
+
+// 注: 这里的 rtype go1.14 版本之后类型. 与之前的版本略有不同.
+type rtype struct {
+	size       uintptr // 类型占用内存大小
+	ptrdata    uintptr // 包含所有指针的内存前缀大小
+	hash       uint32  // 类型 hash
+	tflag      tflag   // 标记位, 主要用于反射
+	align      uint8   // 对其字节信息
+	fieldAlign uint8   // 当前结构体字段的对齐字节数
+	kind       uint8   // 基础类型枚举值
+	// comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+	equal     func(unsafe.Pointer, unsafe.Pointer) bool
+	gcdata    *byte   // GC类型的数据
+	str       nameOff // 类型名称字符串在二进制文件段中的偏移量
+	ptrToThis typeOff // 类型元信息指针在二进制文件段中的偏移量
+}
+```
+
+rtype 实现了 `Type` 接口. 所有的类型都会包含 `rtype` 这个字段, 表示各种类型的元信息; 另外不同类型包含自己的一些独特
+的部分. 比如 Array, Chan 类型:
+
+```
+type arrayType struct {
+	rtype
+	elem  *rtype // array element type
+	slice *rtype // slice type
+	len   uintptr
+}
+
+type chanType struct {
+	rtype
+	elem *rtype  // channel element type
+	dir  uintptr // channel direction (ChanDir)
+}
+```
+
+
+`reflect.ValueOf` 函数用于提取一个接口中存储的实际变量. 它能提供实际变量的各种信息. 相关的方法需要结合类型信息和值信息.
+
+
+```cgo
+func ValueOf(i interface{}) Value {
+	if i == nil {
+		return Value{}
+	}
+
+	// 使变量 i 逃逸到堆内存上.
+	escapes(i)
+
+	return unpackEface(i)
+}
+
+
+func unpackEface(i interface{}) Value {
+    // 这里的逻辑和 TypeOf() 类似
+	e := (*emptyInterface)(unsafe.Pointer(&i))
+	// NOTE: don't read e.word until we know whether it is really a pointer or not.
+	t := e.typ
+	if t == nil {
+		return Value{}
+	}
+	f := flag(t.Kind()) // 获取原信息当中的类型. 26+1 种类型
+	if ifaceIndir(t) {
+		f |= flagIndir // 标志位
+	}
+	return Value{t, e.word, f}
+}
+```
+
+关于 Value 类型:
+
+```cgo
+type Value struct {
+	// typ: 值的类型.
+	typ *rtype
+
+	// 指向值的指针, 如果设置了 flagIndir, 则是指向数据的指针.
+	// 只有当设置了 flagIndir 或 typ.pointers() 为 true 时有效.
+	ptr unsafe.Pointer
+
+	// flag 保存有关该值的元数据. 最低位是标志位:
+	//	- flagStickyRO: 通过未导出的未嵌入字段获取, 因此为只读. 1<<5
+	//	- flagEmbedRO:  通过未导出的嵌入式字段获取, 因此为只读. 1<<6
+	//	- flagIndir:    val保存指向数据的指针. 1<<7
+	//	- flagAddr:     v.CanAddr 为 true (表示 flagIndir). 1<<8
+	//	- flagMethod:   v 是方法值. 1<<9
+    // 接下来的 5 个 bits 是 Kind 的值.
+    // 如果 flag.kind() != Func, 代码可以假定 flagMethod 没有设置.
+    // 如果 ifaceIndir(typ), 代码可以假定设置了 flagIndir.
+	flag // uintptr
+}
+```
 
 
 `Type()`, `Interface()` 可以打通 `interface`, `Type`, `Value` 三者.
