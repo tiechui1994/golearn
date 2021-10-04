@@ -280,9 +280,9 @@ type Value struct {
 	ptr unsafe.Pointer
 
 	// flag 保存有关该值的元数据. 最低位是标志位:
-	//	- flagStickyRO: 通过未导出的未嵌入字段获取, 因此为只读. 1<<5
-	//	- flagEmbedRO:  通过未导出的嵌入式字段获取, 因此为只读. 1<<6
-	//	- flagIndir:    val保存指向数据的指针. 1<<7
+	//	- flagStickyRO: 通过未导出的 "未嵌套字段" 获取, 因此为只读. 1<<5
+	//	- flagEmbedRO:  通过未导出的 "嵌套字段" 获取, 因此为只读. 1<<6
+	//	- flagIndir:    v 保存指向数据的指针. 1<<7
 	//	- flagAddr:     v.CanAddr 为 true (表示 flagIndir). 1<<8
 	//	- flagMethod:   v 是方法值. 1<<9
     // 接下来的 5 个 bits 是 Kind 的值.
@@ -290,6 +290,24 @@ type Value struct {
     // 如果 ifaceIndir(typ), 代码可以假定设置了 flagIndir.
 	flag // uintptr
 }
+```
+
+关于 special flag:
+
+```
+1. flagMethod
+
+只有调用 Value.Method() 的时候才会被设置.
+
+2. flagAddr, 表示是否可以使用 Addr() 获取值的地址. 这样的值称为可寻址的.
+
+如果值是切片的元素, 可寻址数组的元素, 可寻址结构的字段, 取消引用指针的值, 则该值是可寻址的.
+
+"取消引用指针的值", 指针类型的 Value 调用 Elem() 方法之后获取的值.
+
+"可寻址数组的元素", 暂时想到的只有指针类型的数组, 调用了 Elem() 方法之后获取的值. 
+
+3. flagIndir, 表示 Value 是否保存指向数据的指针.
 ```
 
 

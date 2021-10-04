@@ -1,14 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"reflect"
 	"runtime"
 	"unsafe"
 )
+
+type eface struct {
+	_type *_type
+	data  unsafe.Pointer
+}
 
 type iface struct {
 	tab  *itab
@@ -21,11 +26,6 @@ type itab struct {
 	hash  uint32         // 值类型 _type 当中的 hash 的拷贝
 	_     [4]byte
 	fun   [1]uintptr
-}
-
-type eface struct {
-	_type *_type
-	data  unsafe.Pointer
 }
 
 type interfacetype struct {
@@ -57,6 +57,28 @@ type _type struct {
 	ptrToThis  int32
 }
 
+
+type Sayer interface {
+	Bye()
+	Good()
+	Say()
+}
+
+type A struct {
+	AA string
+	BB int
+}
+
+func (a *A) Bye() {
+}
+
+func (a *A) Say() {
+	fmt.Println("Say")
+}
+
+func (a *A) Good() {
+}
+
 func Test_Interface() {
 	var r io.Reader
 	fmt.Printf("init r: %T, %v\n", r, r)
@@ -83,28 +105,6 @@ func Test_Interface() {
 
 	eeface := (*eface)(unsafe.Pointer(&empty))
 	fmt.Printf("empty: eface._type = %#x, eface.data = %#x\n", eeface._type, eeface.data)
-}
-
-type Sayer interface {
-	Bye()
-	Good()
-	Say()
-}
-
-type A struct {
-	AA string
-	BB int
-}
-
-func (a *A) Bye() {
-}
-
-func (a *A) Say() {
-	log.Println("++++++++++=")
-}
-
-func (a *A) Good() {
-
 }
 
 func Test_Structure() {
@@ -153,11 +153,9 @@ func Test_Kind() {
 		flag
 	}
 
-	var x uint64 = 10
-	//var y func(string) string
-	//var z string
-	t := reflect.ValueOf(&x)
-	fmt.Println(t.Type())
+	var buf bytes.Buffer
+	t := reflect.ValueOf(buf.Read)
+	fmt.Println(t.Type(),t.CanAddr())
 	v := (*value)(unsafe.Pointer(&t))
 	fmt.Printf("%b\n", v.flag)
 
@@ -167,6 +165,90 @@ func Test_Kind() {
 	fmt.Printf("PTR   : %05b\n", reflect.Ptr)
 }
 
+func Nil(a interface{}) {
+	n := reflect.ValueOf(a).Field(0)
+	if !n.IsNil() {
+		fmt.Printf("%v should be nil\n", a)
+	}
+}
+
+func NotNil(a interface{}) {
+	n := reflect.ValueOf(a).Field(0)
+	if n.IsNil() {
+		fmt.Printf("value of type %v should not be nil\n", reflect.ValueOf(a).Type().String())
+	}
+}
+
+func Test_IsNil() {
+	// These implement IsNil.
+	// Wrap in extra struct to hide interface type.
+	doNil := []interface{}{
+		struct{ x *int }{},
+		struct{ x interface{} }{},
+		struct{ x map[string]int }{},
+		struct{ x func() bool }{},
+		struct{ x chan int }{},
+		struct{ x []string }{},
+		struct{ x unsafe.Pointer }{},
+	}
+	for _, ts := range doNil {
+		ty := reflect.TypeOf(ts).Field(0).Type
+		v := reflect.Zero(ty)
+		v.IsNil() // panics if not okay to call
+		fmt.Println(v.IsNil())
+	}
+
+	// Check the implementations
+	var pi struct {
+		x *int
+	}
+	Nil(pi)
+	pi.x = new(int)
+	NotNil(pi)
+
+	var si struct {
+		x []int
+	}
+	Nil(si)
+	si.x = make([]int, 10)
+	NotNil(si)
+
+	var ci struct {
+		x chan int
+	}
+	Nil(ci)
+	ci.x = make(chan int)
+	NotNil(ci)
+
+	var mi struct {
+		x map[int]int
+	}
+	Nil(mi)
+	mi.x = make(map[int]int)
+	NotNil(mi)
+
+	var ii struct {
+		x interface{}
+	}
+	Nil(ii)
+	ii.x = 2
+	NotNil(ii)
+
+	var fi struct {
+		x func()
+	}
+	Nil(fi)
+	fi.x = Test_IsNil
+	NotNil(fi)
+
+	var x interface{
+		Say()
+	}
+	fmt.Println(reflect.ValueOf(x).Kind())
+}
+
+
 func main() {
-	Test_Kind()
+	var x uintptr = 12
+	fmt.Printf("%b, %v\n", -x, -x&7)
 }

@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 func main() {
-	var s Person = Student{name: "halfrost"}
+	var s Person = Student{First: "halfrost"}
 	s.sayHello("everyone")
 }
 
@@ -13,15 +13,15 @@ type Person interface {
 }
 
 type Student struct {
-	name string
+	First string
 }
 
 //go:noinline
 func (s Student) sayHello(name string) string {
-	return fmt.Sprintf("%v: Hello %v, nice to meet you.\n", s.name, name)
+	return fmt.Sprintf("%v: Hello %v, nice to meet you.\n", s.First, name)
 }
 
 //go:noinline
 func (s Student) sayGoodbye(name string) string {
-	return fmt.Sprintf("%v: Hi %v, see you next time.\n", s.name, name)
+	return fmt.Sprintf("%v: Hi %v, see you next time.\n", s.First, name)
 }

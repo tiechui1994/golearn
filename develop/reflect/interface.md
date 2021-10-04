@@ -137,8 +137,8 @@ func main() {
 
 > 如果实现了接收者是值类型的方法, 会隐含地实现了接收者是指针类型的方法.
 
-在实际的汇编当中, 对于接收者是值类型的方法, go 会自动添加接收者是指针类型的方法, 但是对于接收者是指针类型的方法, 却只添加
-其本身.
+在实际的汇编当中, 对于接收者是值类型的方法, go 会自动添加接收者是指针类型的方法, 但是对于接收者是指针类型的方法, 却只添
+加其本身. 参考 `type.*"".X` 表示 X 指针类型, `type."".X` 表示 X 类型(这里的 X 可以为结构体, 函数等)
 
 
 ## `eface` vs `iface`
@@ -149,18 +149,17 @@ func main() {
 接口的底层数据结构:
 
 ```cgo
-// 空接口, interface{} 的底层结构
+// 不带方法
 type eface struct {
 	_type *_type
 	data  unsafe.Pointer
 }
 
-// 方法接口, 自定义的接口的数据结构
+// 带方法
 type iface struct {
 	tab  *itab
 	data unsafe.Pointer
 }
-
 type itab struct {
 	inter *interfacetype // 接口类型
 	_type *_type         // 值类型
@@ -168,13 +167,11 @@ type itab struct {
 	_     [4]byte
 	fun   [1]uintptr
 }
-
 type interfacetype struct {
 	typ     _type
 	pkgpath name      // 汇编当中对应为: type..importpath."".+0
 	mhdr    []imethod // 比较复杂
 }
-
 type name struct {
 	bytes *byte
 }
@@ -197,7 +194,6 @@ type _type struct {
 	str        int32 // nameOff
     ptrToThis  int32 // typeOff
 }
-
 type typeAlg struct {
 	// hashing objects of this type (ptr to object, seed) -> hash
 	hash func(unsafe.Pointer, uintptr) uintptr
@@ -254,7 +250,7 @@ type _type struct {
 
 顺便说一下: `_type` 是所有类型原始信息的元信息. 例如:
 
-```
+```cgo
 type arraytype struct {
 	typ   _type
 	elem  *_type
@@ -268,6 +264,45 @@ type chantype struct {
 	dir  uintptr
 }
 
+type functype struct {
+	typ      _type
+	inCount  uint16
+	outCount uint16 
+}
+
+// 48+8
+type ptrtype struct {
+	typ   _type
+	elem *_type 
+}
+
+// 48+8+24*N
+type structtype struct {
+	typ     _type
+	pkgPath name
+	fields  []structField // sorted by offset
+}
+type structField struct {
+	name        name    // name is always non-empty
+	typ         *_type  // type of field
+	offsetEmbed uintptr // byte offset of field<<1 | isEmbedded
+}
+
+// 48+40
+type maptype struct {
+	typ     _type
+	key    *_type // map key type
+	elem   *_type // map element (value) type
+	bucket *_type // internal bucket structure
+	// function for hashing keys (ptr to key, seed) -> hash
+	hasher     func(unsafe.Pointer, uintptr) uintptr
+	keysize    uint8  // size of key slot
+	valuesize  uint8  // size of value slot
+	bucketsize uint16 // size of bucket
+	flags      uint32
+}
+
+// 48+8+8*N
 type interfacetype struct {
 	typ     _type     // 类型元信息
 	pkgpath name      // 包路径和描述信息等等
