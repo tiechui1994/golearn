@@ -160,40 +160,6 @@ int main(int argc, char *argv[])
 }
 ```
 
-> gdb 调试命令:
-> - run, r: 运行程序, 当遇到断点后, 程序会在断点处停止运行, 等待用户输入下一步命令
-> - continue, c: 继续执行, 到下一个断点处(或运行结束)
-> - next, n: 单步调试, 如果有函数调用, 不进入此函数体.
-> - step, s: 单步调试, 如果有函数调用, 则进入函数. 
-> - si: 执行单条指令.
-> - until <line>, u <line>: 运行到函数某一行.
-> - finish: 运行程序, 知道当前函数完成后返回, 并打印函数返回时堆栈地址和返回值以及参数值等信息.
-> - call func(args), 调用程序中可见的函数, 并传递"参数", 如: call gdb_test(55)
-> - return <value>, 改变程序执行流程, 直接结束当前函数, 并将指定值返回.
-> - quit, q: 退出 gdb
->
-> 断点设置:
-> - break <n>, b <n>: 在第n行处设置断点
-> - b <func>: 在函数 func() 的入口设置断点, 如: b main
-> - delete <断点号n>: 删除第n个断点
-> - disable/enable <断点号n>: 暂停/启用第n个断点
-> - info b: 显示断点设置状况
->
-> 打印表达式:
-> - print <表达式>, p <表达式>: 其中的"表达式"是当前测试程序的有效表达式, 例如: p var(打印变量var的值), p fun(22) 调用函数fun()
-> - display <表达式>: 在每次单步进行指令后, 紧接着输出被设置的表达式及值. 如 dispaly a
-> - info functions: 查询函数
-> - info frane: 当前调用栈的状况
-> - info registers: 当前所有寄存器的状况
-> - info <locals>: 显示当前堆栈页的所有变量.
-> - where: 显示所有帧栈的backtrace
->
-> 堆栈相关:
-> - info registers, i r `[rsp,rip,rbp]`: 查看寄存器使用情况
-> - info stack, 查看栈使用状况
-> - up/down, 调到上一层/下一层函数
-
-
 用 gcc 编译(`gcc -g -o call call.c`)这个程序得到可执行程序 call, 然后 gdb 调试. 在 gdb 中通过 `disass main`
 反汇编 main 函数找到 main 的第一条指针所在的地址 `0x000000000040113c`, 然后使用 `b *0x000000000040113c` 在该
 地址打一个断点并运行程序:
