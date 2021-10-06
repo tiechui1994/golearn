@@ -206,13 +206,16 @@ TEXT ·add(SB), NOSPLIT, $8-24
 | TESTB | 测试 | 测试字节, 与关系 | TESTB AX AX // AX & AX |
 | COMPB | 测试 | 比较字节, 差关系 | COMPB AX BX // BX - AX | 
 
+
+---
+
 在 Go 当中, 需要注意的一些细节:
 
 1. **当 xxx 是`函数`, `变量` 时, `MOVQ $xxx(SB) AX` 和 `LEVQ xxx(SB) AX`是等价的, 都是用于计算 xxx 的地址**
 这里需要注意的时, 如果 xxx 是 go 代码当中的函数或变量, 一般格式是 `package·var`. 但是对于对于汇编当中定义的函数或变量
 需要根据实际情况指定.
 
-2. 寄存器引用. 这里的寄存器不包括 SP, BP, SB, PC 伪寄存器.
+2. 寄存器引用(不包括 SP, BP, SB, PC 伪寄存器).
 
 ```cgo
 // 加括号代表是指针的引用
