@@ -36,7 +36,7 @@ goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 C
 使用上述的两个代码可以获取当前线程当中存储的 g 对象, 从而获取 m, p 对象.
 
 
-### Go程序是从哪里启动的?
+## Go程序是从哪里启动的?
 
 通过 gdb 的 `info files` 可以查找到 Go 编译文件的函数入口地址(`Entry point:0x45bc80`), 对该地址进行打断点, 执行,
 到达 `_rt0_amd64_linux` 函数, 该函数就是 Go 程序的入口地址.
@@ -59,8 +59,10 @@ TEXT _rt0_amd64(SB),NOSPLIT,$-8
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
     MOVQ	DI, AX		 // argc
     MOVQ	SI, BX		 // argv
+    
+    // 调整SP
     SUBQ	$(4*8+7), SP // 预留39字节空间, 2args, 2auto
-    ANDQ	$~15, SP     // 调整栈顶寄存器按16字节对其
+    ANDQ	$~15, SP     // 调整栈顶寄存器按16字节对齐
     MOVQ	AX, 16(SP)   // 保存 argc
     MOVQ	BX, 24(SP)   // 保存 argv
     
@@ -75,7 +77,7 @@ TEXT runtime·rt0_go(SB),NOSPLIT,$0
     // 省略了 CPU 检查代码
     ....
     
-    // 开始初始化tls
+    // 初始化 m0 的 tls
     LEAQ	runtime·m0+m_tls(SB), DI // DI=&m0.tls
     CALL	runtime·settls(SB) // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
                                // 之后, 可以通过 fs 段寄存器获取 m.tls
@@ -134,17 +136,19 @@ ok:
 
 rt0_go 函数的大体工作:
 
-1. 测试 tls: 先调用 settls 设置 fs 段基址, fs段当中写入数据,  最后比较地址当中值和写入数据是否一致. 当测试通过之后,
+1. 调整SP, 然后给 g0 分配栈空间.
+
+2. 主线程与m0绑定: 先调用 settls 设置 fs 段基址, fs段当中写入数据,  最后比较地址当中值和写入数据是否一致. 当测试通过之后,
 就将 g0 地址写入到线程本地存储当中. 
 
-2. m0 和 g0 进行绑定.  
+3. m0 和 g0 进行绑定.  
 
-3. 调用 runtime.args() 解析 args, 调用 runtime.osinit() 初始化系统核心数.调用 runtime.schedinit() 调度器初始
+4. 调用 runtime.args() 解析 args, 调用 runtime.osinit() 初始化系统核心数.调用 runtime.schedinit() 调度器初始
 化.
 
-4. 创建 main goroutine(运行的函数是 runtime.main)
+5. 创建 main goroutine(运行的函数是 runtime.main)
 
-5. 调用 runtime.mstart() 函数启动主线程, 进入调度循环.
+6. 调用 runtime.mstart() 函数启动主线程, 进入调度循环.
 
 
 M0 是什么? 程序会启动多个 M, 第一个启动的是 M0, 并且 M0 是操作系统启动进程的时候创建的. 其他的 M 都是 runtime 通过
@@ -154,11 +158,100 @@ G0 是什么? 在 Go 当中 G 分为三种, 第一种是用户创建任务的叫
 绑定一个 G0. 第三种是启动 runtime.main 用到的 G. 程序用到是基本上就是第一种.
 
 
-### runtime.osinit(SB) 针对系统环境的初始化
+### 调整 SP
 
-唯一的作用的就是初始化全局变量 ncpu
+```
+SUBQ	$(4*8+7), SP // 预留39字节空间, 2args, 2auto
+ANDQ	$~15, SP     // 调整栈顶寄存器按16字节对齐
+```
 
-### runtime.schedinit(SB) 调度初始化
+先是将 SP 减掉 39, 即: 向下移动39 Byte. 然后进行与运算.
+
+`~15` 表示对15进行取反操作. 15 的二进制是 `1111`, 其他位都是0; 取反后, 变成 `0000`, 高位全是1. 这样在与SP进行与运
+算后, 低四位变成了0, 高位不变. 这样就达到了SP地址16字节对齐.
+
+为什么要进行16字节对齐? 因为CPU有一组SSE指令, 这些指令中出现的内存地址必须是16的倍数.
+
+### 主线程绑定 m0
+
+```
+    // 初始化 m0 的 tls
+    LEAQ	runtime·m0+m_tls(SB), DI // 获取 m0.tls 的地址, 存放到 DI 当中
+    CALL	runtime·settls(SB) // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
+                               // 之后, 可以通过 fs 段寄存器获取 m.tls
+    
+    // 测试 tls
+    // 获取 fs 段基址并放入到 BX, 其实就是 m0.tls[1] 的地址(原因后面会讲到).
+    // get_tls 是代码由编译器生成
+    get_tls(BX) 
+    MOVQ	$0x123, g(BX) // 将 0x123 拷贝到 fs基址-8 的位置, 即: m0.tls[0]=0x123 
+    MOVQ	runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
+    CMPQ	AX, $0x123
+    JEQ 2(PC) // 相等,则跳过2条指令(包含本身这条)
+    CALL	runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
+ok:
+    // set the per-goroutine and per-mach "registers"
+    // 获取 fs 段基址到 BX
+    get_tls(BX) 
+    LEAQ	runtime·g0(SB), CX // CX=&g0
+    MOVQ	CX, g(BX)  // 把g0的地址保存到线程本地存储, 即 m0.tls[0]=&g0
+    LEAQ	runtime·m0(SB), AX // AX=&m0
+    
+    // m0 与 g0 进行关联
+    MOVQ	CX, m_g0(AX) // m0.g0=&g0 
+    MOVQ	AX, g_m(CX) // g0.m=&m0
+```
+
+m0 是全局变量, m0 需要绑定到工作线程, 才能进行调度执行.
+
+这里需要说明一下 `runtime.settls()` 函数, 它在 `runtime/sys_linux_amd64.s` 当中. 内容如下:
+
+```
+TEXT runtime·settls(SB),NOSPLIT,$32
+	ADDQ	$8, DI	// DI=DI+8
+	MOVQ	DI, SI  // 系统调用第二个参数,
+	MOVQ	$0x1002, DI	// 系统调用第一个参数, ARCH_SET_FS, 表示设置FS的基址
+	MOVQ	$SYS_arch_prctl, AX // 系统调用号
+	SYSCALL
+	CMPQ	AX, $0xfffffffffffff001 // AX 与 -1 进行比较
+	JLS	2(PC)
+	MOVL	$0xf1, 0xf1  // crash
+	RET
+```
+
+前面说道了 DI 里面存放的是 m0.tls 的地址, 那么 `ADDQ	$8, DI` 表示对 DI 地址偏移8字节, 也就在指向了 `m0.tls[1]`
+的位置处. 
+
+接下来就是准备 `arch_prctl` 系统调用的参数. Linux 系统调用是使用特定的寄存器传递参数的. 其中 DI, SI, DX, R10, R8,
+R9 用于传递系统调用参数, AX 用于传递系统调用号. 系统调用返回后, AX 用于传递系统调用失败错误码(0表示成功). 
+
+arch_prctl 在操作码是 $0x1002 (ARCH_SET_FS) 时, 表示设置 fs 的基址. 这里也就是 `m0.tls[1]` 的地址. 当设置好 FS
+基址之后, 每次可以通过 `fs基址 + 偏移量` 来获取工作线程的线程本地存储的值了(线程全局私有变量).
+
+> `arch_prctl` 系统调用详情, 参考: https://man7.org/linux/man-pages/man2/arch_prctl.2.html
+
+`arch_prctl` 系统调用完成之后, 比较返回的错误码(AX)与-1的关系. 当错误码小于-1时, 系统调用失败, 函数就会 crash 掉,
+否则, 系统调用成功, settls 返回.
+
+
+在 `settls` 之后, 使用 `get_tls(BX)` 获取tls, 该代码由编译器生成. 可以理解为将 `m.tls` 的地址存储到 BX. 然后将
+0x123 存放到 `m.tls[0]` 处. 这两行代码在实际汇编时只会生成一行代码:
+
+```
+movq  $0x123, %fs:0xfffffffffffffff8
+```
+
+接下来是比较 `m.tls[0]` 处的值和 0x123 是否一致. 如果一致, 则说明 tls 可以工作. 接下来就是将 g0 的地址存放到 tls 
+当中了. 原因在于通过 g 可以获取 m, 然后通过 m 可以获取到 p. 
+
+之后就是 m0 与 g0 进行绑定了. 需要注意的是, 这里的 g0 是工作在系统栈上, 只能进行调度, 不能用于执行任务.
+
+
+### runtime.osinit() 针对系统环境的初始化
+
+osinit() 唯一的作用的就是初始化全局变量 ncpu
+
+### runtime.schedinit() 调度初始化
 
 schedinit 做的重要事情:
 
