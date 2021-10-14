@@ -259,7 +259,7 @@ schedinit 做的重要事情:
 
 - 调用 msigsave() 初始化 m0.gsignal
 
-- 创建和初始化 allp, procresize 函数, 并将 m0 绑定到 `allp[0]` 即 `m0.p = allp[0], allp[0].m = m0` 
+- 调用 procresize() 初始化 allp, 同时将 m0 绑定到 `allp[0]` 即 `m0.p = allp[0], allp[0].m = m0` 
 
 ```cgo
 func schedinit() {
@@ -267,30 +267,40 @@ func schedinit() {
     // gettls(CX)
     // MOVQ g(CX), BX; BX 当中就是当前 g 的结构体对象的地址
     _g_ := getg() // _g_ = &g0
+    if raceenabled {
+        _g_.racectx, raceprocctx0 = raceinit()
+    }
     
-    // 设置最多启动 10000 个操作系统线程, 即最多 10000 个M
+    // 设置最多启动 10000 个操作系统线程, 即 m 最多 10000 个
     sched.maxmcount = 10000
     
     tracebackinit()
     moduledataverify()
     stackinit()
     mallocinit()
-    mcommoninit(_g_.m) // 初始化 m0, 因为 g0.m = &m0
-    
-    ...
+    fastrandinit() // must run before mcommoninit
+    mcommoninit(_g_.m, -1) // 初始化 m0, 因为 g0.m = &m0
+    cpuinit()       // must run before alginit
+    alginit()       // maps must not be used before this call
+    modulesinit()   // provides activeModules
+    typelinksinit() // uses maps, activeModules
+    itabsinit()     // uses activeModules
     
     msigsave(_g_.m) // 初始化 m0.gsignal
     initSigmask = _g_.m.sigmask
     
-    ... 
+    goargs()
+    goenvs()
+    parsedebugvars()
+    gcinit()
     
     sched.lastpoll = uint64(nanotime())
-    procs := ncpu // 系统有多少个核, 就创建多少个 p 对象
+    procs := ncpu // 系统核数量, 在 osinit() 当中调用 getproccount 获取.
     if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
-        procs = n // 通过修改环境变量 GOMAXPROCS, 指定创建p的数量 
+        procs = n // 环境变量 GOMAXPROCS, 修改  procs 数量
     }
     
-    // 创建和初始化全局变量 allp
+    // 创建和初始化全局变量 allp, 这里会进一步限制 procs 的值.
     if procresize(procs) != nil {
         throw("unknown runnable goroutine during bootstrap")
     }
@@ -299,21 +309,25 @@ func schedinit() {
 }
 ```
 
-前面汇编当中, g0的地址已经被设置到了本地存储之中, schedinit通过 getg 函数(getg函数是编译器实现的, 源码当中找不到其定
-义的)从本地存储中获取当前正在运行的 g, 这里获取的是 g0, 然后调用 mcommoninit() 函数对 m0 进行必要的初始化, 对 m0
-初始化完成之后, 调用 procresize() 初始化系统需要用到的 p 结构体对象. 它的数量决定了最多同时有多少个 goroutine 同时
-并行运行. 
+前面汇编当中, g0的地址已经被设置到了线程 m0 的 TLS之中, schedinit 通过 getg 函数(getg函数是编译器实现的, 源码当中找
+不到其定义的) 从 TLS 中获取当前正在运行的 g (这里是g0).
 
-sched.maxmcount 设置了 M 最大数量, 而 M 代表系统内核线程, 因此一个进程最大只能启动10000个系统内核线程. 
+调用 mcommoninit() 函数对 m0 进行必要的初始化(这是一个通用的 m 初始化函数), m0 初始化完成之后, 调用 procresize() 
+初始化系统需要用到的 p 结构体对象. 它的数量决定了最多同时有多少个 goroutine 同时并行运行. 
 
-procresize 初始化P的数量, procs 参数为初始化的数量, 而在初始化之前先做数量的判断, 默认是ncpu(CPU核数). 也可以通过
-GOMAXPROCS来控制P的数量. _MaxGomaxprocs 控制了最大数量只能是1024.
+sched.maxmcount 设置了 M 最大数量, 而 M 代表系统内核线程, 因此一个进程最大只能启动 `10000` 个系统内核线程. 
 
-重点关注一下 mcommoninit() 函数如何初始化 m0 以及 procresize() 函数如何创建和初始化 p 结构体对象.
+procresize 初始化P的数量, procs 参数为初始化的数量, 而在初始化之前先做数量的判断, 默认是 ncpu(CPU核数). 也可以通过
+GOMAXPROCS来控制 P 的数量. _MaxGomaxprocs 控制了最大数量只能是1024.
+
+> 注: go 运行时当中中, m 最多是10000个, p 最多是 1024 个.
+
+
+关注一下 mcommoninit() 函数如何初始化 m0 以及 procresize() 函数如何创建和初始化 p 结构体对象.
 
 ````cgo
 func mcommoninit(mp *m, id int64) {
-    _g_ := getg() // 初始化过程中 _g_ = &g0
+    _g_ := getg() // 在初始化时 _g_ = &g0
     
     // g0 stack won't make sense for user (and is not necessary unwindable).
     // 函数调用栈 traceback
@@ -323,7 +337,7 @@ func mcommoninit(mp *m, id int64) {
     
     lock(&sched.lock)
     
-    // 初始化过程中, 这里 id 是 -1, 生成 m 的 id
+    // 初始化时, id 为 -1, 生成 m 的 id
     if id >= 0 {
         mp.id = id
     } else {
@@ -342,7 +356,7 @@ func mcommoninit(mp *m, id int64) {
         mp.gsignal.stackguard1 = mp.gsignal.stack.lo + _StackGuard
     }
     
-    // 将 m 挂入全局链表 allm 之中, 在这里 allm[0]=&m0
+    // 将 m 插入到全局链表 allm 之中.
     // Add to allm so garbage collector doesn't free g->m
     // when it is just in a register or thread-local storage.
     mp.alllink = allm
@@ -359,9 +373,16 @@ func mcommoninit(mp *m, id int64) {
 }
 ````
 
+当 `mp.alllink = allm` 执行后, m0 与 allm 的关系如下图①所示. 利用 alllink 字段, 将所有的 m 形成一个闭合的单向链
+表(通过任意一个 m 可以遍历完所有的 m).
+
+![image](/images/develop_runtime_allmlink.png)
+
 mcommoninit() 函数重点就是初始化了 m0 的 `id, fastrand, gsignal ...` 等变量,  然后 m0 放入到全局链表 allm 之中, 
 然后就返回了.
 
+
+在 schedinit() 的最后, 是初始化 allp. 函数内容如下:
 
 ```cgo
 func procresize(nprocs int32) *p {
@@ -370,10 +391,14 @@ func procresize(nprocs int32) *p {
         throw("procresize: invalid arg")
     }
     
-    ...
+    // 更新统计时间. procresize() 函数在运行时的任意时刻被调用(不建议这样做).
+    now := nanotime()
+    if sched.procresizetime != 0 {
+        sched.totaltime += int64(old) * (now - sched.procresizetime)
+    }
+    sched.procresizetime = now
     
-    // 初始化时 len(allp) == 0
-    // Grow allp if necessary.
+    // 初始化时 len(allp) == 0. 扩展 allp.
     if nprocs > int32(len(allp)) {
         // Synchronize with retake, which could be running
         // concurrently since it doesn't run on a P.
@@ -391,7 +416,7 @@ func procresize(nprocs int32) *p {
         unlock(&allpLock)
     }
     
-    // 初始化 nprocs 个 p
+    // 初始化 nprocs - gomaxprocs 个 p
     for i := old; i < nprocs; i++ {
         pp := allp[i]
         if pp == nil {
@@ -407,11 +432,13 @@ func procresize(nprocs int32) *p {
         _g_.m.p.ptr().status = _Prunning
         _g_.m.p.ptr().mcache.prepareForSweep()
     } else {
-        // release the current P and acquire allp[0].
+        // 条件: m 没有关联 p, 或者 p 需要被销毁.
+        // 释放当前的 P, 同时获取 all[0]
         //
         // We must do this before destroying our current P
         // because p.destroy itself has write barriers, so we
         // need to do that from a valid P.
+        // 原因: 因为 p.destroy 是带有写屏障的, 因此需要获取一个合法的 P
         if _g_.m.p != 0 {
             if trace.enabled {
                 // Pretend that we were descheduled
@@ -420,13 +447,14 @@ func procresize(nprocs int32) *p {
                 traceGoSched()
                 traceProcStop(_g_.m.p.ptr())
             }
-            _g_.m.p.ptr().m = 0
+            _g_.m.p.ptr().m = 0 // p 解绑 m
         }
-        _g_.m.p = 0 // 初始化时的 m0.p 
-        p := allp[0] // 第一个 p 
+        _g_.m.p = 0 // m 解绑 p
+        
+        p := allp[0] // 获取 allp[0], 临时绑定到当前的 m 上
         p.m = 0
         p.status = _Pidle
-        acquirep(p) // 初始化, 将 allp[0] 和 m0 关联起来, 并且 allp[0] 的状态为  _Prunning
+        acquirep(p) // p, m 关联, 并且 p 的状态为  _Prunning
         if trace.enabled {
             traceGoStart()
         }
@@ -435,25 +463,25 @@ func procresize(nprocs int32) *p {
     // g.m.p is now set, so we no longer need mcache0 for bootstrapping.
     mcache0 = nil
     
-    // 释放未使用的 p, 此时还不能释放 p(因为处于系统调用中的 m 可能引用 p, 即 m.p = p)
+    // 销毁多余的 p, 此时还不能释放 p (因为处于系统调用中的 m 可能引用 p, 即 m.p = p)
     // 初始化时 old 是 0
     for i := nprocs; i < old; i++ {
         p := allp[i]
         p.destroy()
     }
     
-    // 再次确定切片大小是 nprocs
+    // resize allp大小
     if int32(len(allp)) != nprocs {
         lock(&allpLock)
         allp = allp[:nprocs]
         unlock(&allpLock)
     }
     
-    // 把所有空闲的p放入空闲链表
+    // 将所有空闲的p放入空闲链表. 这是遍历 allp 数组.
     var runnablePs *p
     for i := nprocs - 1; i >= 0; i-- {
         p := allp[i]
-        if _g_.m.p.ptr() == p { // 当前 m 关联的 p 
+        if _g_.m.p.ptr() == p { // 当前 m 关联的 p
             continue
         }
         // 状态修改
@@ -461,10 +489,12 @@ func procresize(nprocs int32) *p {
         
         // 判断当 p 的本地队列是否为空 即 runqhead == runtail && runnext=0
         if runqempty(p) { 
-            pidleput(p)
+            pidleput(p) // 放入 sched.pidle 列表当中
         } else {
-            // 给 p 绑定一个 m, 并且把这些非空闲的 p 组成一个单向链表
-            // 最终链表的头是 runnablePs
+            // 给 p 绑定一个 m(从 sched.midle 当中获取).
+            // 通过 link 将非空的的 p 组成一个闭合的单向链表, 链表的头是 runnablePs(最终的返回值)
+            // 结论: 当重新进行 resize P 时, P(除了当前m绑定的P)的状态都将被标记为  _Pidle, 
+            // 同时, 重新进行去绑定 m 
             p.m.set(mget())
             p.link.set(runnablePs)
             runnablePs = p
@@ -481,12 +511,15 @@ procresize 函数主要干的事情:
 
 - 使用 `make([]*p nprocs)` 初始化全局变量 allp. 
 
-- 使用循环初始化 nprocs 个 p 结构体对象并依次保存在 allp 切片之中.
+- 使用初始化 nprocs - gomaxprocs (gomaxprocs记录上一次生成p的数量)  个 p 结构体对象并依次保存在 allp 切片之中.
 
-- 给当前的 m 绑定一个 p. 如果当前 m 和 p 已经绑定, 设置一下 m.p 的状态. 否则, 把 m0 和 `allp[0]` 绑定在一起, 即
-`m0.p = allp[0], allp[0].m = m0`
+- 给当前的 m 绑定一个 p. 如果当前 m 和 p 已经绑定, 并且 m.id 不在移除范围之内, 设置一下 m.p 的状态. 否则, 把 m 和 
+`allp[0]` 临时绑定, 即 `m0.p = allp[0], allp[0].m = m0`. 为后续删除做准备.
 
-- 把除了 `allp[0]` 之外的所有 p 放入全局变量 sched 的 pidle 空闲队列之中. 对于非空闲的 p 组装成一个链表, 并返回.
+- 删除多余的 p. (初始化的时候, 不会进入此操作的)
+
+- 调整 allp, 遍历 allp, 对于除了当前 m.p 之外的 p, 如果空闲, 则放入全局变量 sched.pidle 空闲队列之中. 如果非空闲,
+则重新绑定一个 m, 同时通过 link 组装成一个单向闭合链表(返回内容).
 
 ### runtime.mainPC(SB) main goroutine
 
