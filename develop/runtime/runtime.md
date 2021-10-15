@@ -521,42 +521,42 @@ procresize 函数主要干的事情:
 - 调整 allp, 遍历 allp, 对于除了当前 m.p 之外的 p, 如果空闲, 则放入全局变量 sched.pidle 空闲队列之中. 如果非空闲,
 则重新绑定一个 m, 同时通过 link 组装成一个单向闭合链表(返回内容).
 
-### runtime.mainPC(SB) main goroutine
+### 创建 main goroutine
 
-在进行 schedinit 完成调度系统初始化后, `m0 与 g0`, `m0 与 allp[0]` 已经相互关联了. 接下来的操作就行需要创建 main
-goroutine 用于执行 runtime.main 函数. 
+在进行 schedinit() 完成调度系统初始化后, `m0 与 g0`, `m0 与 allp[0]` 已经相互关联了. 接下来的操作就行需要创建 main
+goroutine 用于执行 runtime.main() 函数. 
 
 调用 `newproc()` 创建一个新的 goroutine 用于执行 mainPC 所对应的 runtime.main 函数. 
 
 // runtime/asm_amd64.s
 
 ```cgo
-TEXT runtime·rt0_go(SB),NOSPLIT,$0
-    ...
-    
-    # 创建 main goroutine, 也是系统的第一个 goroutine 
-    // create a new goroutine to start program
-    MOVQ	$runtime·mainPC(SB), AX # mainPC 是 runtime.main 
-    PUSHQ	AX # AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
-    PUSHQ	$0 # newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
-    CALL	runtime·newproc(SB) // 创建 main goutine
-    POPQ	AX
-    POPQ	AX
-    
-    # 主线程进入调度循环，运行刚刚创建的goroutine
-    CALL  runtime·mstart(SB)  #
-    
-    # 上面的mstart永远不应该返回的, 如果返回了, 一定是代码逻辑有问题, 直接abort
-    CALL  runtime·abort(SB)
-    RET
+// 创建 main goroutine, 也是系统的第一个 goroutine 
+// create a new goroutine to start program
+MOVQ	$runtime·mainPC(SB), AX // mainPC 是 runtime.main 
+PUSHQ	AX // AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
+PUSHQ	$0 // newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
+CALL	runtime·newproc(SB) // 创建 main goutine
+POPQ	AX
+POPQ	AX
 
+// 主线程进入调度循环，运行刚刚创建的goroutine
+CALL  runtime·mstart(SB)  
 
-# runtime·mainPC 的定义.
+// 上面的mstart永远不应该返回的, 如果返回了, 一定是代码逻辑有问题, 直接abort
+CALL  runtime·abort(SB)
+```
+
+关于 mainPC 的定义:
+
+```cgo
+// runtime·mainPC 的定义.
 DATA  runtime·mainPC+0(SB)/8,$runtime·main(SB)
 GLOBL runtime·mainPC(SB),RODATA,$8
 ```
 
-先分析下 newproc 函数:
+
+先分析下 newproc():
 
 newproc 用于创建新的 goroutine, 有两个参数, 第二个参数 fn, 新创建出来的 goroutine 将从 fn 这个函数开始执行, 而这
 个 fn 函数可能会有参数, newproc 的第一个参数是 fn 函数的参数以字节为单位的大小. 比如如下 go 片段代码:
@@ -573,17 +573,17 @@ func main() {
 编译器在编译上面的代码时, 会把其替换为对 newproc 函数的调用, 编译后的代码逻辑上等同于下面的汇编代码:
 
 ```cgo
-0x001d 00029 (sum.go:7) MOVL    $24, (SP) # newproc第一个参数
+0x001d 00029 (sum.go:7) MOVL    $24, (SP) // newproc 第一个参数, 参数大小
 0x0024 00036 (sum.go:7) LEAQ    "".sum·f(SB), AX 
-0x002b 00043 (sum.go:7) MOVQ    AX, 8(SP)  # newproc第二个参数
-0x0030 00048 (sum.go:7) MOVQ    $1, 16(SP) # 函数参数1
-0x0039 00057 (sum.go:7) MOVQ    $2, 24(SP) # 函数参数2 
-0x0042 00066 (sum.go:7) MOVQ    $3, 32(SP) # 函数参数3
+0x002b 00043 (sum.go:7) MOVQ    AX, 8(SP)  // newproc 第二个参数, 函数指针
+0x0030 00048 (sum.go:7) MOVQ    $1, 16(SP) // 函数参数1
+0x0039 00057 (sum.go:7) MOVQ    $2, 24(SP) // 函数参数2 
+0x0042 00066 (sum.go:7) MOVQ    $3, 32(SP) // 函数参数3
 0x004b 00075 (sum.go:7) CALL    runtime.newproc(SB)
 ```
 
-编译器编译时首先把 sum 函数需要用到的 3 个参数压入栈, 然后调用 newproc 函数. 因为 sum 函数的 3 个 int64 类型的参数
-共占用 24 个字节, 所以传递给 newproc 的第一个参数是 24, 表示 sum 函数的大小.
+首先把 sum 函数需要用到的 3 个参数入栈, 然后是 newproxc() 的 2 个参数入栈 然后调用 newproc 函数. 因为 sum 函数的
+3 个 int64 类型的参数共占用 24 个字节, 所以传递给 newproc 的第一个参数是 24, 表示 sum 函数的大小.
 
 为什么需要传递 fn 函数的参数大小给 newproc 函数? 原因在于 newproc 函数创建一个新的 goroutine 来执行 fn 函数, 而这
 个新创建的 goroutine 与当前 goroutine 使用不同的栈, 因此需要在创建 goroutine 的时候把 fn 需要用到的参数从当前栈上
@@ -591,13 +591,13 @@ func main() {
 所以需要用参数的方式指定拷贝数据的大小.
 
 
-newproc 函数是对 newproc1 的一个包装, 最重要的工作:
+newproc() 是对 newproc1() 的一个包装, 重要的工作:
 
-- 获取 fn 函数的第一个参数的地址(argp)
+- 获取 fn 函数的第一个参数的地址(argp), fn 函数的返回地址(pc).
 
-- 使用 systemstack 函数切换到 g0 栈(对于初始化场景来说现在本身就在 g0 栈, 不需要切换, 但是对于用户创建的 goroutine
-则需要进行栈切换), 创建一个 newg, 同时进行栈参数拷贝, 同时设置 newg.sched (调整sp, pc指向 goexit, g), 以及 newg
-其它相关变量, 完成后 newg 的状态是 _Grunnable
+- 使用 systemstack 函数切换到 g0 栈(初始化时, 当前就在 g0 栈, 不需要切换, 但是对于用户创建的 goroutine 则需要进行
+栈切换), 创建一个 newg, 同时进行栈参数拷贝, 同时设置 newg.sched (调整sp, pc指向 goexit, g), 以及 newg 其它相关变量, 
+完成后 newg 的状态是 _Grunnable.
 
 ```cgo
 func newproc(siz int32, fn *funcval) {
