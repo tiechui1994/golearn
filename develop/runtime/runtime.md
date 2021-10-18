@@ -633,7 +633,7 @@ newproc1 函数参数:
 
 - 第一个参数 fn 是新创建的 goroutine 需要执行的函数, 注意 fn 的类型是 funcval; 
 - 第二个参数 argp 是 fn 函数的第一个参数的地址; 
-- 第三个参数是 fn 函数以字节为单位的大小;
+- 第三个参数 narg 是 fn 函数以字节为单位的大小;
 - 第四个参数是当前运行的 g; 
 - 第五个参数调用 newproc 的函数的返回地址.
 
@@ -649,7 +649,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     }
     
     // 禁止抢占
-    acquirem() // 增加当前 m 的 locks 值
+    acquirem() // 增加当前 m.locks 值
     siz := narg
     siz = (siz + 7) &^ 7 // size 进行 8 字节对齐
     
@@ -663,11 +663,12 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     // 当前与 m 绑定的 p, 初始化时, 这里的 _p_ 其实就是 allp[0]
     _p_ := _g_.m.p.ptr() 
     
-    // 从本地队列中获取一个 g. 在初始化时没有, 返回值是 nil 
+    // 从 _p_.gFree 或 sched.gFree 当中获取一个 g. 如果获取到了 g, 则其已经分配好了 stack
+    // 注: 如果 _p_.gFree 为空, 则先从 sched.gFree 当中获取一个 g 放入到 _p_.gFree, 然后从 _p_.gFree 当中获取.
     newg := gfget(_p_)
     if newg == nil {
-        // new一个g, 然后从堆上为其分配栈, 并设置 g 的 stack 成员和两个 stackguard 成员
-        newg = malg(_StackMin) // 2k栈大小
+        // new 一个g, 然后从堆上为其分配栈, 并设置 g 的 stack 成员和两个 stackguard 成员
+        newg = malg(_StackMin) // 2k 栈大小
         casgstatus(newg, _Gidle, _Gdead)
         
         // 放入全局 allgs 切片当中
@@ -681,7 +682,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
         throw("newproc1: new g is not Gdead")
     }
     
-    // 调整 newg 的栈顶指针.
+    // 调整 newg 的栈顶指针. 以下是在 amd64 架构下:
     // sys.RegSize=8, sys.MinFrameSize=0, sys.SpAlign=1
     // totalSize 最终大小是 siz+32
     totalSize := 4*sys.RegSize + uintptr(siz) + sys.MinFrameSize // extra space in case of reads slightly beyond frame
@@ -696,8 +697,9 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     }
     
     if narg > 0 {
-        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 newg 的栈
-        // 注: 这里是从 sp 的位置开始拷贝的.
+        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 newg 的栈. "汇编实现"
+        // argp 是第一个参数位置. spArg 是预分配栈的低地址.
+        // dst: [spArg, spArg+narg), src: [argp, argp+narg)
         memmove(unsafe.Pointer(spArg), argp, uintptr(narg))
         
         // 这是一个 stack-to-stack 的复制. 
