@@ -697,7 +697,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     }
     
     if narg > 0 {
-        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 newg 的栈. "汇编实现"
+        // 把参数从 newproc 函数的栈(初始化是g0栈)拷贝到新的 newg 的栈. "汇编实现".
         // argp 是第一个参数位置. spArg 是预分配栈的低地址.
         // dst: [spArg, spArg+narg), src: [argp, argp+narg)
         memmove(unsafe.Pointer(spArg), argp, uintptr(narg))
@@ -716,15 +716,15 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
         }
     }
     
-    // 清空 newg.sched 里面的字段, 然后重新设置 sched 对应的值
+    // 清空 newg.sched 里面的字段, 然后重新设置 sched 对应的值. 
     memclrNoHeapPointers(unsafe.Pointer(&newg.sched), unsafe.Sizeof(newg.sched))
     newg.sched.sp = sp 
     newg.stktopsp = sp 
     
     // newg.sched.pc 表示当 newg 被调度起来运行时从这个地址开始执行指令.
     // 把 pc 设置成 goexit 函数偏移 1 (sys.PCQuantum是1) 的位置.
-    // 为啥这样做, 暂时不清楚
-    newg.sched.pc = funcPC(goexit) + sys.PCQuantum 
+    // 要了解为什么这样做, 需要看后面的详细分析的. 
+    newg.sched.pc = funcPC(goexit) + sys.PCQuantum // funcPC 用于获取函数地址
     newg.sched.g = guintptr(unsafe.Pointer(newg))
     
     // 重新调整 sched 成员和 newg 的栈(参考下面的分析)
@@ -734,14 +734,14 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     newg.gopc = callerpc
     newg.ancestors = saveAncestors(callergp)
     
-    // 设置 newg 的 startpc 为 fn.fn, 该成员主要用于函数调用栈的 traceback 和栈收缩
-    // newg 真正从哪里执行不依赖次成员, 而是 sched.pc
+    // 设置 newg 的 startpc 为 fn.fn, 该成员主要用于函数调用栈的 traceback 和栈收缩.
+    // newg 真正从哪里执行不依赖此成员, 而是 sched.pc
     newg.startpc = fn.fn
     if _g_.m.curg != nil {
         newg.labels = _g_.m.curg.labels
     }
     if isSystemGoroutine(newg, false) {
-        atomic.Xadd(&sched.ngsys, +1)
+        atomic.Xadd(&sched.ngsys, +1) // 系统 goroutine 统计
     }
     // newg 的状态为 _Grunnable, 表示 g 可以进行运行了
     // 注: 前面获取 newg 的时候, newg 添加到 allg 当中, 但是当前的 newg 并没有关联到某个 p
@@ -766,17 +766,19 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
     }
     
     // 减少当前 m 的 locks 的值, 同时当 m.locks=0 && _g_.preempt 时, 进行抢占标记
-    releasem(_g_.m) 
+    releasem(_g_.m)
     
     return newg
 }
 ```
 
-gostartcallfn 函数, 在 newg.sched.pc 设置为 `funcPC(goexit) + 1` 之后进行调用, 在这个函数当中可以找到为何这样做
-的原因.
+gostartcallfn(), 在 newg.sched.pc 设置为 `funcPC(goexit) + 1` 之后进行调用, 在这个函数当中可以找到为何这样做的原因.
+
+这里需要注意, gobuf 的 sp 和 pc, g 成员变量已经设置. 且 `gobuf.pc=funcPC(goexit) + 1`, `sp` 指向的位置是要调用
+函数的第一个参数位置处(参数已经拷贝到新的g的栈上).
 
 ```cgo
-// fn 是 goroutine 的入口地址, 在初始化的时候对应是是 runtime.main
+// fn 是 goroutine 的入口地址, 在初始化的时候对应是是 runtime.main, 如果是用户创建的函数, 则是函数地址.
 func gostartcallfn(gobuf *gobuf, fv *funcval) {
     var fn unsafe.Pointer
     if fv != nil {
@@ -787,16 +789,21 @@ func gostartcallfn(gobuf *gobuf, fv *funcval) {
     gostartcall(gobuf, fn, unsafe.Pointer(fv))
 }
 
-
 func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) {
-    sp := buf.sp // newg 的栈顶, 目前 newg 栈上只有 fn 函数的参数, sp 指向的是 fn 的第一个参数
+    // sp 是 newg 的栈顶, 目前 newg 栈上拷贝了 fn 函数的参数, sp 指向的是 fn 的第一个参数.
+    sp := buf.sp 
     if sys.RegSize > sys.PtrSize {
         sp -= sys.PtrSize
         *(*uintptr)(unsafe.Pointer(sp)) = 0
     }
-    sp -= sys.PtrSize // 为返回地址预留空间, 然后将返回地址写入当前预留的位置
+    
+    // 为返回地址预留空间, 然后将返回地址写入当前预留的位置. 注意: 这里是 pc 是 "funcPC(goexit)+1",
+    // 也就说, 函数执行完成之后, 会跳到 goexit 函数当中.
+    sp -= sys.PtrSize 
     *(*uintptr)(unsafe.Pointer(sp)) = buf.pc
-    buf.sp = sp // 重新设置 newg 的栈顶寄存器
+    
+    // 重新设置 newg 的栈顶寄存器.
+    buf.sp = sp 
     
     // 这里才正在让 newg 的 ip 寄存器指向 fn 函数. 这里只是设置 newg 的信息, newg 还未执行,
     // 等到 newg 被调度起来之后, 调度器会把 buf.pc 放入到 CPU 的 ip 寄存器, 从而使得 cpu 真正执行起来.
@@ -805,31 +812,36 @@ func gostartcall(buf *gobuf, fn, ctxt unsafe.Pointer) {
 }
 ```
 
-gostartcallfn 函数的主要作用:
+gostartcallfn() 所做的事情:
 
 - 获取 fn 函数地址
 
-- 调用 gostartcall 函数, 在函数当中调整 newg 的 sp (将 goexit 函数的第二条指令地址入栈, 伪造成 goexit 函数调用了 fn,
-从而使 fn 执行完成后 ret 指令返回到 goexit 继续执行完成清理工作) 和 pc (重新设置 pc 为需要执行的函数的地址, 即fn, 当前
-场景为 runtime.main 函数地址) 的值.
+- 调用 gostartcall 函数, 调整 newg 的 sp (将 goexit() 的第二条指令地址入栈, 伪造成 goexit 函数调用了 fn, 从而使
+fn 执行完成后 ret 指令返回到 goexit 继续执行完成清理工作) 和 pc (重新设置 pc 为需要执行的函数的地址, 即fn, 当前场景
+为 runtime.main 函数地址) 的值.
 
+- 重新设置 newg.sched.pc 指向的是 runtime.main() 的第一条指令, 重新设置 newg.sched.sp 指向是的 newg 栈顶单元, 
+该单元保存了 runtime.main 函数执行完成之后的返回地址.
+
+
+小结:
 
 在调用 newproc 函数之后, runtime.main 对应的 newg 已经创建完成, 并且加入到当前线程绑定的 p 当中, 等待被调度执行.
 
-- newg 的 pc 指向的是 runtime.main 函数的第一条指令, sp 成员指向是的 newg 栈顶单元, 该单元保存了 runtime.main 函数
-执行完成之后的返回地址( runtime.goexit 的第二条指令, 预期 runtime.main 执行完成之后就会执行 `CALL runtime.goexit1(SB)`
-这条指令)
+newg 放入当前线程绑定的 p 对象的本地运行队列, 它是第一个真正意义上的用户 goroutine
 
-- newg 放入当前线程绑定的 p 对象的本地运行队列, 它是第一个真正意义上的用户 goroutine
+**此时 newg 的 m 成员是 nil, 因为它还没有被调度起来运行, 因此没有与 m 绑定.**
 
-- **newg 的 m 成员是 nil, 因为它还没有被调度起来运行, 没有任何 m 进行绑定.**
+> 注: 创建 newg 是在 m.g0 栈上, 并且最终被加入到 m.p 上. 此时的 newg 不绑定任何 m, 只有当 newg 被调度起来执行的时
+候, 才会绑定一个新的 m (不一定是当前的m).
+
 
 ### runtime.mstart(SB) 调度循环开始
 
-到目前为止, runtime.main goroutine已经创建, 并放到了 m0 线程绑定的 `allp[0]` 的本地队列当中, 接下来就需要启动调度循
-环, 开始去查找 goroutine 并执行. 
+到目前为止, runtime.main goroutine已经创建, 并放到了 m0 线程绑定的 `allp[0]` 的本地队列当中, 接下来就需要启动调度
+循环, 开始去查找 goroutine 并执行. 
 
-汇编代码从 `newproc` 返回之后, 开始执行 mstart 函数.
+汇编代码从 `newproc` 返回之后, 开始执行 mstart().
 
 mstart() 启动调度循环, 调用链: `mstart()` -> `mstart1()` -> `schedule()`
 
@@ -850,15 +862,14 @@ func mstart() {
         _g_.stack.hi = uintptr(noescape(unsafe.Pointer(&size)))
         _g_.stack.lo = _g_.stack.hi - size + 1024
     }
-    // Initialize stack guard so that we can start calling regular
-    // Go code.
+    // Initialize stack guard so that we can start calling regular Go code.
+    // 在 linux amd64 下, _StackGuard=928
     _g_.stackguard0 = _g_.stack.lo + _StackGuard
     // This is the g0, so we can also call go:systemstack
     // functions, which check stackguard1.
     _g_.stackguard1 = _g_.stackguard0
     
-    // 执行 mstart1
-    mstart1()
+    mstart1() // 真正启动 m 的函数
     
     // Exit this thread.
     switch GOOS {
@@ -870,34 +881,34 @@ func mstart() {
     }
     mexit(osStack)
 }
-``` 
 
 
-```cgo
 func mstart1() {
-    _g_ := getg() // 启动过程为 g0, 当前是运行在 g0 栈上的
-    
+    // 在启动 m 的时, _g_ 必须是在 g0 上执行.
+    _g_ := getg()
     if _g_ != _g_.m.g0 {
         throw("bad runtime·mstart")
     }
     
-    // getcallerpc() 获取调用 mstart1 执行完的返回地址
-    // getcallersp() 获取调用 mstart1 时的栈顶地址
+    // getcallerpc() 获取调用 mstart1 执行完的返回地址(即在 mstart() 函数当中的 "switch" 部分的地址).
+    // getcallersp() 获取调用 mstart1 时的栈顶地址.
+    // 由于即将调度执行用户的 g, 则需要将 g0 栈上的状态信息进行保存.
     save(getcallerpc(), getcallersp())
-    asminit() // AMD64 Linux 是空函数
+    asminit() // amd64 Linux 是空函数
     minit() // 信号相关初始化
     
-    // 启动时, _g_.m 是 &m0, 因此会执行下面的 mstartm0 函数
+    // 如果当前运行在 m0 上, 需要执行额外的 mstartm0()
     if _g_.m == &m0 {
         mstartm0() // 信号初始化
     }
     
-    // 在这里 fn 为 nil 
+    // 在这里 fn 为 nil. mstartfn 意为 m 启动前的执行函数. 
+    // sysmon 系统 goroutine 就是阻塞在这里执行的.
     if fn := _g_.m.mstartfn; fn != nil {
         fn()
     }
     
-    // 在这里, 将 nextp 与当前的 m 进行绑定
+    // 如果当前没有运行在 m0 上, 则将 m.nextp 与当前 m 进行绑定.
     if _g_.m != &m0 {
         acquirep(_g_.m.nextp.ptr())
         _g_.m.nextp = 0
@@ -908,9 +919,11 @@ func mstart1() {
 }
 ```
 
-mstart1 首先调用 save() 函数来保存 g0的调用信息, **save这一行代码非常关键, 是理解调度循环的关键点之一**. 注意这里
-getcallerpc() 返回的的 mstart 调用 mstart1 时被 call 指令压栈的返回地址, getcallersp() 返回的是调用 mstart1
-函数之前 mstart 函数的栈顶地址.
+mstart1 首先调用 save() 函数来保存 g0 的调用信息, **save这一行代码非常关键, 是理解调度循环的关键点之一**. 
+
+getcallerpc() 返回的的 mstart 调用 mstart1 时被 call 指令压栈的返回地址. (注释当中已经说明)
+
+getcallersp() 返回的是调用 mstart1 函数之前 mstart 函数的栈顶地址.
 
 ```cgo
 //go:nosplit
@@ -924,7 +937,7 @@ func save(pc, sp uintptr) {
     _g_.sched.ret = 0
     _g_.sched.g = guintptr(unsafe.Pointer(_g_)) // 保存当前的 _g_
     
-    // 需要确保ctxt为零, 但此处不能有写障碍. 但是, 它应该始终已经为零.
+    // 需要确保ctxt为零, 但此处不能有写障碍. 但是, 它应该始终已经为零. 
     // 断言.
     if _g_.sched.ctxt != nil {
         badctxt()
@@ -932,26 +945,30 @@ func save(pc, sp uintptr) {
 }
 ```
 
-save 函数保存了调度相关的所有信息, 包括最为重要的当前正在运行 g 的下一条指令地址和栈顶地址. 不管想 g0 还是其他的 g 来
-说这些信息在调度过程中都是必不可少的.
+save 函数保存了调度相关的所有信息, 最为重要的当前正在运行 g 的下一条指令地址和栈顶地址. 不管想 g0 还是其他的 g 来说这
+些信息在调度过程中都是必不可少的.
 
 到目前为止, 上述的 mstart() 是在 g0 上执行的, 所有的操作都是针对 g0 而言. 
 
-为何 g0 已经执行到 mstart1 这个函数而且还会继续调用其他函数, 但 g0 的调度信息中的 pc 和 sp 却要设置在 mstart 函数
-中? 难道下次切换到 g0 时需要从 `switch` 语句继续执行? 从 mstart 函数可以看到, switch 语句之后就要退出线程了!
 
-save 函数执行之后, 返回到 mstart1 继续其他跟 m 相关的一些初始化, 完成这些初始化后则调用调度系统的核心函数 schedule()
-完成 goroutine 的调度. 每次调度 goroutine 都是从 schedule 函数开始的.
+为何 g0 已经执行到 mstart1() 而且还会继续调用其他函数, 但 g0 的调度信息中的 pc 和 sp 却要设置在 mstart() 中? 难道
+下次切换到 g0 时需要从 mstart 的 `switch` 语句继续执行? 从 mstart 函数可以看到, switch 语句之后就要退出线程了!
 
+save() 执行之后, 返回到 mstart1() 继续进行一些 m 相关的一些初始化, 完成这些初始化后则调用调度系统的核心 schedule(),
+在 schedule() 当中完成 goroutine 的切换(g0 -> g), 并且每次调度 goroutine 都是从 schedule() 开始的.
 
 ```cgo
 func schedule() {
-    _g_ := getg() // _g_ 是工作线程 m 对于的 g0, 在初始化时是 m0.g0
+    // _g_ 是工作线程 m 对于的 g0, 在初始化时是 m0.g0
+    _g_ := getg()
     
+    // m 不能被锁定.
     if _g_.m.locks != 0 {
         throw("schedule: holding locks")
     }
     
+    // 当 m 与某个 lockedg 锁定, 则 stop 掉 m(其实就是休眠), m 与 m.p 解绑
+    // 执行调度 lockedg
     if _g_.m.lockedg != 0 {
         stoplockedm()
         execute(_g_.m.lockedg.ptr(), false) // Never returns.
@@ -964,7 +981,7 @@ func schedule() {
     }
 
 top:
-    // 获取 P, 并将抢占变量设置为 false
+    // 获取 p, 并将抢占变量设置为 false
     pp := _g_.m.p.ptr()
     pp.preempt = false
     
@@ -976,15 +993,14 @@ top:
         runSafePointFn()
     }
     
-    
     // 进行完整性检查: 如果我们正在 spinning, 则 runq 应该为空.
     // 在调用checkTimers之前检查它, 因为这可能会调用 goready 将就绪的 goroutine 放在本地运行队列中.
     if _g_.m.spinning && (pp.runnext != 0 || pp.runqhead != pp.runqtail) {
         throw("schedule: spinning with local work")
     }
-    
     checkTimers(pp, 0)
     
+    // 获取一个可以进行执行的 g
     var gp *g
     var inheritTime bool
     
