@@ -1,3 +1,601 @@
+### 调度循环
+
+任何 goroutine 被调度运行起来都是通过 schedule() -> execute() -> gogo() 调用链, 而且这个调用链中的函数一直没有
+返回. 一个 goroutine 从调度到退出的路径:
+
+```cgo
+schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->schedule()
+```
+
+其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
+上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
+
+一轮调度是从调用 schedule 开始, 然后经过一系列代码的执行到最后再次通过调用 schedule 函数进行新一轮的调度. 
+
+从一轮调度到新一轮调度这一个过程称为一个调度循环. 这里的调度循环是指某一个工作线程的调度循环, 而同一个 go 程序中可能存在
+多个工作线程, 每个工作线程都有自己的调度循环.
+
+每次执行mcall切换到g0栈时都是切换到 g0.sched.sp 所指的固定位置, 这样 g0 栈不会增加的.
+
+### goroutine 调度策略
+
+所谓的 goroutine 调度, 是指程序代码按照一定算法在适当的时候选出合适的 goroutine 并放到 CPU 上去运行的过程. 调度系统
+需要解决的三大问题:
+
+1. 调度时机: 什么时候发生调度?
+
+2. 调度策略: 使用什么策略挑选下一个进入运行的 goroutine?
+
+3. 切换时机: 如何把挑选出来的 goroutine 放到 CPU 上运行?
+
+schedule 函数分三步分别查找各种运行队列中寻找可运行的 goroutine:
+
+- 从全局队列中寻找 goroutine. 为了保证调度公平性, 每个工作线程每经过61次调度就优先从全局队列中找到一个 goroutine 运
+行.
+
+- 从工作线程本地运行队列中查找 goroutine
+
+- 从其他工作线程的运行队列中偷取 goroutine. 如果上一步也没有找到需要运行的 goroutine, 则调用 findrunnable 从其他
+工作线程的运行队列中偷取 goroutine, findrunnable 函数在偷取之前会再次尝试从全局运行队列和当前线程本地运行队列中查找需
+要运行的 goroutine.
+
+
+全局运行队列中获取 goroutine:
+
+globrunqget() 函数的 `_p_` 是当前工作线程绑定的 p, 第二个参数 max 表示最多可以从全局队列拿多少个 g 到当前工作线程
+的本地运行队列.
+
+```cgo
+func globrunqget(_p_ *p, max int32) *g {
+    // 全局运行队列为空
+	if sched.runqsize == 0 {
+		return nil
+	}
+    
+    // 根据 p 的数量平分全局运行队列中的 goroutines
+	n := sched.runqsize/gomaxprocs + 1
+	if n > sched.runqsize {
+		n = sched.runqsize // 最多获取全局队列中 goroutine 总量
+	}
+	if max > 0 && n > max {
+		n = max // 最多获取 max 个 goroutine
+	}
+	if n > int32(len(_p_.runq))/2 {
+		n = int32(len(_p_.runq)) / 2 // 最多只能获取本地队列容量的一半
+	}
+
+	sched.runqsize -= n 
+    
+    // 从全局队列 pop 出一个
+	gp := sched.runq.pop()
+	n--
+	
+	// 剩余的直接存储到 _p_ 的本地队列当中
+	for ; n > 0; n-- {
+		gp1 := sched.runq.pop()
+		runqput(_p_, gp1, false)
+	}
+	return gp
+}
+
+```
+
+从工作线程本地运行队列当中获取:
+
+runqget() 的参数是本地运行队列 `_p_`. 工作线程的本地运行队列分为两部分, 一部分是 p 的 runq, runhead, runtail
+三个成员组成的无锁循环队列, 该队列最多可存储 256 个 goroutine; 另一部分是 p 的 runnext 成员, 它是指向一个 g 结构体
+对象的指针, 最多包含 1 个 goroutine.
+
+本地运行队列优先从 runnext 当中获取 goroutine, 然后从循环队列当中获取 goroutine.
+
+```cgo
+func runqget(_p_ *p) (gp *g, inheritTime bool) {
+    // 从 runnext 当中获取
+    for {
+        next := _p_.runnext
+        if next == 0 {
+            break
+        }
+        if _p_.runnext.cas(next, 0) {
+            return next.ptr(), true
+        }
+    }
+    
+    // 从队列当中获取
+    for {
+        h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
+        t := _p_.runqtail
+        if t == h {
+            return nil, false // 当前队列不存在可用的 goroutine
+        }
+        gp := _p_.runq[h%uint32(len(_p_.runq))].ptr()
+        if atomic.CasRel(&_p_.runqhead, h, h+1) { // cas-release, commits consume
+            return gp, false // 注意: 当从无锁队列中获取 inheritTime 是 false, 该值会导致 p 的 schedtick 增加
+        }
+    }
+}
+```
+
+atomic.LoadAcq 和 atomic.CasRel 分别提供了 load-acquire 和 cas-release 语义.
+
+atomic.LoadAcq:
+
+- 原子读取, 保证读取过程中不会有其他线程对该变量进行写入
+
+- 位于 atomic.LoadAcq 之后的代码, 对内存的读取和写入必须在 atomic.LoadAcq 读取完成后才能执行, 编译器和CPU都不能
+打乱.
+
+- 当前线程执行 atomic.LoadAcq 时可以读取到其他线程最近一次通过 atomic.CasRel 对同一个变量值写入的值.
+
+
+atomic.CasRel:
+
+- 原子的执行比较并交换的操作
+
+- 位于 atomic.CasRel 之前的代码, 对内存的读取和写入必须在 atomic.CasRel 对内存的写入之前完成, 编译器和CPU不能打乱
+这个顺序.
+
+- 线程执行atomic.CasRel 完成后其他线程通过 atomic.LoadAcq 读取同一变量可以读到最新的值.
+
+
+当全局队列和本地队列当中找不到要执行的 goroutine 时, 这时就要从其他工作线程的本地运行队列当中盗取 goroutine.
+
+findrunnable() 函数负责处理与盗取相关的逻辑.
+
+```cgo
+// Tries to steal from other P's, get g from global queue, poll network.
+func findrunnable() (gp *g, inheritTime bool) {
+    _g_ := getg() // g0
+    
+    // 这里的条件和 handoffp 中的条件必须一致: 如果 findrunnable 将返回G以运行,
+    // 则 handoffp 必须启动一个 M.
+top:
+    _p_ := _g_.m.p.ptr()
+    
+    ... 
+    
+    now, pollUntil, _ := checkTimers(_p_, 0) // 运行计时器
+    
+    ... 
+    
+    // local runq
+    // 再次查看一下本地运行队列是否有需要运行的 goroutine
+    if gp, inheritTime := runqget(_p_); gp != nil {
+        return gp, inheritTime
+    }
+    
+    // global runq
+    // 再次查看一下全局运行队列是否有需要运行的 goroutine
+    if sched.runqsize != 0 {
+        lock(&sched.lock)
+        gp := globrunqget(_p_, 0)
+        unlock(&sched.lock)
+        if gp != nil {
+            return gp, false
+        }
+    }
+    
+    // 检查 netpoll 当中是否存在就绪的 g
+    // netpollinited() 返回当前 netpoll 是否就绪
+    if netpollinited() && atomic.Load(&netpollWaiters) > 0 && atomic.Load64(&sched.lastpoll) != 0 {
+        if list := netpoll(0); !list.empty() { // non-blocking
+            gp := list.pop()
+            // injectglist 将 list 中的每个可运行 G 添加到某个运行队列中, 并清除 glist.
+            // 如果当前 M 没有绑定 _p_, 向全局队列批量添加 len(list) 个 G, 同时启动 min(len(list), sched.npidle)
+            // 个 M;
+            // 如果当前 M 绑定了 _p_, 则分 min(len(list), sched.npidle) 次向全局队列添加 G, 同时启动 
+            // min(len(list), sched.npidle) 个 M, 对于剩余的 G 则添加到当前 _p_ 的本地运行队列中.
+            injectglist(&list) 
+            casgstatus(gp, _Gwaiting, _Grunnable)
+            if trace.enabled {
+                traceGoUnpark(gp, 0)
+            }
+            return gp, false
+        }
+    }
+    
+    // Steal work from other P's.
+    procs := uint32(gomaxprocs)
+    ranTimer := false
+    // 当 "处于自旋状态的M的数量" >= "处于运行当中的P的数量" 时, 阻塞运行
+    // 当 GOMAXPROCS>>1 但是程序并行度很低, 这对于防止过度的 CPU 消耗是必要的
+    // 这个判断主要是为了防止因为寻找可运行的goroutine而消耗太多的CPU.
+    // 因为已经有足够多的工作线程正在寻找可运行的goroutine, 让他们去找就好了, 自己偷个懒去睡觉.
+    if !_g_.m.spinning && 2*atomic.Load(&sched.nmspinning) >= procs-atomic.Load(&sched.npidle) {
+        goto stop
+    }
+    
+    // 让当前的线程进入自旋状态 
+    if !_g_.m.spinning {
+        _g_.m.spinning = true
+        atomic.Xadd(&sched.nmspinning, 1)
+    }
+    
+    for i := 0; i < 4; i++ {
+        // stealOrder.start() 开启一次随机偷取的枚举
+        // enum.next() 是计算下一个位置
+        // enum.done() 是否结束
+        // enum.position() 获取当前的位置
+        for enum := stealOrder.start(fastrand()); !enum.done(); enum.next() {
+            if sched.gcwaiting != 0 {
+                goto top
+            }
+            stealRunNextG := i > 2 // first look for ready queues with more than 1 g
+            p2 := allp[enum.position()] // allp 当中的某个位置
+            if _p_ == p2 { // p2 刚好是当前的线程绑定的 p, 则不用查找, 本身就没有
+                continue
+            }
+            
+            // 从 p2 当中偷取(如果偷取到, 至少应该是一个, 剩下的会保存在 _p_ 当中的)
+            // stealRunNextG 表示是否偷取 p2.runnext 
+            if gp := runqsteal(_p_, p2, stealRunNextG); gp != nil {
+                return gp, false
+            }
+            
+            // 从 p2 当中没有偷取到. 
+            // i = 2 时, shouldStealTimers() 决定是否能从 p2 当中偷取 g
+            // 当 p2.status != _Prunning || (p2.m.curg.status == _Grunning && preempt)
+            // i = 3 时, 直接从 p2 当中偷取
+            if i > 2 || (i > 1 && shouldStealTimers(p2)) {
+                // 为 p2 运行计时器, tnow是当前时间, w 是下一个运行计时器时间, ran是否运行了计时器
+                tnow, w, ran := checkTimers(p2, now)
+                now = tnow
+                if w != 0 && (pollUntil == 0 || w < pollUntil) {
+                    pollUntil = w
+                }
+                if ran {
+                    // 运行 timer 可能导致任意数量处于ready当中的 G 被添加到这个 P 的本地运行队列中. 
+                    // 这会导致 runqsteal 总是有空间添加盗取 G 的这一假设无效. 所以现在检查是否有本地 G 运行。
+                    if gp, inheritTime := runqget(_p_); gp != nil {
+                        return gp, inheritTime
+                    }
+                    ranTimer = true
+                }
+            }
+        }
+    }
+    if ranTimer {
+        // Running a timer may have made some goroutine ready.
+        goto top
+    }
+    
+stop:
+     
+    // GC 检查
+    // We have nothing to do. If we're in the GC mark phase, can
+    // safely scan and blacken objects, and have work to do, run
+    // idle-time marking rather than give up the P.
+    if gcBlackenEnabled != 0 && _p_.gcBgMarkWorker != 0 && gcMarkWorkAvailable(_p_) {
+        _p_.gcMarkWorkerMode = gcMarkWorkerIdleMode
+        gp := _p_.gcBgMarkWorker.ptr()
+        casgstatus(gp, _Gwaiting, _Grunnable)
+        if trace.enabled {
+            traceGoUnpark(gp, 0)
+        }
+        return gp, false
+    }
+    
+    delta := int64(-1)
+    if pollUntil != 0 {
+        // checkTimers ensures that polluntil > now.
+        delta = pollUntil - now
+    }
+    
+    // wasm only:
+    // If a callback returned and no other goroutine is awake,
+    // then wake event handler goroutine which pauses execution
+    // until a callback was triggered.
+    gp, otherReady := beforeIdle(delta)
+    if gp != nil {
+        casgstatus(gp, _Gwaiting, _Grunnable)
+        if trace.enabled {
+            traceGoUnpark(gp, 0)
+        }
+        return gp, false
+    }
+    if otherReady {
+        goto top
+    }
+    
+    // Before we drop our P, make a snapshot of the allp slice,
+    // which can change underfoot once we no longer block
+    // safe-points. We don't need to snapshot the contents because
+    // everything up to cap(allp) is immutable.
+    allpSnapshot := allp
+    
+    // return P and block
+    lock(&sched.lock)
+    if sched.gcwaiting != 0 || _p_.runSafePointFn != 0 {
+        unlock(&sched.lock)
+        goto top
+    }
+    if sched.runqsize != 0 {
+        gp := globrunqget(_p_, 0)
+        unlock(&sched.lock)
+        return gp, false
+    }
+    if releasep() != _p_ {
+        throw("findrunnable: wrong p")
+    }
+    pidleput(_p_)
+    unlock(&sched.lock)
+    
+    // Delicate dance: 线程从 "自旋状态" 转换为 "非自旋状态", 可能与提交新的goroutine并发. 
+    // 我们必须先丢弃 nmspinning, 然后再次检查所有 P 本地队列 (在两者之间使用 #StoreLoad 内存屏障). 
+    // 如果上述两件事执行顺序相反, 在检查完所有运行队列之后但在丢弃 nmspinning 之前, 另一个线程可以提交 
+    // goroutine. 结果, 没有人会释放线程来运行 goroutine.
+    //
+    // 如果后面查到了新 goroutine, 则需要恢复 m.spinning 作为自旋的信号, 以释放新的工作线程 (因为可能有
+    // 多个饥饿的goroutine). 但是, 如果在发现新goroutine之后也没有查找到空闲的P, 则可以仅休眠当前线程: 
+    // 系统已满载, 因此不需要旋转线程.
+    // 另请参见文件顶部的 "Worker thread parking/unparking" 注释.
+    
+    wasSpinning := _g_.m.spinning
+    if _g_.m.spinning {
+        // 先将 m 更改为 "非自旋状态"
+        _g_.m.spinning = false
+        if int32(atomic.Xadd(&sched.nmspinning, -1)) < 0 {
+            throw("findrunnable: negative nmspinning")
+        }
+    }
+    
+    // 接着检查 allp 当中是否有先新的 goroutine 加入
+    for _, _p_ := range allpSnapshot {
+        // _p_ 的本地队列有 g 加入
+        if !runqempty(_p_) {
+            lock(&sched.lock)
+            _p_ = pidleget() // 从全局空闲 sched.pidle 当中获取一个 _p_ 
+            unlock(&sched.lock)
+            if _p_ != nil {
+                acquirep(_p_) // 将 _p_ 当前运行的 m 绑定. acquirep() -> wirep()
+                if wasSpinning {
+                    _g_.m.spinning = true // 当前的 m 再次进入自旋当中
+                    atomic.Xadd(&sched.nmspinning, 1)
+                }
+                goto top
+            }
+            
+            break
+        }
+    }
+    
+    ... // 再次进行 GC 和 netpoll 检查 
+    
+    
+    // 休眠
+    stopm()
+    goto top
+}
+```
+
+
+偷取是由 runqsteal() 函数完成, 从 p2 当中偷取 G 放入 `_p_` 当中. 批量偷取的细节函数由 runqgrab() 完成. 偷取完成
+之后, 对 `_p_` 的runqtail进行修正.
+
+```cgo
+// 从 _p_ 当中偷取 g 放入到 p2
+func runqsteal(_p_, p2 *p, stealRunNextG bool) *g {
+    t := _p_.runqtail
+    // 从 p2 当中偷取 g 存放到_p_ 当中, t 是 _p_ 当中存储的开始位置
+    // 返回偷取的数量
+    n := runqgrab(p2, &_p_.runq, t, stealRunNextG)
+    if n == 0 {
+        return nil
+    }
+    
+    // 至少偷取了一个, 将偷取到的最后一个位置的 gp 返回
+    n--
+    gp := _p_.runq[(t+n)%uint32(len(_p_.runq))].ptr()
+    if n == 0 {
+        return gp
+    }
+    // 调整 _p_ 的 runqtail 的值.
+    h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with consumers
+    if t-h+n >= uint32(len(_p_.runq)) {
+        throw("runqsteal: runq overflow")
+    }
+    atomic.StoreRel(&_p_.runqtail, t+n) // store-release, makes the item available for consumption
+    return gp
+}
+```
+
+runqgrab() 完成偷取工作:
+
+- 计算需要批量偷取的 G 的数量
+
+- 根据计算的数量并且结合 stealRunNextG 进行偷取操作(进行 G 拷贝), 最后修正被偷取的 p 的 runqhead 的值
+
+```cgo
+// batchHead 是开始的位置, stealRunNextG 是否尝试偷取 runnext 
+func runqgrab(_p_ *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool) uint32 {
+    for {
+        h := atomic.LoadAcq(&_p_.runqhead) // load-acquire, synchronize with other consumers
+        t := atomic.LoadAcq(&_p_.runqtail) // load-acquire, synchronize with the producer
+        
+        n := t - h // 计算队列中有多少个 goroutine
+        n = n - n/2 // 取队列中 goroutine 个数的一半
+        if n == 0 {
+            if stealRunNextG {
+                // 尝试从 _p_.runnext 当中 steal 
+                if next := _p_.runnext; next != 0 {
+                    // 当前的 _p_ 处于运行中的
+                    if _p_.status == _Prunning {
+                        // 休眠以确保 _p_ 不会 run 我们将要窃取的 g.
+                        // 这里的重要用例是当 _p_ 中的一个 gp 正在运行在 ready() 中(g0栈, 将 gp 变为 _Grunnable), 
+                        // 其他一个 g 几乎同时被阻塞. 不要在此期间中偷取 gp 当中 runnext, 而是退后给 _p_ 一个调
+                        // 度 runnext 的机会. 这将避免在不同 Ps 之间传递 gs.
+                        // 同步 chan send/recv 在写入时需要约 50ns, 因此 3us 会产生约 50 次写入.
+                        if GOOS != "windows" {
+                            usleep(3)
+                        } else {
+                            // 在 windows 系统定时器粒度是 1-15ms
+                            osyield() // windows 系统
+                        }
+                    }
+                    
+                    if !_p_.runnext.cas(next, 0) {
+                        continue
+                    }
+                    
+                    // 成功偷取 runnext
+                    batch[batchHead%uint32(len(batch))] = next
+                    return 1
+                }
+            }
+            return 0
+        }
+        
+        // 细节: 按理说队列中的goroutine个数最多就是 len(_p_.runq)
+        // 所以n的最大值也就是len(_p_.runq)/2, 这里的判断是为啥?
+        // 读取 runqhead 和 runqtail 是两个操作而非一个原子操作, 当读取 runhead 之后未读取 runqtail
+        // 之前, 如果其他线程快速的增加这两个值(其他偷取者偷取g会增加 runqhead, 队列所有者添加 g 会增加 runqtail), 
+        // 则导致读取出来的 runqtail 已经远远大于之前读取到的放在局部变量的 h 里面的 runqhead 了, 也就是说 h 和 t 
+        // 已经不一致了.
+        if n > uint32(len(_p_.runq)/2) { // read inconsistent h and t
+            continue
+        }
+        
+        // 获取 n 个 goroutine, 将其存放在 batch 当中
+        for i := uint32(0); i < n; i++ {
+            g := _p_.runq[(h+i)%uint32(len(_p_.runq))]
+            batch[(batchHead+i)%uint32(len(batch))] = g
+        }
+        // 修改 _p_ 本地队列的 runqhead
+        if atomic.CasRel(&_p_.runqhead, h, h+n) { // cas-release, commits consume
+            return n
+        }
+    }
+}
+```
+
+工作线程在放弃可运行的 goroutine 而进入睡眠之前, 会反复尝试从各个运行队列寻找需要运行的 goroutine, 可谓是尽心尽力.
+需要注意:
+
+1. 工作线程M的自旋状态(spinning). 工作线程在从其他工作线程的本地运行队列中盗取goroutine时的状态称为自旋状态. 当前 M
+在去其他 P 的运行队列盗取 goroutine 之前先把 spinning 标志设为 true, 同时增加处于自旋状态 M 的数量, 而盗取结束之后
+则把 spinning 标志还原为 false, 同时减少处于自旋状态的 M 的数量. 当有空闲 P 又有 goroutine 需要运行时, 这个处于自
+旋状态 M 的数量决定了是否需要唤醒或者创建新的工作线程.
+
+2.盗取算法. 盗取过程用了两个嵌套 for 循环. 内层循环实现盗取逻辑, 从代码可以看到盗取的实质就是遍历 allp 中所有的 p, 查
+看其运行队列是否有goroutine, 如果有, 则取其一半到当前工作线程的运行队列, 然后从findrunnable 返回. 如果没有, 则继续
+遍历下一个p. **但是为了保证公平性, 遍历 allp 时并不是从固定的 `allp[0]` 开始, 而是从随机位置上的 p 开始, 而且遍历的
+顺序也是随机化了, 并不是现在访问了第i个p下一次就访问第i+1个p, 而是使用了一种伪随机方式遍历allp中的每个p, 防止每次遍历时
+使用同样的顺序访问allp中的元素**
+
+3.当真的没有可以偷取的 G 时候, 则休眠当前的 M, 并在 M 唤醒之后再次重新去偷取 G, 直到偷取成功之后返回.
+
+
+当前工作线程休眠:
+
+```cgo
+func stopm() {
+    _g_ := getg() // 当前是 g0
+    
+    // 当前运行的 M 的状态判断(未锁定, 与p绑定, 非自旋)
+    if _g_.m.locks != 0 {
+        throw("stopm holding locks")
+    }
+    if _g_.m.p != 0 {
+        throw("stopm holding p")
+    }
+    if _g_.m.spinning {
+        throw("stopm spinning")
+    }
+    
+    lock(&sched.lock)
+    mput(_g_.m) // 将 M 放入全局 sched.midle 当中
+    unlock(&sched.lock)
+    notesleep(&_g_.m.park)  // 当前工作线程休眠在 park 成员上, 直到唤醒才返回.
+    noteclear(&_g_.m.park)  // 唤醒之后的清理工作
+    acquirep(_g_.m.nextp.ptr()) // 唤醒之后, 将 m 与 m.nextp 绑定, 并开始运行
+    _g_.m.nextp = 0
+}
+```
+
+stopm的核心是调用mput把m结构体对象放入sched的midle空闲队列, 然后通过notesleep(&m.park)函数让自己进入睡眠状态.
+
+**note是go runtime实现的一次性睡眠和唤醒机制, 一个线程可以通过调用 `notesleep(*note)` 进入睡眠状态, 而另外一个线
+程则可以通过 `notewakeup(*note)` 把其唤醒**.
+
+note 的底层实现机制与操作系统相关, 不同操作系统不同机制. Linux下使用 futext 系统调用, Mac 下则使用的是 pthread_cond_t
+条件变量. note 对这些底层机制做了抽象个封装.
+
+```cgo
+func notesleep(n *note) {
+    gp := getg() // 当前的 g0 
+    if gp != gp.m.g0 {
+        throw("notesleep not on g0")
+    }
+    ns := int64(-1) // 休眠的时间, ns
+    if *cgo_yield != nil {
+        // Sleep for an arbitrary-but-moderate interval to poll libc interceptors.
+        ns = 10e6 // cgo 当中的单位是 ms
+    }
+    
+    // 为了防止意外唤醒, 使用了 for 循环. 也就是说, 当处于休眠状态 n.key 的值一直是 0
+    for atomic.Load(key32(&n.key)) == 0 {
+        gp.m.blocked = true
+        futexsleep(key32(&n.key), 0, ns) // 系统调用
+        if *cgo_yield != nil {
+            asmcgocall(*cgo_yield, nil)
+        }
+        gp.m.blocked = false
+    }
+}
+```
+
+Linux下线程休眠系统调用: 当 addr 的值为 val 时, 线程休眠
+
+```cgo
+func futexsleep(addr *uint32, val uint32, ns int64) {
+    // ns < 0, 一直进行休眠. 
+    // op 的值为 _FUTEX_WAIT_PRIVATE
+    if ns < 0 {
+        futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, nil, nil, 0)
+        return
+    }
+    
+    // ns >= 0, 休眠时间为 ns
+    var ts timespec
+    ts.setNsec(ns)
+    futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, unsafe.Pointer(&ts), nil, 0)
+}
+```
+
+futex 是使用汇编实现的, 这里不再展开了.
+
+说了线程休眠, 也顺带说下一线程唤醒, 线程唤醒原理很简单, 就是将 note.key 的值设为 1, 并调用 futexwakeup 函数.
+
+```cgo
+func notewakeup(n *note) {
+    old := atomic.Xchg(key32(&n.key), 1)
+    if old != 0 {
+        print("notewakeup - double wakeup (", old, ")\n")
+        throw("notewakeup - double wakeup")
+    }
+    futexwakeup(key32(&n.key), 1)
+}
+
+
+func futexwakeup(addr *uint32, cnt uint32) {
+    // 系统调用, op 的值为 _FUTEX_WAKE_PRIVATE
+    ret := futex(unsafe.Pointer(addr), _FUTEX_WAKE_PRIVATE, cnt, nil, nil, 0)
+    if ret >= 0 {
+        return
+    }
+    
+    // 下面是系统调用异常, 则程序退出
+    // I don't know that futex wakeup can return
+    // EAGAIN or EINTR, but if it does, it would be
+    // safe to loop and call futex again.
+    systemstack(func() {
+        print("futexwakeup addr=", addr, " returned ", ret, "\n")
+    })
+    
+    *(*int32)(unsafe.Pointer(uintptr(0x1006))) = 0x1006 // 访问非法地址, 让程序退出
+}
+```
+
 ### 调度循环中如何让出 CPU
 
 #### 正常完成
@@ -648,7 +1246,6 @@ func newstack() {
 
 抢占调度的过程, 在 sysmon 当中监控发现某个 g 运行时间过长(超过10ms), 则对该 g 设置抢占标记. 该 g 在下一次函数调用的
 时候, 在检查栈的时候会进行抢占调度. 
-
 
 #### 系统调用
 
