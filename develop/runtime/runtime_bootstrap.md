@@ -966,8 +966,7 @@ func schedule() {
         throw("schedule: holding locks")
     }
     
-    // 当 m 与某个 lockedg 锁定, 则 stop 掉 m(其实就是休眠), m 与 m.p 解绑
-    // 执行调度 lockedg
+    // 当 m 与某个 lockedg 锁定, 则 stop 掉 m(其实就是休眠), m 与 m.p 解绑, 执行调度 lockedg
     if _g_.m.lockedg != 0 {
         stoplockedm()
         execute(_g_.m.lockedg.ptr(), false) // Never returns.
@@ -984,8 +983,9 @@ top:
     pp := _g_.m.p.ptr()
     pp.preempt = false
     
+    // 当前处于 GC 的 stopTheWorld 阶段. 这个时候需要将当前的 m 休眠掉
     if sched.gcwaiting != 0 {
-        gcstopm()
+        gcstopm() // 会调用 stopm(), 休眠阻塞
         goto top
     }
     if pp.runSafePointFn != 0 {
@@ -1014,7 +1014,7 @@ top:
         }
     }
     
-    // 进入gc MarkWorker 工作模式
+    // 当前进入gc MarkWorker 模式
     if gp == nil && gcBlackenEnabled != 0 {
         gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
         tryWakeP = tryWakeP || gp != nil

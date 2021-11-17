@@ -1,6 +1,6 @@
 ### GMP数据结构
 
-// g, Groutine
+// g, Groutine, 协程
 ```cgo
 // CPU寄存器相关内容保存, 非常核心.
 type gobuf struct {
@@ -106,7 +106,7 @@ type p struct{
 }
 ```
 
-// sched 全局调度
+// schedt 全局调度
 ```cgo
 // 全局的调度 sched
 type schedt struct{
@@ -127,10 +127,24 @@ type schedt struct{
     
     // 全局等待释放的 M (m.exited已经被设置), 链接到 m.freelink
     freem *m 
+    
+    
+    gcwaiting  uint32 // gc is waiting to run
+    stopwait   int32
+    stopnote   note
 }
+```
+
+> gcwaiting, 当发生 GC 扫描, 并且程序需要停止执行(stopTheWorldWithSema)的时候, 该值会被设置为1, 在程序又开始执行
+(startTheWorldWithSema)时, 该值恢复为0. stopTheWorldWithSema 和 startTheWorldWithSema 是成对出现的, 需要在
+获取 worldsema 情况下执行.
+
+> stopwait 和 stopnote 是关联的. 当 stopwait 为0时, 则会唤醒 stopnote. 在 stopTheWorldWithSema 阶段, 如果
+stopwait > 0, 会休眠在 stopnote 上.
 
 
 // 全局变量
+```cgo
 allgs []*g // 保存所有的 g
 allm  *m   // 保存的 m 构成一个链表, 包括 m0
 allp  []*p // 保存所有的p, len(allp) == gomaxprocs
