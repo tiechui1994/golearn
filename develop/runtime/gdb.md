@@ -32,7 +32,11 @@
 - info args: 当前栈上的所有参数
 - info locals: 显示当前堆栈页的所有变量.
 - info threads: 显示当前所有的线程信息.
+- info files: 正在调试的 targets 和 file 的名称
+- info display: 打印程序暂停时display的表达式
 - where: 显示所有帧栈的backtrace
+
+- display FMT
 
 - x/FMT ADDRESS, 检查内存. ADDRESS是要检查的内存地址的表达式. FMT是显示的格式. 格式字母包括:
 
@@ -71,7 +75,6 @@ g 表示八字节
 调用函数fun()
 
 - display <表达式>: 在每次单步进行指令后, 紧接着输出被设置的表达式及值. 如 dispaly a
-
 
 
 堆栈相关:

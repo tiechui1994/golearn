@@ -1,5 +1,16 @@
 ## go mod 
 
+### go mod tidy 
+
+确保 go.mod 与 module 当中的源代码匹配.
+
+它添加构建当前module的包和依赖项所需的任何缺失module, 并删除当前module未使用的module. 同时确保 go.sum 和 go.mod 
+的一致性.
+
+### go mod verify
+
+验证检查存储在本地的源缓存中的当前module的依赖项没有被下载后修改.
+
 ### go mod edit
 
 修改 go.mod 文件
