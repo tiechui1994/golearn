@@ -93,13 +93,26 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("load root cert: %s", err))
 	}
-	block, _ = pem.Decode(defaultRootKeyPem)
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		panic(fmt.Errorf("load root key: %s", err))
-	}
 
-	defaultRootKey = key.(*rsa.PrivateKey)
+	if strings.Contains(string(defaultRootKeyPem), "RSA PRIVATE KEY") {
+		block, _ = pem.Decode(defaultRootKeyPem)
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			panic(fmt.Errorf("load root key: %s", err))
+		}
+
+		defaultRootKey = key
+	} else if strings.Contains(string(defaultRootKeyPem), "PRIVATE KEY") {
+		block, _ = pem.Decode(defaultRootKeyPem)
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			panic(fmt.Errorf("load root key: %s", err))
+		}
+
+		defaultRootKey = key.(*rsa.PrivateKey)
+	} else {
+		panic("invalid key")
+	}
 }
 
 type Certificate struct {
