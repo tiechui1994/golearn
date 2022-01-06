@@ -4,14 +4,6 @@ import (
 	"errors"
 	"syscall"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
-)
-
-const (
-	CMD_IPC_RMID = unix.IPC_RMID
-	CMD_IPC_SET  = unix.IPC_SET
-	CMD_IPC_STAT = unix.IPC_STAT
 )
 
 var (
@@ -23,31 +15,6 @@ type msgbuf struct {
 	mtext [256]uint8
 }
 
-type ipc_perm struct {
-	key int32
-
-	uid  uint32
-	gid  uint32
-	cuid uint32
-	cgid uint32
-
-	mode uint16
-	seq  uint16
-}
-
-type msqid_ds struct {
-	msg_perm  ipc_perm
-	msg_stime int64
-	msg_rtime int64
-	msg_ctime int64
-
-	msg_cbytes uint64
-	msq_qnum   uint64
-	msq_qbytes uint64
-
-	msg_lspid int32
-	msg_lrpid int32
-}
 
 type MsqQ struct {
 	msgid uintptr
@@ -60,7 +27,7 @@ func Queue(pathname string, projectid int) (*MsqQ, error) {
 	}
 
 	key := int(uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff))
-	flags := unix.IPC_CREAT | 0664
+	flags := IPC_CREAT | 0664
 	msgid, _, errno := syscall.RawSyscall(syscall.SYS_MSGGET, uintptr(key), uintptr(flags), 0)
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
@@ -97,7 +64,7 @@ func (mq *MsqQ) Recv(mtype uint) ([]byte, error) {
 }
 
 func (mq *MsqQ) Close() error {
-	return mq.Ctrl(CMD_IPC_RMID, &msqid_ds{})
+	return mq.Ctrl(IPC_RMID, &msqid_ds{})
 }
 
 func (mq *MsqQ) Ctrl(cmd int32, buf *msqid_ds) error {
@@ -112,19 +79,4 @@ func (mq *MsqQ) Ctrl(cmd int32, buf *msqid_ds) error {
 	}
 
 	return nil
-}
-
-func errnoErr(e syscall.Errno) error {
-	switch e {
-	case 0:
-		return nil
-	case syscall.EAGAIN:
-		return syscall.EAGAIN
-	case syscall.EINVAL:
-		return syscall.EINVAL
-	case syscall.ENOENT:
-		return syscall.ENOENT
-	}
-
-	return e
 }
