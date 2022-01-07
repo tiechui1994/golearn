@@ -1,12 +1,5 @@
 package ipc
 
-/*
-#include <sys/syscall.h>
-#include <unistd.h>
-#include <errno.h>
-*/
-import "C"
-
 import (
 	"syscall"
 )
@@ -127,13 +120,4 @@ func errnoErr(e syscall.Errno) error {
 	}
 
 	return e
-}
-
-func Syscall(trap, a1, a2, a3 uintptr) (ret uintptr, err error) {
-	ret = C.syscall(C.long(trap), a1, a2, a3)
-	if ret != 0 {
-		return ret, syscall.Errno(C.errno)
-	}
-
-	return ret, nil
 }

@@ -18,8 +18,8 @@ func ShareM(pathname string, projectid, size, flag uint) (*ShareMemory, error) {
 		return nil, err
 	}
 
-	flags := uint32(flag | IPC_CREAT)
-	shid, _, errno := syscall.RawSyscall(syscall.SYS_SHMGET, uintptr(key), uintptr(size), uintptr(flags))
+	flags := uint32(flag | IPC_CREAT | SHM_DEST)
+	shid, _, errno := syscall.Syscall(syscall.SYS_SHMGET, uintptr(key), uintptr(size), uintptr(flags))
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}
@@ -35,7 +35,7 @@ func (shm *ShareMemory) Address() uintptr {
 }
 
 func (shm *ShareMemory) Link() error {
-	addr, _, errno := syscall.RawSyscall(syscall.SYS_SHMAT,
+	addr, _, errno := syscall.Syscall(syscall.SYS_SHMAT,
 		shm.shid, 0, 0)
 	if errno != 0 {
 		return errnoErr(errno)
@@ -46,7 +46,7 @@ func (shm *ShareMemory) Link() error {
 }
 
 func (shm *ShareMemory) UnLink() error {
-	_, _, errno := syscall.RawSyscall(syscall.SYS_SHMDT,
+	_, _, errno := syscall.Syscall(syscall.SYS_SHMDT,
 		uintptr(shm.addr), 0, 0)
 	if errno != 0 {
 		return errnoErr(errno)
@@ -65,7 +65,7 @@ func (shm *ShareMemory) Ctrl(cmd int32, buf *shmid_ds) error {
 		return errors.New("buf is nil")
 	}
 
-	_, _, errno := syscall.RawSyscall(syscall.SYS_SHMCTL,
+	_, _, errno := syscall.Syscall(syscall.SYS_SHMCTL,
 		shm.shid, uintptr(cmd), uintptr(unsafe.Pointer(buf)))
 	if errno != 0 {
 		return errnoErr(errno)

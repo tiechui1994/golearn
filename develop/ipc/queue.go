@@ -27,7 +27,7 @@ func Queue(pathname string, projectid, flag uint) (*MsqQ, error) {
 	}
 
 	flags := uint32(flag | IPC_CREAT)
-	msgid, _, errno := syscall.RawSyscall(syscall.SYS_MSGGET, uintptr(key), uintptr(flags), 0)
+	msgid, _, errno := syscall.Syscall(syscall.SYS_MSGGET, uintptr(key), uintptr(flags), 0)
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}
@@ -40,7 +40,7 @@ func (mq *MsqQ) Send(mtype int, mtext [256]uint8) error {
 	msg.mtype = int64(mtype)
 	msg.mtext = mtext
 
-	ret, _, errno := syscall.RawSyscall6(syscall.SYS_MSGSND,
+	ret, _, errno := syscall.Syscall6(syscall.SYS_MSGSND,
 		mq.msgid, uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), 0, 0, 0)
 	if int(ret) != 0 {
 		return errnoErr(errno)
@@ -50,7 +50,7 @@ func (mq *MsqQ) Send(mtype int, mtext [256]uint8) error {
 
 func (mq *MsqQ) Recv(mtype uint) ([]byte, error) {
 	var msg msgbuf
-	_, _, errno := syscall.RawSyscall6(syscall.SYS_MSGRCV,
+	_, _, errno := syscall.Syscall6(syscall.SYS_MSGRCV,
 		mq.msgid, uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), uintptr(mtype), 0, 0)
 	if errno == syscall.EINTR {
 		return nil, ErrEmpty
@@ -71,7 +71,7 @@ func (mq *MsqQ) Ctrl(cmd int32, buf *msqid_ds) error {
 		return errors.New("buf is nil")
 	}
 
-	_, _, errno := syscall.RawSyscall(syscall.SYS_MSGCTL,
+	_, _, errno := syscall.Syscall(syscall.SYS_MSGCTL,
 		mq.msgid, uintptr(cmd), uintptr(unsafe.Pointer(buf)))
 	if errno != 0 {
 		return errnoErr(errno)
