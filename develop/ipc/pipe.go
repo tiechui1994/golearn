@@ -36,7 +36,7 @@ func FIFO(filepath string, mode uint32) (*Fifo, error) {
 	}
 
 	fd, err := syscall.Open(filepath, int(mode), 0666)
-	if err != nil {
+	if err != nil && err != syscall.EEXIST {
 		return nil, err
 	}
 	return &Fifo{fd: fd, p: filepath}, nil

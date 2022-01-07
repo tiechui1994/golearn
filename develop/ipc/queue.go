@@ -41,7 +41,7 @@ func (mq *MsqQ) Send(mtype int, mtext [256]uint8) error {
 	msg.mtext = mtext
 
 	ret, _, errno := syscall.RawSyscall6(syscall.SYS_MSGSND,
-		uintptr(mq.msgid), uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), 0, 0, 0)
+		mq.msgid, uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), 0, 0, 0)
 	if int(ret) != 0 {
 		return errnoErr(errno)
 	}
@@ -51,7 +51,7 @@ func (mq *MsqQ) Send(mtype int, mtext [256]uint8) error {
 func (mq *MsqQ) Recv(mtype uint) ([]byte, error) {
 	var msg msgbuf
 	_, _, errno := syscall.RawSyscall6(syscall.SYS_MSGRCV,
-		uintptr(mq.msgid), uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), uintptr(mtype), 0, 0)
+		mq.msgid, uintptr(unsafe.Pointer(&msg)), uintptr(unsafe.Sizeof(msgbuf{})), uintptr(mtype), 0, 0)
 	if errno == syscall.EINTR {
 		return nil, ErrEmpty
 	}
@@ -72,7 +72,7 @@ func (mq *MsqQ) Ctrl(cmd int32, buf *msqid_ds) error {
 	}
 
 	_, _, errno := syscall.RawSyscall(syscall.SYS_MSGCTL,
-		uintptr(mq.msgid), uintptr(cmd), uintptr(unsafe.Pointer(buf)))
+		mq.msgid, uintptr(cmd), uintptr(unsafe.Pointer(buf)))
 	if errno != 0 {
 		return errnoErr(errno)
 	}

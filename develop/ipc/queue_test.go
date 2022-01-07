@@ -12,7 +12,7 @@ var mq *MsqQ
 func MqInit(t *testing.T) {
 	var err error
 	os.Create("/tmp/mq")
-	mq, err = Queue("/tmp/mq", 10)
+	mq, err = Queue("/tmp/mq", 10,0)
 	if err != nil {
 		t.Errorf("err: %v", err)
 		os.Exit(1)
