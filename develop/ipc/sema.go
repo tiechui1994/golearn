@@ -5,23 +5,23 @@ import (
 	"unsafe"
 )
 
+// 信号量
+type Sema struct {
+	semaid uintptr
+}
+
 type sembuf struct {
 	semnum  int16 // 信号量组的序号: 0~semnums-1
 	semop   int16 // 信号量值在一次操作当中改变的量
 	semflag int16 // IPC_NOWAIT, SEM_UNDO
 }
 
-type Sema struct {
-	semaid uintptr
-}
-
 func Semaphore(pathname string, projectid, nums int) (*Sema, error) {
-	var stat syscall.Stat_t
-	if err := syscall.Stat(pathname, &stat); err != nil {
+	key, err := ftok(pathname, projectid)
+	if err != nil {
 		return nil, err
 	}
 
-	key := int(uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff))
 	flag := IPC_CREAT | 0666
 	semaid, _, errno := syscall.RawSyscall(syscall.SYS_SEMGET, uintptr(key),
 		uintptr(nums), uintptr(flag))
@@ -36,7 +36,7 @@ func (sm *Sema) Init(v int) error {
 	return sm.Ctrl(SETVAL, 0, v)
 }
 
-func (sm *Sema) Close() error {
+func (sm *Sema) Remove() error {
 	return sm.Ctrl(IPC_RMID, 0, semid_ds{})
 }
 
@@ -79,7 +79,7 @@ func (sm *Sema) Ctrl(cmd, semnum int, buf interface{}) error {
 		if errno != 0 {
 			return errnoErr(errno)
 		}
-	case IPC_SET, IPC_STAT, IPC_RMID:
+	case IPC_SET, IPC_STAT:
 		val := buf.(semid_ds)
 		_, _, errno := syscall.RawSyscall6(syscall.SYS_SEMCTL, sm.semaid,
 			uintptr(semnum), uintptr(cmd), uintptr(unsafe.Pointer(&val)), 0, 0)

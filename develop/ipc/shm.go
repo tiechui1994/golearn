@@ -6,6 +6,7 @@ import (
 	"unsafe"
 )
 
+// 共享内存
 type ShareMemory struct {
 	shid uintptr
 	addr *uint8
@@ -49,11 +50,11 @@ func (shm *ShareMemory) UnLink() error {
 	return nil
 }
 
-func (shm *ShareMemory) Close() error {
-	return shm.Ctrl(IPC_RMID, &msqid_ds{})
+func (shm *ShareMemory) Remove() error {
+	return shm.Ctrl(IPC_RMID, &shmid_ds{})
 }
 
-func (shm *ShareMemory) Ctrl(cmd int32, buf *msqid_ds) error {
+func (shm *ShareMemory) Ctrl(cmd int32, buf *shmid_ds) error {
 	if buf == nil {
 		return errors.New("buf is nil")
 	}

@@ -9,24 +9,23 @@ import (
 var (
 	ErrEmpty = errors.New("queue is empty")
 )
+
 // 消息队列
+type MsqQ struct {
+	msgid uintptr
+}
+
 type msgbuf struct {
 	mtype int64
 	mtext [256]uint8
 }
 
-
-type MsqQ struct {
-	msgid uintptr
-}
-
 func Queue(pathname string, projectid int) (*MsqQ, error) {
-	var stat syscall.Stat_t
-	if err := syscall.Stat(pathname, &stat); err != nil {
+	key, err := ftok(pathname, projectid)
+	if err != nil {
 		return nil, err
 	}
 
-	key := int(uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff))
 	flags := IPC_CREAT | 0664
 	msgid, _, errno := syscall.RawSyscall(syscall.SYS_MSGGET, uintptr(key), uintptr(flags), 0)
 	if errno != 0 && errno != syscall.EEXIST {
@@ -63,7 +62,7 @@ func (mq *MsqQ) Recv(mtype uint) ([]byte, error) {
 	return msg.mtext[:], nil
 }
 
-func (mq *MsqQ) Close() error {
+func (mq *MsqQ) Remove() error {
 	return mq.Ctrl(IPC_RMID, &msqid_ds{})
 }
 

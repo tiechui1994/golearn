@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"os"
 	"syscall"
 	"unsafe"
 )
@@ -16,6 +17,7 @@ const (
 // 为 ENXIO.
 
 type Fifo struct {
+	p  string
 	fd int
 }
 
@@ -50,7 +52,7 @@ func FIFO(filepath string, mode uint32) (*Fifo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fifo{fd: fd}, nil
+	return &Fifo{fd: fd, p: filepath}, nil
 }
 
 func (io *Fifo) Read(buf []byte) (n int, err error) {
@@ -59,4 +61,8 @@ func (io *Fifo) Read(buf []byte) (n int, err error) {
 
 func (io *Fifo) Write(data []byte) (n int, err error) {
 	return syscall.Write(io.fd, data)
+}
+
+func (io *Fifo) Remove() error {
+	return os.Remove(io.p)
 }
