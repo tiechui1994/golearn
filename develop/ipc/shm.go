@@ -9,7 +9,7 @@ import (
 // 共享内存
 type ShareMemory struct {
 	shid uintptr
-	addr *uint8
+	addr uintptr
 }
 
 func ShareM(pathname string, projectid, size, flag uint) (*ShareMemory, error) {
@@ -18,13 +18,20 @@ func ShareM(pathname string, projectid, size, flag uint) (*ShareMemory, error) {
 		return nil, err
 	}
 
-	flags := uint32(flag | IPC_CREAT | SHM_HUGETLB)
+	flags := uint32(flag | IPC_CREAT)
 	shid, _, errno := syscall.RawSyscall(syscall.SYS_SHMGET, uintptr(key), uintptr(size), uintptr(flags))
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}
 
 	return &ShareMemory{shid: shid}, nil
+}
+
+func (shm *ShareMemory) Address() uintptr {
+	if shm.addr == 0 {
+		panic("must be link before")
+	}
+	return shm.addr
 }
 
 func (shm *ShareMemory) Link() error {
@@ -34,18 +41,18 @@ func (shm *ShareMemory) Link() error {
 		return errnoErr(errno)
 	}
 
-	shm.addr = (*uint8)(unsafe.Pointer(addr))
+	shm.addr = addr
 	return nil
 }
 
 func (shm *ShareMemory) UnLink() error {
 	_, _, errno := syscall.RawSyscall(syscall.SYS_SHMDT,
-		uintptr(unsafe.Pointer(shm.addr)), 0, 0)
+		uintptr(shm.addr), 0, 0)
 	if errno != 0 {
 		return errnoErr(errno)
 	}
 
-	shm.addr = nil
+	shm.addr = 0
 	return nil
 }
 

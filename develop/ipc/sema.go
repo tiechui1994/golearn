@@ -11,9 +11,9 @@ type Sema struct {
 }
 
 type sembuf struct {
-	semnum  int16 // 信号量组的序号: 0~semnums-1
-	semop   int16 // 信号量值在一次操作当中改变的量
-	semflag int16 // IPC_NOWAIT, SEM_UNDO
+	sem_num uint16 // 信号量组的序号: 0~semnums-1
+	sem_op  int16  // 信号量值在一次操作当中改变的量
+	sem_flg int16  // IPC_NOWAIT, SEM_UNDO
 }
 
 func Semaphore(pathname string, projectid, nums, flag uint) (*Sema, error) {
@@ -22,7 +22,7 @@ func Semaphore(pathname string, projectid, nums, flag uint) (*Sema, error) {
 		return nil, err
 	}
 
-	flags := uint32(flag | IPC_CREAT)
+	flags := uint32(flag | IPC_CREAT )
 	semaid, _, errno := syscall.RawSyscall(syscall.SYS_SEMGET, uintptr(key),
 		uintptr(nums), uintptr(flags))
 	if errno != 0 && errno != syscall.EEXIST {
@@ -32,7 +32,7 @@ func Semaphore(pathname string, projectid, nums, flag uint) (*Sema, error) {
 	return &Sema{semaid: semaid}, nil
 }
 
-func (sm *Sema) Init(v int) error {
+func (sm *Sema) Init(v int32) error {
 	return sm.Ctrl(SETVAL, 0, v)
 }
 
@@ -41,12 +41,13 @@ func (sm *Sema) Remove() error {
 }
 
 func (sm *Sema) P() error {
-	var buf sembuf
-	buf.semnum = 0
-	buf.semop = -1
-	buf.semflag = SEM_UNDO
+	var buf = sembuf{
+		sem_num: 0,
+		sem_op:  -1,
+		sem_flg: SEM_UNDO,
+	}
 
-	_, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
+	_, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, uintptr(sm.semaid),
 		uintptr(unsafe.Pointer(&buf)), uintptr(1))
 	if errno != 0 {
 		return errnoErr(errno)
@@ -56,10 +57,11 @@ func (sm *Sema) P() error {
 }
 
 func (sm *Sema) V() error {
-	var buf sembuf
-	buf.semnum = 0
-	buf.semop = 1
-	buf.semflag = SEM_UNDO
+	var buf = sembuf{
+		sem_num: 0,
+		sem_op:  1,
+		sem_flg: SEM_UNDO,
+	}
 
 	_, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
 		uintptr(unsafe.Pointer(&buf)), uintptr(1))
@@ -73,7 +75,7 @@ func (sm *Sema) V() error {
 func (sm *Sema) Ctrl(cmd, semnum int, buf interface{}) error {
 	switch cmd {
 	case SETVAL:
-		val := buf.(int)
+		val := buf.(int32)
 		_, _, errno := syscall.RawSyscall6(syscall.SYS_SEMCTL, sm.semaid,
 			uintptr(semnum), uintptr(cmd), uintptr(val), 0, 0)
 		if errno != 0 {
@@ -90,6 +92,12 @@ func (sm *Sema) Ctrl(cmd, semnum int, buf interface{}) error {
 		val := buf.([]uint16)
 		_, _, errno := syscall.RawSyscall6(syscall.SYS_SEMCTL, sm.semaid,
 			uintptr(semnum), uintptr(cmd), uintptr(unsafe.Pointer(&val[0])), 0, 0)
+		if errno != 0 {
+			return errnoErr(errno)
+		}
+	default:
+		_, _, errno := syscall.RawSyscall6(syscall.SYS_SEMCTL, sm.semaid,
+			uintptr(semnum), uintptr(cmd), 0, 0, 0)
 		if errno != 0 {
 			return errnoErr(errno)
 		}
