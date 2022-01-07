@@ -12,15 +12,15 @@ type ShareMemory struct {
 	addr *uint8
 }
 
-func ShareM(pathname string, projectid int, size uint) (*ShareMemory, error) {
+func ShareM(pathname string, projectid, size, flag uint) (*ShareMemory, error) {
 	var stat syscall.Stat_t
 	if err := syscall.Stat(pathname, &stat); err != nil {
 		return nil, err
 	}
 
 	key := int(uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff))
-	flag := IPC_CREAT | SHM_HUGETLB
-	shid, _, errno := syscall.RawSyscall(syscall.SYS_SHMGET, uintptr(key), uintptr(size), uintptr(flag))
+	flags := uint32(flag | IPC_CREAT | SHM_HUGETLB)
+	shid, _, errno := syscall.RawSyscall(syscall.SYS_SHMGET, uintptr(key), uintptr(size), uintptr(flags))
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}

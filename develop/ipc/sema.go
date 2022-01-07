@@ -16,15 +16,15 @@ type sembuf struct {
 	semflag int16 // IPC_NOWAIT, SEM_UNDO
 }
 
-func Semaphore(pathname string, projectid, nums int) (*Sema, error) {
+func Semaphore(pathname string, projectid, nums, flag uint) (*Sema, error) {
 	key, err := ftok(pathname, projectid)
 	if err != nil {
 		return nil, err
 	}
 
-	flag := IPC_CREAT | 0666
+	flags := uint32(flag | IPC_CREAT)
 	semaid, _, errno := syscall.RawSyscall(syscall.SYS_SEMGET, uintptr(key),
-		uintptr(nums), uintptr(flag))
+		uintptr(nums), uintptr(flags))
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}
@@ -46,9 +46,9 @@ func (sm *Sema) P() error {
 	buf.semop = -1
 	buf.semflag = SEM_UNDO
 
-	ret, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
+	_, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
 		uintptr(unsafe.Pointer(&buf)), uintptr(1))
-	if ret == -1 {
+	if errno != 0 {
 		return errnoErr(errno)
 	}
 
@@ -61,9 +61,9 @@ func (sm *Sema) V() error {
 	buf.semop = 1
 	buf.semflag = SEM_UNDO
 
-	ret, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
+	_, _, errno := syscall.RawSyscall(syscall.SYS_SEMOP, sm.semaid,
 		uintptr(unsafe.Pointer(&buf)), uintptr(1))
-	if ret == -1 {
+	if errno != 0 {
 		return errnoErr(errno)
 	}
 

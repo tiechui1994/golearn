@@ -22,7 +22,7 @@ func MqInit(t *testing.T) {
 func TestMsqQ_Ctrl(t *testing.T) {
 	MqInit(t)
 	var buf msqid_ds
-	err := mq.Ctrl(CMD_IPC_STAT, &buf)
+	err := mq.Ctrl(IPC_STAT, &buf)
 	if err != nil {
 		t.Errorf("ctrl failed, err: %v", err)
 		return
@@ -56,6 +56,6 @@ func TestQueueRecv(t *testing.T) {
 		} else {
 			t.Logf("recv: %v", string(data))
 		}
-		time.Sleep(1*time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }

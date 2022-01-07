@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
@@ -23,16 +24,16 @@ func initFIFO(mode uint32, t *testing.T) {
 }
 
 func TestFifo_Write(t *testing.T) {
-	initFIFO(syscall.O_WRONLY, t)
+	initFIFO(syscall.O_RDWR, t)
 
 	var wg sync.WaitGroup
-	wg.Add(10)
+	wg.Add(5)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				data := fmt.Sprintf("%v - %v - %v", time.Now(), time.Now().Unix(), time.Now().Format(time.RFC3339))
+				data := fmt.Sprintf("[%v - %v - %v]", time.Now(), time.Now().Unix(), time.Now().Format(time.RFC3339))
 				n, err := fifo.Write([]byte(data))
 				if err != nil {
 					t.Errorf("FIFO Write: %v", err)
@@ -40,7 +41,7 @@ func TestFifo_Write(t *testing.T) {
 				}
 
 				t.Logf("FIFO Write Success, length: %v", n)
-				time.Sleep(10 * time.Millisecond * time.Duration(rand.Int31n(300)+10))
+				time.Sleep(5 * time.Millisecond * time.Duration(rand.Int31n(300)+10))
 			}
 		}()
 	}
@@ -51,7 +52,8 @@ func TestFifo_Write(t *testing.T) {
 func TestFifo_Read(t *testing.T) {
 	initFIFO(syscall.O_RDWR, t)
 
-	buf := make([]byte, 1024)
+	var temp []byte
+	buf := make([]byte, 4096)
 	for {
 		n, err := fifo.Read(buf)
 		if err != nil {
@@ -59,7 +61,29 @@ func TestFifo_Read(t *testing.T) {
 			continue
 		}
 
-		t.Logf("FIFO Read Success, data: %s", buf[:n])
-		time.Sleep(2 * time.Second)
+		// handle  sticky packget
+		begin, end := 0, n
+		nums := bytes.Count(buf[begin:end], []byte("]"))
+		last := buf[n-1] == ']'
+		for i := 0; i < nums; i++ {
+			length := bytes.IndexByte(buf[begin:end], ']')
+
+			if i == 0 && buf[0] != '[' {
+				t.Logf("FIFO Read Success, data: %s", append(temp, buf[begin:begin+length+1]...))
+				temp = nil
+				begin += length + 1
+				continue
+			}
+
+			t.Logf("FIFO Read Success, data: %s", buf[begin:begin+length+1])
+			begin += length + 1
+		}
+
+		if !last {
+			temp = make([]byte, len(buf[begin:end]))
+			copy(temp, buf[begin:end])
+		}
+
+		time.Sleep(1 * time.Second)
 	}
 }

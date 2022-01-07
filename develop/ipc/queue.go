@@ -20,13 +20,13 @@ type msgbuf struct {
 	mtext [256]uint8
 }
 
-func Queue(pathname string, projectid int) (*MsqQ, error) {
+func Queue(pathname string, projectid, flag uint) (*MsqQ, error) {
 	key, err := ftok(pathname, projectid)
 	if err != nil {
 		return nil, err
 	}
 
-	flags := IPC_CREAT | 0664
+	flags := uint32(flag | IPC_CREAT)
 	msgid, _, errno := syscall.RawSyscall(syscall.SYS_MSGGET, uintptr(key), uintptr(flags), 0)
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)

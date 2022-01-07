@@ -27,28 +27,15 @@ func FIFO(filepath string, mode uint32) (*Fifo, error) {
 		return nil, err
 	}
 
-	newmode := syscall.O_CREAT | syscall.S_IFIFO
-
-	if mode&syscall.O_NONBLOCK == syscall.O_NONBLOCK {
-		newmode = newmode | syscall.O_NONBLOCK
-	}
-
-	if mode&syscall.O_RDWR == syscall.O_RDWR {
-		newmode = newmode | syscall.O_RDWR
-	} else if mode&syscall.O_WRONLY == syscall.O_WRONLY {
-		newmode = newmode | syscall.O_WRONLY
-	} else {
-		newmode = newmode | syscall.O_RDONLY
-	}
-
+	mode = mode | syscall.O_CREAT | syscall.S_IFIFO
 	unknown := int(AT_FDCWD)
 	_, _, errno := syscall.Syscall6(syscall.SYS_MKNODAT, uintptr(unknown), uintptr(unsafe.Pointer(p0)),
-		uintptr(newmode), uintptr(0), 0, 0)
+		uintptr(mode), uintptr(0), 0, 0)
 	if errno != 0 && errno != syscall.EEXIST {
 		return nil, errnoErr(errno)
 	}
 
-	fd, err := syscall.Open(filepath, int(newmode), 0666)
+	fd, err := syscall.Open(filepath, int(mode), 0666)
 	if err != nil {
 		return nil, err
 	}

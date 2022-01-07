@@ -96,14 +96,14 @@ type shmid_ds struct {
 	shm_nattch uint64 // numbers of cur attaches
 }
 
-func ftok(pathname string, projectid int) (key int, err error) {
+func ftok(pathname string, projectid uint) (key uint, err error) {
 	var stat syscall.Stat_t
 	err = syscall.Stat(pathname, &stat)
 	if err != nil {
 		return key, err
 	}
 
-	key = int(uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff))
+	key = uint(projectid&0xff)<<24 | uint((stat.Dev&0xff)<<16) | (uint(stat.Ino) & 0xffff)
 	return key, nil
 }
 
