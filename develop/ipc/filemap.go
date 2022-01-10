@@ -3,12 +3,18 @@ package ipc
 import (
 	"os"
 	"syscall"
+	"unsafe"
+)
+
+const (
+	defaultMemMapSize = 8 * 1024
 )
 
 type options struct {
 	offset uint64
 	prot   uint32
 	flags  uint32
+	size   uint64
 }
 
 type Option interface {
@@ -45,18 +51,31 @@ func WithPrivate() Option {
 	})
 }
 
+func WithSize(size uint64) Option {
+	return newFuncOption(func(o *options) {
+		if size < defaultMemMapSize {
+			size = defaultMemMapSize
+		}
+
+		size = defaultMemMapSize - size&(defaultMemMapSize-1) + size // 8k
+		o.size = size
+	})
+}
+
 func WithOffset(offset uint64) Option {
 	return newFuncOption(func(o *options) {
 		o.offset = offset
 	})
 }
 
-type FileMapping struct {
-	data []byte
+type FileMap struct {
+	mapping []byte
+	data    []byte
+	fd      *os.File
 }
 
-func OpenFileMapping(path string, size int, opt ...Option) (*FileMapping, error) {
-	file, err := os.Create(path)
+func OpenFileMap(path string, opt ...Option) (*FileMap, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -64,19 +83,37 @@ func OpenFileMapping(path string, size int, opt ...Option) (*FileMapping, error)
 	opts := &options{
 		prot:  syscall.PROT_READ,
 		flags: syscall.MAP_SHARED,
+		size:  defaultMemMapSize,
 	}
 	for _, o := range opt {
 		o.apply(opts)
 	}
 
-	data, err := syscall.Mmap(int(file.Fd()), int64(opts.offset), size, int(opts.prot), int(opts.flags))
+	data, err := syscall.Mmap(int(file.Fd()), int64(opts.offset), int(opts.size), int(opts.prot), int(opts.flags))
 	if err != nil {
 		return nil, err
 	}
 
-	return &FileMapping{data: data}, nil
+	f := &FileMap{data: data, fd: file}
+
+	err = f.Grow(defaultMemMapSize)
+	if err != nil {
+		return nil, err
+	}
+
+	f.mapping = (*(*[4096]uint8)(unsafe.Pointer(&data[0])))[:]
+	return f, nil
 }
 
-func (f *FileMapping) Close() error {
+func (f *FileMap) Grow(size uint64) error {
+	if info, _ := f.fd.Stat(); info.Size() >= int64(size) {
+		return nil
+	}
+
+	nsize := int64(defaultMemMapSize - size&(defaultMemMapSize-1) + size)
+	return f.fd.Truncate(nsize)
+}
+
+func (f *FileMap) Close() error {
 	return syscall.Munmap(f.data)
 }

@@ -34,7 +34,7 @@ func (shm *ShareMemory) Address() uintptr {
 	return shm.addr
 }
 
-func (shm *ShareMemory) Link() error {
+func (shm *ShareMemory) Attach() error {
 	addr, _, errno := syscall.Syscall(syscall.SYS_SHMAT,
 		shm.shid, 0, 0)
 	if errno != 0 {
@@ -45,7 +45,7 @@ func (shm *ShareMemory) Link() error {
 	return nil
 }
 
-func (shm *ShareMemory) UnLink() error {
+func (shm *ShareMemory) UnAttach() error {
 	_, _, errno := syscall.Syscall(syscall.SYS_SHMDT,
 		uintptr(shm.addr), 0, 0)
 	if errno != 0 {
