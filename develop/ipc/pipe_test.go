@@ -26,14 +26,15 @@ func initFIFO(mode uint32, t *testing.T) {
 func TestFifo_Write(t *testing.T) {
 	initFIFO(syscall.O_RDWR, t)
 
+	CNT := 1
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(CNT)
 
-	for i := 0; i < 5; i++ {
-		go func() {
+	for i := 0; i < CNT; i++ {
+		go func(idx int) {
 			defer wg.Done()
 			for i := 0; i < 100; i++ {
-				data := fmt.Sprintf("[%v - %v - %v]", time.Now(), time.Now().Unix(), time.Now().Format(time.RFC3339))
+				data := fmt.Sprintf("[%v-%v - %v - %v]", idx, i, time.Now().Unix(), time.Now().Format(time.RFC3339))
 				n, err := fifo.Write([]byte(data))
 				if err != nil {
 					t.Errorf("FIFO Write: %v", err)
@@ -43,7 +44,7 @@ func TestFifo_Write(t *testing.T) {
 				t.Logf("FIFO Write Success, length: %v", n)
 				time.Sleep(5 * time.Millisecond * time.Duration(rand.Int31n(300)+10))
 			}
-		}()
+		}(i)
 	}
 
 	wg.Wait()

@@ -1,27 +1,22 @@
 # socket
 
-## scoket options
+## 选项参数
 
 可以使用 setsockopt(2) 设置这些套接字选项, 并使用 getsockopt(2) 读取所有套接字的套接字选项. 
 
-SOL_SOCKET 级别的选项: 
-
-- SO_ACCEPTCONN
-
-- SO_BINDTODEVICE
+### SOL_SOCKET 级别的选项
 
 - SO_BROADCAST, 开启或禁止进程发送广播消息的能力. 只有数据报套接字支持广播, 并且还必须是在广播消息的网络上. 
-
-- SO_DOMAIN
 
 - SO_KEEPALIVE, 启用 TCP keeplive. 设置发送 keepalive 周期. 如果2小时内在该套接字的任一方向上没有数据交换, TCP
 就自动给对端发送一个保持存活探测分节(keep-alive probe). 这是一个对端必须响应的TCP分节, 它会导致以下三种情况之一:
 
-1) 对端以期望的ACK响应. 应用程序得不到通知, 在2个小时后, TCP将发出另一个探测分节.
+1) 对端以期望的ACK响应. 应用程序得不到通知, 在2个小时后, TCP将发出一个探测分节.
 
-2) 对端以RST响应, 它告知本端 TCP: 对端已崩溃且已重新启动.
+2) 对端以RST响应, 它告知本端 TCP: 对端已崩溃且已重新启动. 该套接字的待处理错误被置为 ECONNRESET, 套接字本身被关闭.
 
-3) 对端对保持存活探测分节没有任何响应.
+3) 对端对保持存活探测分节没有任何响应. 源自Berkeley的TCP将另外发送8个探测字节, 试图得到一个响应. TCP在发出第一个探测
+分节后 15 分钟左右后若仍没有收到任何响应则放弃. (Linux也是这样处理的)
 
 - SO_LINGER, 该选项指定 close 函数对面向连接的协议(TCP, SCTP)如何操作. 默认操作是 close 立即返回, 但是如果有数据
 残留在套接字发送缓冲区, 系统将试着把这些数据发送到对端. SO_LINGER 选项要求在用户进程和内核间传递如下结构:
@@ -57,14 +52,6 @@ MSG_OOB 标志时才会接收 out-of-band data. TCP 当中的带外数据指的�
 > sockatmark(sockfd) 函数获取是否处于带外标记.
 
 
-- SO_PASSCRED
-
-- SO_PEERCRED
-
-- SO_PRIORITY
-
-- SO_PROTOCOL
-
 - SO_RCVBUF, 接收缓存区最大字节数. 当使用 setsockopt(2) 设置该值时, 内核将该值加倍, 并且该加倍值由 getsockopt(2)
 返回. 默认值由 `/proc/sys/net/core/rmem_default` 文件设置, 最大允许值由 `/proc/sys/net/core/rmem_max` 文件
 设置. 此选项的最小(加倍)值为256.
@@ -76,12 +63,6 @@ MSG_OOB 标志时才会接收 out-of-band data. TCP 当中的带外数据指的�
 设置. 此选项的最小(加倍)值为 2048.
 
 - SO_SNDBUFFORCE, 特权进程可以执行与 SO_SNDBUF 相同的效果, 并且可以覆盖 wmem_max 限制.
-
-
-
-- SO_RCVLOWAT, SO_SNDLOWAT
-
-- SO_RCVTIMEO, SO_SNDTIMEO
 
 
 
@@ -111,7 +92,111 @@ SO_REUSEPORT 选项:
 - SO_TIMESTAMP, 启用或禁用 SO_TIMESTAMP 控制消息的接收. 时间戳控制消息以 SOL_SOCKET 级别发送, cmsg_data 字段
 是一个 struct timeval, 指示在此调用中传递给用户的最后一个数据包的接收时间. 
 
+### IPPROTO_TCP 级别选项
 
+- TCP_MAXSEG, 设置 TCP 连接的最大分节大小(MSS). 返回值是TCP可以发送给对端的最大数据量, 它通常是由对端使用 SYN 分节
+告知的 MSS, 除非在TCP选择使用一个比对端通告的 MSSS 小些的值.
+
+- TCP_NODELAY, 开启该选项将禁止 TCP 的 Nagle 算法. 默认情况下该算法是启动的. 
+
+Nagle 算法的目的在于减少广域网上"小分组"的数目. 该算法指出: 如果某个给定连接上有待确认数据, 当用户写入小分组数据时, 写
+入的数据不会立即发送出去, 直到 "现有数据被确认" 为止. 这里的 "小分组" 的定义是小于 MSS 的分组.
+
+Nagle 算法常常与 ACK延滞算法(delay ACK alg) 一起使用. 该算法使得TCP在接收到数据后不立即发送ACK, 而是等待一小段时间(
+典型值为 50~200ms), 然后发送ACK. TCP 期待在这一小段时间内自身有数据发送回对端, 被延滞的ACK就可以由这些数据捎带, 从而
+省掉一个 TCP 分节.
+
+> 注: 对于小分组数据通信, 不太适合使用 Nagle算法和 ACK延滞算法.
+
+举个例子: 假设某个 client 向 server 发送一个 400 字节的请求, 该请求由一个 4 字节的请求类型 + 396字节请求数据组成.
+如果 client 先执行一个 4 字节 write 调用, 再执行一个 396 字节的 write 调用, 那么第二个写操作将一直等到 server 的
+TCP 确认了第一个写操作的 4 字节数据后才由 client 的 TCP 发送出去. 而且由于 server 应用程序难以在收到其余 396 字节之
+前对先收到的 4 字节数据进行操作, server 的 TCP 将延迟该 4 字节数据的 ACK. 有三种方法解决:
+
+1) 使用 writev 而不是两次调用 write. 单个 writev 调用最终导致调用 TCP 只产生一个 TCP分节.
+
+2) 将前4字节和后396字节数据复制到单个缓冲区中, 然后对该缓冲区调用一次 write
+
+3) 设置 TCP_NODELAY 选项. 
+
+### fcntl 函数
+
+fcntl 函数可执行各种描述符控制操作. 
+
+| 操作 | fcntl | POSIX |
+| ---- | ----- | --- |
+| 设置套接字为非阻塞式 IO | F_SETFL, O_NONBLOCK | fcntl |
+| 设置套接字为信号驱动式 IO | F_SETFL, O_ASYNC | fcntl |
+| 设置套接字 owner | F_SETOWN | fcntl |
+| 获取套接字 owner | F_GETOWN | fcntl |
+| 获取套接字接收缓冲区中的字节数 | | |
+| 测试套接字是否处于带外标准 | | sockatmark |
+
+
+- 信号驱动式IO. 通过使用 F_SETFL 命令设置 O_ASYNC 文件状态标记. 一旦套接字状态发生变化, 内核就产生一个SIGIO信号.
+
+- F_SETOWN 命令用于指定接收 SIGIO 和 SIGURG 信号的套接字owner(进程ID或进程组ID). 其中 SIGIO信号是套接字被设置为
+信号驱动式IO产生的. SIGURG信号是在新的带外数据到达套接字时产生的.
+
+## 关于 TCP 连接终止
+
+### accept 返回前连接终止
+
+三次握手完成从而建立连接之后, 客户端发送了一个 RST. 在服务器看来, 就在该连接已由 TCP 排队, 等待服务进程调用 accept 的
+时候 RST 到达. 稍后, 服务器进程调用 accept.
+
+> 状况模拟: 启动服务器, 调用 socket, bind 和 listen, 然后在调用 accept 之前休眠一段时间. 在服务器进程休眠时, 启动
+客户端, 调用socket 和 connect, 一旦 connect 返回, 设置 SO_LINGER 选项以产生一个 RST, 之后调用 close.
+
+在这种情况下, 服务器返回错误码是 ECONNABORTED ("software caused connection abort", 软件引起的连接终止.). 对于
+这种错误, 服务器是可以忽略的.
+
+
+### 服务器进程终止
+
+1) 当执行 kill 命令杀死服务器进程时, 进程当中所有打开的描述符都被关闭. 这就导致向客户端发送一个FIN, 而客户端则响应一个
+ACK.
+
+2) 客户端接着将数据发送给服务器. TCP允许这么做, 因为客户端接收到 FIN 只是表示服务器进程已关闭了连接的服务器, 从而不再接
+往其中发送任何数据而已. FIN 的接收并没有告知客户端服务器进程已经终止.
+
+3) 当客户端在收到服务器的RST之前, 调用 read 时, 会立即返回 EOF. 当客户端在收到服务器的 RST 之后, 调用 read, 会立即
+返回 ECONNRESET("connection rest by peer" 对方复位连接错误)
+
+### 服务器主机崩溃
+
+> 当一个进程向某个已收到RST的套接字执行 write 操作时, 内核向该进程发送一个 SIGPIPE 信号. 该信号的默认行为是终止进程,
+因此进程必须捕获它以避免意外的被终止.
+> 
+> 不论该进程是捕获了该信号并从信号处理函数返回, 还是简单的忽略该信号, write 操作都将返回 EPIPE 错误.
+>
+> 当向一个已经关闭的TCP发送数据时, 第一次写操作引发 RST, 第二次写引发 SIGPIPE 信号. 写一个已接收了 FIN 的套接字不成
+问题, 但是写一个已接收了 RST 的套接字则是一个错误.
+
+
+> 状况模拟: 在不同的主机上运行客户端和服务器. 先启动服务器, 再启动客户端, 接着客户端发送数据确认连接工作正常. 然后从网络
+上断开服务器主机, 并在客户端上发送新的数据. 
+
+当服务器主机崩溃时, 已有的网络连接上不发出任何数据. 此时客户端向服务器发送数据, 客户端TCP会持续重传数据分节, 试图从服务器
+上收到一个 ACK. 
+
+首先, 客户端尝试发送 keepalive 包(即使 keepalive 被禁止)
+
+其次, 客户端尝试发送 ICMP 包.
+
+最后, 客户端返回 ENETUNREACH 或 EHOSTUNREACH 错误.
+
+
+### 服务器主机崩溃后重启
+
+> 模拟方法: 先建立连接, 再从网络上断开服务器主机, 将它关机后重启, 最好把它重新连接到网络中.
+
+当服务器主机崩溃后重启时, 它将丢失掉崩溃前所有的TCP连接信息, 因此服务器对于所有收到来自客户端发送的数据都响应 RST.
+
+### 服务器主机关机
+
+Unix 系统关机时, init 进程通常先给所有进程发送 SIGTERM 信号(该信号可被捕获), 等到一段固定的时间(往往是5到20秒之间),
+然后给所有仍在运行的进程发送 SIGKILL 信号. 这么做留给所有运行的进程一小段时间来清除和终止.
 
 
 
