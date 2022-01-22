@@ -92,6 +92,15 @@ SO_REUSEPORT 选项:
 - SO_TIMESTAMP, 启用或禁用 SO_TIMESTAMP 控制消息的接收. 时间戳控制消息以 SOL_SOCKET 级别发送, cmsg_data 字段
 是一个 struct timeval, 指示在此调用中传递给用户的最后一个数据包的接收时间. 
 
+
+- SO_RCVTIMEO, SO_SNDTIMEO
+
+这两个选项给套接字的接收和发送设置一个超时值. 可以使用秒和微秒来设置超时. 默认情况下这两个超时都是禁止的.
+
+接收超时影响的函数: read, readv, recv, recvfrom, recvmsg. 发送超时影响的函数: write, writev, send, sendto,
+sendmsg.
+
+
 ### IPPROTO_TCP 级别选项
 
 - TCP_MAXSEG, 设置 TCP 连接的最大分节大小(MSS). 返回值是TCP可以发送给对端的最大数据量, 它通常是由对端使用 SYN 分节

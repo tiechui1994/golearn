@@ -220,29 +220,60 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 }
 ```
 
-说明: socket() 在创建 socket 的时候, 设置的选项
 
+listen 时, socket 设置的 options 和 sotype
+
+options:
 ```
-# 通用选项
-IPV6_V6ONLY(family是AF_INET6情况下, IPPROTO_IPV6)
-SO_BROADCAST
+# 通用. sysSocket
+O_NONBLOCK # fcntl 设置
 
-# TCP选项
-SO_REUSEADDR
+# 通用. socket
+IPPROTO_IPV6 - IPV6_V6ONLY  # family是AF_INET6
+SOL_SOCKET - SO_BROADCAST   # UDP, RAW
 
-# UDP(多播地址)
-SO_REUSEADDR
-SO_REUSEPORT
+# TCP
+SOL_SOCKET - SO_REUSEADDR 
+
+# UDP, 多播地址
+SOL_SOCKET - SO_REUSEADDR
+SOL_SOCKET - SO_REUSEPORT
+
+# 自定义设置
+ListenConfig.Control # 该函数在 socket() 之后, bind 之前调用
+
+# 系统提供的其他 TCP 选项
+SOL_SOCKET - SO_RCVBUF     # SetReadBuffer
+SOL_SOCKET - SO_SNDBUF     # SetWriteBuffer
+SOL_SOCKET - SO_LINGER     # SetLinger 
+SOL_SOCKET - SO_KEEPALIVE  # SetKeepAlive
+IPPROTO_TCP -  TCP_NODELAY # SetNoDelay
+
+# 系统提供的其他 UDP 选项
+SOL_SOCKET - SO_RCVBUF # SetReadBuffer
+SOL_SOCKET - SO_SNDBUF # SetWriteBuffer
+```
+
+sotype:
+```
+# 通用, sysSocket
+SOCK_NONBLOCK | SOCK_CLOEXEC
+
+# TCP
+SOCK_STREAM
+
+# UDP
+SOCK_DGRAM
 ```
 
 设置的 socket 选项的 level 包含:
 
 ```
-协议:
+protocol:
 IPPROTO_IP (IP层面选项)
 
 IPPROTO_TCP (TCP层面选项)
-IPPROTO_UDP (UDP层面选项, 没有的)
+IPPROTO_UDP (UDP层面选项)
 
 socket:
 SOL_SOCKET (SOCKET层面选项)
