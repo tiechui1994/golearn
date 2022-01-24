@@ -1,16 +1,10 @@
 package main
 
-/*
-#include <sys/socket.h>
-*/
-import "C"
-
 import (
 	"context"
 	"log"
 	"net"
 	"syscall"
-	"time"
 )
 
 const (
@@ -24,23 +18,19 @@ func main() {
 		Control: func(network, address string, c syscall.RawConn) error {
 			var err error
 			c.Control(func(fd uintptr) {
-				err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, SO_REUSEPORT, 1)
-				err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_LINGER, 1)
 				log.Println(syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR))
 			})
 			return err
 		},
 	}
 
-	addr := &net.TCPAddr{Port: 1234, IP: net.ParseIP("127.0.0.1")}
+	addr := &net.TCPAddr{Port: 5555, IP: net.IPv4zero}
 	listen, err := config.Listen(context.Background(), "tcp4", addr.String())
 	if err != nil {
 		log.Println("Listen", err)
 		return
 	}
-
-	log.Println(listen.Addr())
-
+	
 	listener := listen.(*net.TCPListener)
 	for {
 		conn, err := listener.AcceptTCP()
@@ -52,9 +42,18 @@ func main() {
 		log.Println("remote addr", conn.RemoteAddr())
 
 		go func(conn *net.TCPConn) {
-			select {
-			case <-time.After(15 * time.Second):
-				conn.Close()
+			defer conn.Close()
+			buf := make([]byte, 1024)
+			for {
+				n, err := conn.Read(buf)
+				if err != nil {
+					return
+				}
+
+				_, err = conn.Write(buf[:n])
+				if err != nil {
+					return
+				}
 			}
 		}(conn)
 	}
