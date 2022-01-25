@@ -30,7 +30,7 @@ func main() {
 		log.Println("Listen", err)
 		return
 	}
-	
+
 	listener := listen.(*net.TCPListener)
 	for {
 		conn, err := listener.AcceptTCP()
@@ -49,6 +49,8 @@ func main() {
 				if err != nil {
 					return
 				}
+
+				log.Println(string(buf[:n]))
 
 				_, err = conn.Write(buf[:n])
 				if err != nil {

@@ -2,13 +2,10 @@ package net
 
 import (
 	"fmt"
+	"net"
 	"testing"
 	"unsafe"
 )
-
-func TestListen(t *testing.T) {
-	Listen()
-}
 
 type Addr interface {
 	Addr() string
@@ -62,4 +59,13 @@ func TestPollDesc(t *testing.T) {
 
 	t.Log("timer Size", unsafe.Sizeof(timer{}))
 	t.Log("timer Size", unsafe.Sizeof(timer{}.arg))
+}
+
+func TestDail(t *testing.T) {
+	raddr := &net.TCPAddr{Port: 5555, IP: net.IPv4zero}
+	_, err := net.DialTCP("tcp", nil, raddr)
+	if err != nil {
+		t.Errorf("DialTCP:%v", err)
+		return
+	}
 }
