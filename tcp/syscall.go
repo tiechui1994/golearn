@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 )
 
@@ -25,6 +24,4 @@ int openat(int  dirfd, const char* pathname, int  flags, umode_t mode)
 func main() {
 	pid, _, _ := syscall.Syscall(syscall.SYS_GETPID, 0, 0, 0) // 用不到的就补上 0
 	fmt.Println("Process id: ", pid)
-
-	os.Open("")
 }
