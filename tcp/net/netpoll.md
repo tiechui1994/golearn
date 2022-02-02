@@ -116,7 +116,7 @@ func (lc *ListenConfig) Listen(ctx context.Context, network, address string) (Li
 }
 ```
 
-- listenTCP, 监听 TCP 协议的端口
+- listenTCP
 
 ```cgo
 func (sl *sysListener) listenTCP(ctx context.Context, laddr *TCPAddr) (*TCPListener, error) {
@@ -128,7 +128,11 @@ func (sl *sysListener) listenTCP(ctx context.Context, laddr *TCPAddr) (*TCPListe
 	}
 	return &TCPListener{fd: fd, lc: sl.ListenConfig}, nil
 }
+```
 
+- internetSocket
+
+```cgo
 func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, sotype, proto int, 
     mode string, ctrlFn func(string, string, syscall.RawConn) error) (fd *netFD, err error) {
 	// favoriteAddrFamily 返回给定 net, laddr, raddr 和 mode 的适配的地址族.
@@ -164,6 +168,8 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
 }
 ```
 
+
+- socket
 
 socket() 创建 socket, 并设置 socket 的属性.
 
@@ -323,7 +329,7 @@ func sysSocket(family, sotype, proto int) (int, error) {
 ```
 
 
-`listenStream()` 设置 socket SO_REUSEADDR. 
+- listenStream
 
 > 系统调用 bind() 和 listen() 函数
 
@@ -372,7 +378,13 @@ func (fd *netFD) listenStream(laddr sockaddr, backlog int, ctrlFn func(string, s
 }
 ```
 
+- netFD.init
+
 netFD.init() => FD.Init(net string, pollable bool) => pollDesc.init(*FD) 
+
+// netFD, net
+// FD, internal/poll
+// pollDesc, internal/poll
 
 ```cgo
 func (fd *netFD) init() error {
@@ -402,10 +414,10 @@ func (fd *FD) Init(net string, pollable bool) error {
             \/
 
 func (pd *pollDesc) init(fd *FD) error {
-    // runtime_pollServerInit => runtime.netpollServerInit
+    // runtime_pollServerInit => runtime.poll_runtime_pollServerInit
 	serverInit.Do(runtime_pollServerInit)
 	
-	// runtime_pollOpen => runtime.netpollOpen
+	// runtime_pollOpen => runtime.poll_runtime_pollOpen
 	ctx, errno := runtime_pollOpen(uintptr(fd.Sysfd))
 	if errno != 0 {
 		if ctx != 0 {
@@ -421,10 +433,21 @@ func (pd *pollDesc) init(fd *FD) error {
 }
 ```
 
+关于 runtime_pollServerInit 调用链:
+
+poll.runtime_pollServerInit => runtime.poll_runtime_pollServerInit => runtime.netpollGenericInit =>
+netpollinit => epollcreate(先尝试系统调用 epoll_create1, 若失败, 尝试 epoll_create)
+
+> 1.这里使用了 `go:linkname` 魔法, 将 `poll.runtime_pollServerInit` 和 `runtime.runtime_pollServerInit`
+进行链接绑定. `//go:linkname poll_runtime_pollServerInit internal/poll.runtime_pollServerInit`.
+> 2.在 linux 当中 netpollinit 是在 `runtime/netpoll_epoll.go` 文件.
+> 3.epoll_create1 是使用 flags 为参数, epoll_create 是使用 size 为参数.
 
 ## Accept
 
 TCPListener.Accept() => TCPListener.accept() => netFD.accept() => FD.Accept()
+
+- Accept
 
 ```cgo
 // Accept在侦听器接口中实现Accept方法; 它等待下一个调用并返回通用Conn.
@@ -439,6 +462,8 @@ func (l *TCPListener) Accept() (Conn, error) {
 	return c, nil
 }
 ```
+
+- TCPListener.accept
 
 TCPListener.accept(), 获取接收请求socket, 并将socket包装成一个 TCPConn
 
@@ -461,6 +486,7 @@ func (ln *TCPListener) accept() (*TCPConn, error) {
 }
 ```
 
+- netFD.accept
 
 netFD.accept(), 调用底层 socket 的 accpet() 方法, 获取 `客户端` 的 socket.
 
@@ -488,6 +514,7 @@ func (fd *netFD) accept() (netfd *netFD, err error) {
 }
 ```
 
+- FD.Accept()
 
 ```cgo
 // Accept wraps the accept network call.
@@ -497,10 +524,13 @@ func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
 	}
 	defer fd.readUnlock()
 
+    // runtime_pollReset => runtime.poll_runtime_pollReset
+    // mode: 'r'
 	if err := fd.pd.prepareRead(fd.isFile); err != nil {
 		return -1, nil, "", err
 	}
 	for {
+	    // accept 系统调用, syscall.Syscall6
 		s, rsa, errcall, err := accept(fd.Sysfd)
 		if err == nil {
 			return s, rsa, "", err
@@ -508,6 +538,8 @@ func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
 		switch err {
 		case syscall.EAGAIN:
 			if fd.pd.pollable() {
+			    // runtime_pollWait => runtime.poll_runtime_pollWait
+			    // mode: 'r'
 				if err = fd.pd.waitRead(fd.isFile); err == nil {
 					continue
 				}
@@ -522,3 +554,6 @@ func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
 	}
 }
 ```
+
+> poll_runtime_pollReset, 清除 pollDesc 的 rg 或 wg
+> poll_runtime_pollWait, 调用 gopark 休眠
