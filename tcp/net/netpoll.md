@@ -556,4 +556,59 @@ func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
 ```
 
 > poll_runtime_pollReset, 清除 pollDesc 的 rg 或 wg
-> poll_runtime_pollWait, 调用 gopark 休眠
+> poll_runtime_pollWait, 调用 gopark 休眠.
+
+> 常见的系统调用错误:
+> EAGAIN, EWOULDBLOCK: resource temporarily unavailable.
+> EINTR: interrupted system call.
+> EINVAL: invalid argument.
+> ECONNABORTED: software caused connection abort. (会出现在accept系统调用)
+> ENOSYS: function not implemented.
+
+## Read
+
+conn.Read() => netFD.Read() => FD.Read() => syscall.Read()
+
+其中 FD.Read() 与 FD.Accept() 在实现上是类似的.
+
+```cgo
+func (fd *FD) Read(p []byte) (int, error) {
+	if err := fd.readLock(); err != nil {
+		return 0, err
+	}
+	defer fd.readUnlock()
+	if len(p) == 0 {
+		// If the caller wanted a zero byte read, return immediately
+		// without trying (but after acquiring the readLock).
+		// Otherwise syscall.Read returns 0, nil which looks like
+		// io.EOF.
+		// TODO(bradfitz): make it wait for readability? (Issue 15735)
+		return 0, nil
+	}
+	if err := fd.pd.prepareRead(fd.isFile); err != nil {
+		return 0, err
+	}
+	if fd.IsStream && len(p) > maxRW {
+		p = p[:maxRW]
+	}
+	for {
+	    // ignoringEINTR, 执行传入的函数, 如果出现错误 EINTR, 则一直执行, 直至非 EINTR 错误才算完成.
+		n, err := ignoringEINTR(func() (int, error) { return syscall.Read(fd.Sysfd, p) })
+		if err != nil {
+			n = 0
+			if err == syscall.EAGAIN && fd.pd.pollable() {
+				if err = fd.pd.waitRead(fd.isFile); err == nil {
+					continue
+				}
+			}
+		}
+		err = fd.eofError(n, err)
+		return n, err
+	}
+}
+```
+
+> Write 与 Read 在实现上是类似的.
+> 在 FD 当中, Accept, Read, Write 实现原理是一致的, 它是通过类似于 pollDesc.waitRead 或 pollDesc.waitWrite
+来 park 住 goroutine 直到期待的 I/O 事件发生才返回恢复.
+
