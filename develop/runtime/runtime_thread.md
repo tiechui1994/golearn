@@ -2,12 +2,13 @@
 
 启动一个新的系统线程 M, 调用函数 startm, 该函数的所做的事情不是很复杂:
 
-首先, 获取一个空闲的 p (当参数的 p 为nil时, 则从 sched.pidle 当中获取一个)
+首先, 获取一个空闲的 p (当参数的 p 为nil时, 则从 sched.pidle 当中获取一个), 如果获取到 p, 停止启动新的系统线程 M.
 
-其次, 从 sched.midle 当中获取一个空闲的 m, 如果不存在, 则调用 newm 创建一个, 并自旋.
+其次, 从 sched.midle 当中获取一个空闲的 m, 如果不存在, 则调用 newm() 创建一个, 设置自旋(可选), 完成启动新的系统线程M.
 
 最后, 当 sched.midle 当中获取到了休眠的 m, 将 `_p_` 绑定到 m.nextp, 然后调用 notewakeup() 函数唤醒休眠的 m
 
+> 调用 startm 的函数. handoffp(), sysmon(), schedEnableUser()
 
 ```cgo
 // 如果p == nil, 则尝试获取一个空闲p, 如果没有空闲 p, 则直接返回, 也就是说所有的 p 都绑定了 m, 无需再启动 m 了.
@@ -66,6 +67,8 @@ func startm(_p_ *p, spinning bool) {
 }
 ```
 
+> notewakeup, 在 `runtime_schedule.md` 当中已经有详细讲解.
+
 在没有可用的 m 时, 则需要创建一个新的系统线程 m, 来执行 g.
 
 ```cgo
@@ -78,10 +81,11 @@ func newm(fn func(), _p_ *p, id int64) {
     mp.nextp.set(_p_) // 将 m.nextp 也设置为 _p_
     mp.sigmask = initSigmask
     
-    // 当前处于锁定的 m, 则不能通过clone 当前的 m 来创建系统线程. 
     // 对于已经创建的 mp 对象, 会被添加对象, 则被添加到 newmHandoff.new 队列当中. 
+    // gp.m.incgo, 由 C 启动的线程.
+    // gp.m.lockedExt, 当前线程是否锁定.
     if gp := getg(); gp != nil && gp.m != nil && (gp.m.lockedExt != 0 || gp.m.incgo) && GOOS != "plan9" {
-        // 当前处于锁定的m 或 可能由C启动的线程上. 此线程的内核状态可能很奇怪(用户可能已为此目的将其锁定).
+        // 当前处于锁定的 m 或 可能由C启动的线程上. 此线程的内核状态可能很奇怪(用户可能已为此目的将其锁定).
         // 我们不想将其克隆到另一个线程中. 而是要求一个已知良好的线程为我们创建线程.	
         lock(&newmHandoff.lock)
         if newmHandoff.haveTemplateThread == 0 {
@@ -90,6 +94,7 @@ func newm(fn func(), _p_ *p, id int64) {
         // 将 mp 添加到 newmHandoff.newm 链表当中
         mp.schedlink = newmHandoff.newm
         newmHandoff.newm.set(mp)
+        // newmHandoff 处于等待当中, 则唤醒之
         if newmHandoff.waiting {
             newmHandoff.waiting = false
             notewakeup(&newmHandoff.wake)
@@ -116,7 +121,7 @@ func newm1(mp *m) {
             msanwrite(unsafe.Pointer(&ts), unsafe.Sizeof(ts))
         }
         execLock.rlock() // Prevent process clone.
-        asmcgocall(_cgo_thread_start, unsafe.Pointer(&ts))
+        asmcgocall(_cgo_thread_start, unsafe.Pointer(&ts)) // 执行 _cgo_thread_start 函数, 参数是 ts
         execLock.runlock()
         return
     }
@@ -132,8 +137,7 @@ func newosproc(mp *m) {
     // g0 的栈顶位置
     stk := unsafe.Pointer(mp.g0.stack.hi)
     
-    // 在进行系统线程 clone 期间中禁用 signal, 这样新线程可以从禁用的信号开始,
-    // 之后它将调用 minit 
+    // 在进行系统线程 clone 期间中禁用信号, 这样新线程可以从禁用的信号开始, 之后它将调用 minit 
     var oset sigset
     sigprocmask(_SIG_SETMASK, &sigset_all, &oset)
     // 系统调用 clone 函数, 克隆一个新的系统线程
@@ -141,13 +145,19 @@ func newosproc(mp *m) {
     // 第二个参数 stk, 设置新线程的栈顶
     // 第三个参数是 mp
     // 第四个参数是 g0
-    // 第五个参数是新线程启动之后开始执行的函数地址. 这里设置的是 mstart, 在程序启动时, 最后一步调用的也是 mstart
-    // 这个函数.
+    // 第五个参数是新线程启动之后开始执行的函数地址. 这里设置的是 mstart, 在程序启动时, 最后一步调用的也是 mstart 函数.
+    // 注: mp, g0 复制到新线程当中, 并赋值到 tls 当中.
     ret := clone(cloneFlags, stk, unsafe.Pointer(mp), unsafe.Pointer(mp.g0), unsafe.Pointer(funcPC(mstart)))
     sigprocmask(_SIG_SETMASK, &oset, nil) // 启用信号
 }
+```
 
+> clone() 是汇编实现(系统调用 clone). 
+> sigprocmask() 更改当前阻塞信号的列表
 
+分配 m 对象: (同时还创建了 g0, g0 栈)
+
+```cgo
 // 分配与任何线程无关的新 m. 
 // 如果需要, 可以将 p 用于分配上下文.
 // fn 是为新 m 的 m.mstartfn. 
@@ -206,7 +216,10 @@ func allocm(_p_ *p, fn func(), id int64) *m {
 ```
 
 
-systemstack() 函数: 切换到 g0 栈上, 执行函数 func
+> mstart(), M启动. 调用的地方: clone 之后, asmcgocall 之后. runtime·rt0_go 该函数在 `runtime_bootstrap.md` 
+当中有详解.
+
+systemstack() 函数: 切换到 g0 栈上, 执行函数 fn
 
 ```cgo
 // func systemstack(fn func())
@@ -226,8 +239,8 @@ TEXT runtime·systemstack(SB), NOSPLIT, $0-8
     CMPQ	AX, m_curg(BX) // g == m.curg
     JNE	bad // 不相等, 程序异常
     
-    // 切换 stack, 从 curg 切换到 g0
-    // 将 curg 保存到 sched 当中
+    // stack 切换, 从 curg 切换到 g0
+    // 将 curg 上下文保存到 sched 当中
     MOVQ	$runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
     MOVQ	SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
     MOVQ	SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
@@ -237,7 +250,7 @@ TEXT runtime·systemstack(SB), NOSPLIT, $0-8
     MOVQ	DX, g(CX) // 切换 tls 到 g0
     MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
     
-    // 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止回溯
+    // 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止追踪
     SUBQ	$8, BX
     MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
     MOVQ	DX, 0(BX) // 将 runtime·mstart 函数地址入栈
@@ -259,7 +272,7 @@ TEXT runtime·systemstack(SB), NOSPLIT, $0-8
     RET
 
 noswitch:
-    // 当前已经在 g0 栈上了, 直接调用函数
+    // 当前已经在 g0 栈上了, 直接跳跃
     MOVQ	DI, DX
     MOVQ	0(DI), DI
     JMP	DI

@@ -1,4 +1,4 @@
-## Go 函数调用
+# Go 函数编译
 
 Go 当中, 有四类函数:
 
@@ -11,13 +11,12 @@ Go 当中, 有四类函数:
 - func literal
 
 `top-level func` 就是平常的普通函数:
-
 ```
 func Println() {}
 ```
 
-`method with value receiver` 和 `method with pointer receiver`指的是结构体方法的**值接收者方法**和**指针接收
-者方法**.
+`method with value receiver` 和 `method with pointer receiver`指的是结构体方法的 '值接收者方法' 和 '指针接收
+者方法'.
 
 
 `func literal` 的定义如下:
@@ -28,7 +27,7 @@ func Println() {}
 
 `top-level func` 类型的函数调用比较常见, 也比较简单, 这里不展开分析了.
 
-### 值接收者与指针接收者方法
+## 值接收者与指针接收者方法
 
 ```cgo
 package main
@@ -57,8 +56,7 @@ func main() {
 
 使用 `go tool compile -N -l -S main.go` 得到汇编代码.
 
-
-#### 调用值接收者(value receiver)方法
+### 调用值接收者(value receiver)方法
 
 - 在汇编层面, 结构体是一段连续内存. 因此 `val := Value{X: 2, Y: 5}` 初始化代码如下:
 
@@ -99,8 +97,7 @@ func main() {
 
 注: 在这里 `0(SP)` 保存的是函数的返回地址. 从 `8(SP) - 32(SP)` 保存的调用的参数(包括返回值, 但是这里方法没有返回值) 
 
-
-#### 调用值接收者(pointer receiver)方法
+### 调用值接收者(pointer receiver)方法
 
 - 调用 `val.Pinc(20)` 的代码:
 
@@ -179,13 +176,11 @@ MOVQ AX, BX // BX = AX, 将 AX 中存储的内存拷贝给 BX
 调用指针接收者方法的时候, 与值接收者方法的区别在于调用者caller写入栈的参数的地址值, 所以调用完成之后可以直接体现在指针的
 结构体中.
 
-
-### 匿名和闭包函数
+## 匿名和闭包函数
 
 匿名函数和闭包函数看起来很像, 但是底层的实现却不一样.
 
-
-#### 匿名函数
+### 匿名函数
 
 ```cgo
 package main
@@ -226,7 +221,7 @@ func main() {
     0x001d 00029 (main.go:25)   RET
 ```
 
-#### 闭包函数
+### 闭包函数
 
 闭包函数, 就相对比较复杂一些了.
 
@@ -252,16 +247,16 @@ func main() {
 
 ```
 0x0020 00032 (main.go:29)   CALL    "".main.func1(SB)
-0x0025 00037 (main.go:29)   MOVQ    (SP), DX // 将返回的地址放入DX当中
+0x0025 00037 (main.go:29)   MOVQ    (SP), DX       // 将返回的地址放入DX当中
 0x0029 00041 (main.go:23)   MOVQ    DX, "".f+8(SP) // 返回地址拷贝到栈上, 以便后面调用.
-0x002e 00046 (main.go:31)   MOVQ    (DX), AX // AX=*DX, 其实质就是 main.func1.1 的函数地址.
-0x0031 00049 (main.go:31)   CALL    AX // 1
+0x002e 00046 (main.go:31)   MOVQ    (DX), AX       // AX=*DX, 其实质就是 main.func1.1 的函数地址.
+0x0031 00049 (main.go:31)   CALL    AX             // 1
 0x0033 00051 (main.go:32)   MOVQ    "".f+8(SP), DX
 0x0038 00056 (main.go:32)   MOVQ    (DX), AX
-0x003b 00059 (main.go:32)   CALL    AX // 2
+0x003b 00059 (main.go:32)   CALL    AX             // 2
 0x003d 00061 (main.go:33)   MOVQ    "".f+8(SP), DX
 0x0042 00066 (main.go:33)   MOVQ    (DX), AX
-0x0045 00069 (main.go:33)   CALL    AX // 3
+0x0045 00069 (main.go:33)   CALL    AX             // 3
 ```
 
 
@@ -276,10 +271,10 @@ func main() {
     0x0013 00019 (main.go:23)   SUBQ    $40, SP
     0x0017 00023 (main.go:23)   MOVQ    BP, 32(SP)
     0x001c 00028 (main.go:23)   LEAQ    32(SP), BP
-    0x0021 00033 (main.go:23)   MOVQ    $0, "".~r0+48(SP) // 初始化返回值(指针)
+    0x0021 00033 (main.go:23)   MOVQ    $0, "".~r0+48(SP)   // 初始化返回值(指针)
     0x002a 00042 (main.go:24)   LEAQ    type.uint64(SB), AX // 获取 type.uint64 地址
-    0x0031 00049 (main.go:24)   MOVQ    AX, (SP) // 函数(runtime.newobjec)参数
-    0x0035 00053 (main.go:24)   CALL    runtime.newobject(SB) // 创建一个 uint64 指针
+    0x0031 00049 (main.go:24)   MOVQ    AX, (SP) // 函数(runtime.newobjec)参数. 
+    0x0035 00053 (main.go:24)   CALL    runtime.newobject(SB) // 创建一个 uint64 指针, 逃逸到堆上.
     0x003a 00058 (main.go:24)   MOVQ    8(SP), AX // 获取函数返回值, 一个 *uint64 指针
     0x003f 00063 (main.go:24)   MOVQ    AX, "".&x+24(SP) // &x=AX, 将返回的指针保存在栈上
     0x0044 00068 (main.go:24)   MOVQ    $100, (AX) // *AX=100, 设置指针指向的值
@@ -324,6 +319,9 @@ func main() {
 0x003f 00063 (main.go:24)   MOVQ    AX, "".&x+24(SP) // &x=AX, 将返回的指针保存在栈上
 0x0044 00068 (main.go:24)   MOVQ    $100, (AX) // *AX=100, 设置指针指向的值
 ```
+
+> 注: 在闭包当中, 有关闭包的所有的参数都会使用 `newobject` 去分配成一个指针, 从而逃逸到堆上. 这样做的目的除了, 将闭包
+参数的生命周期延长外, 还有就是很容易管理. 
 
 当此部分代码完成之后, 栈上的数据如下:
 

@@ -562,7 +562,7 @@ func futexsleep(addr *uint32, val uint32, ns int64) {
 }
 ```
 
-futex 是使用汇编实现的, 这里不再展开了.
+futex 是使用汇编实现(系统调用 futex), 这里不再展开了.
 
 说了线程休眠, 也顺带说下一线程唤醒, 线程唤醒原理很简单, 就是将 note.key 的值设为 1, 并调用 futexwakeup 函数.
 
@@ -575,7 +575,6 @@ func notewakeup(n *note) {
     }
     futexwakeup(key32(&n.key), 1)
 }
-
 
 func futexwakeup(addr *uint32, cnt uint32) {
     // 系统调用, op 的值为 _FUTEX_WAKE_PRIVATE
