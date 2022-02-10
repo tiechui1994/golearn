@@ -1078,22 +1078,22 @@ rsp 栈顶寄存器没有发生变化(栈顶值为调用 morestack_noctxt 函数
 
 ```cgo
 TEXT runtime·morestack(SB),NOSPLIT,$0-0
-    # 获取 m 
+    // 获取 m 
     get_tls(CX)
-    MOVQ	g(CX), BX    # BX=g 
-    MOVQ	g_m(BX), BX  # BX=g.m 
+    MOVQ	g(CX), BX    // BX=g 
+    MOVQ	g_m(BX), BX  // BX=g.m 
     
-    # m->g0 与 g 比较
-    MOVQ	m_g0(BX), SI # SI=m.g0 
-    CMPQ	g(CX), SI    # m.g0 == g 
-    JNE	3(PC) # 不相等
+    // m->g0 与 g 比较
+    MOVQ	m_g0(BX), SI // SI=m.g0 
+    CMPQ	g(CX), SI    // m.g0 == g 
+    JNE	3(PC) // 不相等
     CALL	runtime·badmorestackg0(SB)
     CALL	runtime·abort(SB)
     
-    # m->gsignal 与 g 比较 
+    // m->gsignal 与 g 比较 
     MOVQ	m_gsignal(BX), SI # SI = m.signal 
-    CMPQ	g(CX), SI # m.signal == g 
-    JNE	3(PC) # 不相等
+    CMPQ	g(CX), SI // m.signal == g 
+    JNE	3(PC) // 不相等
     CALL	runtime·badmorestackgsignal(SB)
     CALL	runtime·abort(SB)
     

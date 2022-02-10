@@ -177,37 +177,37 @@ goexit1 函数通过调用 mcall 从当前运行的用户 goroutine 切换到 g0
 // It should gogo(&g->sched) to keep running g.
 // mcall 的参数是一个指向 funcval 对象的指针.
 TEXT runtime·mcall(SB), NOSPLIT, $0-8
-    # 获取参数的值放入 DI 寄存器, 它是 funcval 对象的指针. 当前场景是 goexit0 的地址
+    // 获取参数的值放入 DI 寄存器, 它是 funcval 对象的指针. 当前场景是 goexit0 的地址
     MOVQ	fn+0(FP), DI 
     
     get_tls(CX)
-    MOVQ	g(CX), AX	# AX=g, 这里的 g 是用户 goroutine
-    MOVQ	0(SP), BX	# 将 mcall 的返回地址(rip寄存器的值)放入 BX
+    MOVQ	g(CX), AX	// AX=g, g是用户 goroutine
+    MOVQ	0(SP), BX	// 将 mcall 的返回地址(rip寄存器的值)放入 BX
     
-    # 保存 g 的调度信息, 即将切换到 g0 栈
-    MOVQ	BX, (g_sched+gobuf_pc)(AX) # g.sched.pc = AX 
-    LEAQ	fn+0(FP), BX # fn 是调用方的栈顶元素, 其地址就是调用方的栈顶
-    MOVQ	BX, (g_sched+gobuf_sp)(AX) # g.sched.sp = BX, 用户 goroutine 的 rsp 
-    MOVQ	AX, (g_sched+gobuf_g)(AX) # g.sched.g = AX
-    MOVQ	BP, (g_sched+gobuf_bp)(AX) # g.sched.bp = BP, 用户 goroutine 的 rbp 
+    // 保存 g 的调度信息, 即将切换到 g0 栈
+    MOVQ	BX, (g_sched+gobuf_pc)(AX) // g.sched.pc = AX 
+    LEAQ	fn+0(FP), BX // fn 是调用方的栈顶元素, 其地址就是调用方的栈顶
+    MOVQ	BX, (g_sched+gobuf_sp)(AX) // g.sched.sp = BX, 用户 goroutine 的 rsp 
+    MOVQ	AX, (g_sched+gobuf_g)(AX) // g.sched.g = AX
+    MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp = BP, 用户 goroutine 的 rbp 
     
-    # 切换到 g0 栈, 然后调用 fn 
-    MOVQ	g(CX), BX    # BX = g 
-    MOVQ	g_m(BX), BX  # BX = g.m 
-    MOVQ	m_g0(BX), SI # SI = g0 
+    // 切换到 g0 栈, 然后调用 fn 
+    MOVQ	g(CX), BX    // BX = g 
+    MOVQ	g_m(BX), BX  // BX = g.m 
+    MOVQ	m_g0(BX), SI // SI = g0 
     
-    # 此时, SI=g0, AX=g, 这里需要判断 g 是否是 g0 
+    // 此时, SI=g0, AX=g, 这里需要判断 g 是否是 g0 
     CMPQ	SI, AX	// if g == m->g0 call badmcall
-    JNE	3(PC) # 不相等
+    JNE	3(PC) // 不相等
     MOVQ	$runtime·badmcall(SB), AX
     JMP	AX
-    MOVQ	SI, g(CX) # 将本地存储设置为 g0
-    MOVQ	(g_sched+gobuf_sp)(SI), SP	# 从 g0.sched.sp 当中恢复 SP, 即 rsp 寄存器  
-    PUSHQ	AX  # fn 的参数 g 入栈
-    MOVQ	DI, DX # DX=fn 
-    MOVQ	0(DI), DI # 判断fn不为nil
-    CALL	DI # 调用 fn 函数, 该函数不会返回, 这里调用的函数是 goexit0 
-    POPQ	AX # 正常状况下, 这里及其之后的指令不会执行的
+    MOVQ	SI, g(CX) // 将本地存储设置为 g0
+    MOVQ	(g_sched+gobuf_sp)(SI), SP	// 从 g0.sched.sp 当中恢复 SP, 即 rsp 寄存器  
+    PUSHQ	AX  // fn 的参数 g 入栈
+    MOVQ	DI, DX // DX=fn 
+    MOVQ	0(DI), DI // 判断fn不为nil
+    CALL	DI // 调用 fn 函数, 该函数不会返回, 这里调用的函数是 goexit0 
+    POPQ	AX // 正常状况下, 这里及其之后的指令不会执行的
     MOVQ	$runtime·badmcall2(SB), AX
     JMP	AX
     RET

@@ -511,7 +511,7 @@ procresize 函数主要干的事情:
 
 - 使用 `make([]*p nprocs)` 初始化全局变量 allp. 
 
-- 使用初始化 nprocs - gomaxprocs (gomaxprocs记录上一次生成p的数量)  个 p 结构体对象并依次保存在 allp 切片之中.
+- 使用初始化 nprocs - gomaxprocs (gomaxprocs记录上一次生成p的数量) 个 p 结构体对象并依次保存在 allp 切片之中.
 
 - 给当前的 m 绑定一个 p. 如果当前 m 和 p 已经绑定, 并且 m.id 不在移除范围之内, 设置一下 m.p 的状态. 否则, 把 m 和 
 `allp[0]` 临时绑定, 即 `m0.p = allp[0], allp[0].m = m0`. 为后续删除做准备.
@@ -590,6 +590,7 @@ func main() {
 拷贝到新 goroutine 的栈上之后才能开始执行, 而 newproc 函数本身并不知道需要拷贝多少数据到新创建的 goroutine 的栈上去,
 所以需要用参数的方式指定拷贝数据的大小.
 
+> 注: 这里的函数参数大小="函数参数"+"函数返回值", 并且是内存字节对齐. 通常情况下, go 协程是没有函数返回值的. 
 
 newproc() 是对 newproc1() 的一个包装, 重要的工作:
 
@@ -601,7 +602,7 @@ newproc() 是对 newproc1() 的一个包装, 重要的工作:
 
 ```cgo
 func newproc(siz int32, fn *funcval) {
-    // 注: siz 当中包含了保存 rip 使用的栈空间(8)
+    // 注: siz 是函数参数大小(函数参数+函数返回值)
     // 函数调用参数入栈是从右往左, 而且栈是从高地址向低地址增长的
     // 注: argp 指向 fn 函数的第一个参数
     // 参数 fn 在栈上的地址 + 8 = fn 函数的第一个参数. (参考上面的汇编代码)
@@ -614,10 +615,10 @@ func newproc(siz int32, fn *funcval) {
     
     // 切换到 g0 执行作为参数的函数
     systemstack(func() {
+        // 创建新的 g, 此时 newg 当前还没有和任何 m 进行关联, 只有被调度运行的时才和 m 进行关联.
         newg := newproc1(fn, argp, siz, gp, pc)
         
         // 获取当前的 g0 绑定的 _p_, 然后将新创建的 newg 放入到 _p_ 本地队列当中.
-        // 注: newg 当前还没有和任何 m 进行关联, 只有被调度运行的时才和 m 进行关联
         _p_ := getg().m.p.ptr() 
         runqput(_p_, newg, true)
         

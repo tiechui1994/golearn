@@ -4,9 +4,13 @@
 
 - mcall
 
-mcall 切换到 g0 栈上, 执行指定的函数. 执行的是函数类型 `func(*g)`, 其中 `g` 是调用执行的 goroutine. 被调用的函数 
-fn 绝对不能返回, 通常它以调用 schedule 结束, 然 m 运行其他 goroutine. 被调用是函数 fn 不能是 `go:noescape` (如
-果 fn 是堆栈分配的闭包, fn 将 g 放入运行队列, 并且 g 在 fn 返回之前执行, 则闭包在执行时).
+mcall 从 g 切换到 g0 栈上, 并调用 `fn(g)`, 其中 `g` 是进行调用的 goroutine. 
+
+macll 将 g 的当前 PC/SP 保存在 g->sched 中, 以便以后可以恢复. fn 在稍后执行, 通常通过将 g 记录在数据结构当中, 导致
+稍后调用 ready(g).
+
+函数 fn 绝对不能返回, 通常它以调用 schedule 结束, 然 m 运行其他 goroutine. 被调用是函数 fn 不能是 `go:noescape`
+(如果 fn 是堆栈分配的闭包, fn 将 g 放入运行队列, 并且 g 在 fn 返回之前执行, 则闭包在执行时).
 
 mcall 只能从 g 堆栈上调用(不能是 g0 或 gsignal). 
 
@@ -32,4 +36,13 @@ systemstack(func() {
 ... use x ...
 ```
 
+### gogo VS gosave
+
+gogo 函数原型: `func gogo(buf *gobuf)`
+
+gosave 函数原型: `func gosave(buf *gobuf)`
+
+gogo 作用是切换到 `gobuf.g` 栈上, 并恢复关联的 SP/PC 寄存器.
+
+gosave 作用是将当前 g 栈和 SP/PC 寄存器保存到 `gobuf` 当中. 与 runtime.save() 函数功能是一致的.
 
