@@ -905,10 +905,10 @@ func (t *Transport) queueForIdleConn(w *wantConn) (delivered bool) {
 // queueForDial, 连接新连接, 并将当前请求加入到新连接的队列当中.
 
 ```cgo
-// queueForDial queues w to wait for permission to begin dialing.
-// Once w receives permission to dial, it will do so in a separate goroutine.
+// 将 w 加入到排队建立连接的队列当中. 一旦允许建立连接, 则开启新 goroutine 异步操作.
 func (t *Transport) queueForDial(w *wantConn) {
-	w.beforeDial()
+	w.beforeDial() // 空函数
+	// MaxConnsPerHost, 一个 host 最多的连接数
 	if t.MaxConnsPerHost <= 0 {
 		go t.dialConnFor(w)
 		return
@@ -916,16 +916,18 @@ func (t *Transport) queueForDial(w *wantConn) {
 
 	t.connsPerHostMu.Lock()
 	defer t.connsPerHostMu.Unlock()
-
+    
+    // 可以为 host 建立新连接
 	if n := t.connsPerHost[w.key]; n < t.MaxConnsPerHost {
 		if t.connsPerHost == nil {
 			t.connsPerHost = make(map[connectMethodKey]int)
 		}
-		t.connsPerHost[w.key] = n + 1
+		t.connsPerHost[w.key] = n + 1 // 修改 connsPerHost 的值.
 		go t.dialConnFor(w)
 		return
 	}
-
+    
+    // 只能等待.
 	if t.connsPerHostWait == nil {
 		t.connsPerHostWait = make(map[connectMethodKey]wantConnQueue)
 	}
@@ -933,5 +935,227 @@ func (t *Transport) queueForDial(w *wantConn) {
 	q.cleanFront()
 	q.pushBack(w)
 	t.connsPerHostWait[w.key] = q
+}
+```
+
+// dialConnFor, 建立连接
+
+```cgo
+// 建立 persistConn, 并将结果传递给 w
+// dialConnFor 是已获得建立 persistConn 的权限, 计数存入了 t.connsPerHost[w.key] 当中
+func (t *Transport) dialConnFor(w *wantConn) {
+	defer w.afterDial() // 空函数.
+
+	pc, err := t.dialConn(w.ctx, w.cm)
+	delivered := w.tryDeliver(pc, err) // 将 pc 传递给 w 
+	if err == nil && (!delivered || pc.alt != nil) {
+		// pconn 无法传递给 w, 或当前是可以共享的 HTTP/2 请求,
+		// 将 pc 加入到 idle 连接池当中.
+		t.putOrCloseIdleConn(pc)
+	}
+	if err != nil {
+		t.decConnsPerHost(w.key) // 减少 t.connsPerHost 的值
+	}
+}
+
+// 建立 persistConn
+// connectMethod:
+//   proxyURL,  代理连接(包含有授权信息, 可以是 http, https, socket5)
+//   targetScheme, 目标连接使用的协议, 只能是 http 或 https
+//   targetAddr, 目标连接地址
+// 
+// 特例: 当 targetScheme 使用的是 http, 但 proxyURL 是https|http代理, 此时 targetAddr 的值将被重置为空
+func (t *Transport) dialConn(ctx context.Context, cm connectMethod) (pconn *persistConn, err error) {
+	pconn = &persistConn{
+		t:             t,
+		cacheKey:      cm.key(),
+		reqch:         make(chan requestAndChan, 1),
+		writech:       make(chan writeRequest, 1),
+		closech:       make(chan struct{}),
+		writeErrCh:    make(chan error, 1),
+		writeLoopDone: make(chan struct{}),
+	}
+	trace := httptrace.ContextClientTrace(ctx)
+	wrapErr := func(err error) error {
+		if cm.proxyURL != nil {
+			return &net.OpError{Op: "proxyconnect", Net: "tcp", Err: err}
+		}
+		return err
+	}
+	
+	// https, 并且自定义了 DialTLS 或 DialTLSContext 方法
+	if cm.scheme() == "https" && t.hasCustomTLSDialer() {
+		var err error
+		// 优先选择 DialTLSContext.
+		pconn.conn, err = t.customDialTLS(ctx, "tcp", cm.addr())
+		if err != nil {
+			return nil, wrapErr(err)
+		}
+		if tc, ok := pconn.conn.(*tls.Conn); ok {
+			// Handshake here, in case DialTLS didn't. TLSNextProto below
+			// depends on it for knowing the connection state.
+			if trace != nil && trace.TLSHandshakeStart != nil {
+				trace.TLSHandshakeStart()
+			}
+			if err := tc.Handshake(); err != nil {
+				go pconn.conn.Close()
+				if trace != nil && trace.TLSHandshakeDone != nil {
+					trace.TLSHandshakeDone(tls.ConnectionState{}, err)
+				}
+				return nil, err
+			}
+			cs := tc.ConnectionState()
+			if trace != nil && trace.TLSHandshakeDone != nil {
+				trace.TLSHandshakeDone(cs, nil)
+			}
+			pconn.tlsState = &cs
+		}
+	} else {
+	    // http, https但未自定义TLS连接方法. 
+	    // cm.addr(), 如果存在代理, 则返回代理地址, 否则返回目标地址.
+	    // cm.scheme(), 如果存在代理, 则返回代理协议, 否则返回目标协议.
+		conn, err := t.dial(ctx, "tcp", cm.addr())
+		if err != nil {
+			return nil, wrapErr(err)
+		}
+		pconn.conn = conn
+		if cm.scheme() == "https" {
+			var firstTLSHost string
+			if firstTLSHost, _, err = net.SplitHostPort(cm.addr()); err != nil {
+				return nil, wrapErr(err)
+			}
+			if err = pconn.addTLS(firstTLSHost, trace); err != nil {
+				return nil, wrapErr(err)
+			}
+		}
+	}
+
+	// 初始化代理.
+	switch {
+	case cm.proxyURL == nil:
+		// 不使用任何代理
+	case cm.proxyURL.Scheme == "socks5":
+	    // socks5代理
+		conn := pconn.conn
+		d := socksNewDialer("tcp", conn.RemoteAddr().String())
+		// 代理账号密码处理
+		if u := cm.proxyURL.User; u != nil {
+			auth := &socksUsernamePassword{
+				Username: u.Username(),
+			}
+			auth.Password, _ = u.Password()
+			d.AuthMethods = []socksAuthMethod{
+				socksAuthMethodNotRequired,
+				socksAuthMethodUsernamePassword,
+			}
+			d.Authenticate = auth.Authenticate
+		}
+		if _, err := d.DialWithConn(ctx, conn, "tcp", cm.targetAddr); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	case cm.targetScheme == "http":
+	    // http 代理
+		pconn.isProxy = true
+		if pa := cm.proxyAuth(); pa != "" {
+			pconn.mutateHeaderFunc = func(h Header) {
+				h.Set("Proxy-Authorization", pa)
+			}
+		}
+	case cm.targetScheme == "https":
+	    // https 代理, 发送 CONNECT 请求
+		conn := pconn.conn
+		hdr := t.ProxyConnectHeader
+		if hdr == nil {
+			hdr = make(Header)
+		}
+		if pa := cm.proxyAuth(); pa != "" {
+			hdr = hdr.Clone()
+			hdr.Set("Proxy-Authorization", pa)
+		}
+		connectReq := &Request{
+			Method: "CONNECT",
+			URL:    &url.URL{Opaque: cm.targetAddr},
+			Host:   cm.targetAddr,
+			Header: hdr,
+		}
+
+		// If there's no done channel (no deadline or cancellation
+		// from the caller possible), at least set some (long)
+		// timeout here. This will make sure we don't block forever
+		// and leak a goroutine if the connection stops replying
+		// after the TCP connect.
+		connectCtx := ctx
+		if ctx.Done() == nil {
+			newCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+			defer cancel()
+			connectCtx = newCtx
+		}
+
+		didReadResponse := make(chan struct{}) // closed after CONNECT write+read is done or fails
+		var (
+			resp *Response
+			err  error // write or read error
+		)
+		// 发送 https 代理 CONNECT 请求, 并读取响应
+		go func() {
+			defer close(didReadResponse)
+			err = connectReq.Write(conn)
+			if err != nil {
+				return
+			}
+			// Okay to use and discard buffered reader here, because
+			// TLS server will not speak until spoken to.
+			br := bufio.NewReader(conn)
+			resp, err = ReadResponse(br, connectReq)
+		}()
+		select {
+		case <-connectCtx.Done():
+			conn.Close()
+			<-didReadResponse
+			return nil, connectCtx.Err()
+		case <-didReadResponse:
+			// resp or err now set
+		}
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		if resp.StatusCode != 200 {
+			f := strings.SplitN(resp.Status, " ", 2)
+			conn.Close()
+			if len(f) < 2 {
+				return nil, errors.New("unknown status code")
+			}
+			return nil, errors.New(f[1])
+		}
+	}
+    
+    // 针对有代理的 https 请求
+	if cm.proxyURL != nil && cm.targetScheme == "https" {
+	    // cm.tlsHost(), 目标地址
+		if err := pconn.addTLS(cm.tlsHost(), trace); err != nil {
+			return nil, err
+		}
+	}
+    
+    // https 带有协商协议的
+	if s := pconn.tlsState; s != nil && s.NegotiatedProtocolIsMutual && s.NegotiatedProtocol != "" {
+		if next, ok := t.TLSNextProto[s.NegotiatedProtocol]; ok {
+			alt := next(cm.targetAddr, pconn.conn.(*tls.Conn))
+			if e, ok := alt.(http2erringRoundTripper); ok {
+				// pconn.conn was closed by next (http2configureTransport.upgradeFn).
+				return nil, e.err
+			}
+			return &persistConn{t: t, cacheKey: pconn.cacheKey, alt: alt}, nil
+		}
+	}
+
+	pconn.br = bufio.NewReaderSize(pconn, t.readBufferSize())
+	pconn.bw = bufio.NewWriterSize(persistConnWriter{pconn}, t.writeBufferSize())
+
+	go pconn.readLoop()
+	go pconn.writeLoop()
+	return pconn, nil
 }
 ```
