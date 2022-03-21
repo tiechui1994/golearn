@@ -1,4 +1,4 @@
-# go sync.Map 源码解析
+# sync.Map 源码解析
 
 sync.Map 设计思路: 
 

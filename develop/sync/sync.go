@@ -17,5 +17,5 @@ func main() {
 	}()
 
 	lock.Lock()
-	fmt.Print("b")
+	fmt.Print("b ", int32(1<<30), -int32(1<<30)-1)
 }
