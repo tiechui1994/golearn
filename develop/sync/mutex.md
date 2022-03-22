@@ -45,7 +45,7 @@ sema 信号量作用:
 
 第四版本 mutex 设计如下, 解决的是队列当中 goroutine 长时间无法获得锁的情况(第二, 三版本导致的).
 
-// Lock 逻辑
+### Lock 逻辑
 
 ```cgo
 func (m *Mutex) Lock() {
@@ -142,8 +142,7 @@ func (m *Mutex) lockSlow() {
 }
 ```
 
-
-// Unlock 逻辑
+### Unlock 逻辑
 
 ```cgo
 func (m *Mutex) Unlock() {
