@@ -39,6 +39,18 @@ private:
 // 空指针调用
 void test_crash2()
 {
+    printf("crash function. ");
     A *a = (A *)0;
     a->release();
 }
+
+void test_safe2()
+{
+   int i, sum = 0, num = 50000;
+
+   for (i = 1; i < num; i++) {
+       sum += i;
+   }
+   printf("safe function. i:%d, sum:%d \n\n", i, sum);
+}
+
