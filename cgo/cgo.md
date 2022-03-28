@@ -6,7 +6,7 @@
 
 ## cgo语句
 
-- cgo 编译参数与链接参数 
+### cgo 编译参数与链接参数 
 
 在 `import "C"`语句前的注释可以通过 `#cgo` 语句设置 `编译阶段` 和 `链接阶段` 的相关参数.
 
@@ -56,8 +56,7 @@ import "C"
 
 但是在链接阶段, C 和 C++的链接选项是通用的, 因此这个时候已经不再有C和C++语言的区别, 它们的目标文件的类型是相同的.
 
-
-- cgo 条件选择
+### cgo 条件选择
 
 `#cgo` 指令还支持条件选择, 当满足某个操作系统或某个CPU架构类型时类型时后面的编译或链接选项生效. 
 
@@ -104,6 +103,46 @@ func main() {
 > 链接的方式, 否则可能无法编译通过.  
 >
 > 3.上述的 `CFLAGS`, `LDFLAGS` 会设置到编译环境变量 `CGO_LDFLAGS`, `CGO_CFLAGS` 当中, 作为 gcc 编译和链接的参数.
+
+### 使用 PKG-CONFIG
+
+使用 `#cgo CFLAGS`,`#cgo CXXFLAGS`, `#cgo LDFLAGS` 的方式是一种 hard code 的方式, 一旦第三方库发生变更, 其代码
+也需要跟着变动. 可以使用 `pkg-config` 来避免这种情况.
+
+一个 /lib/xxx/pkgconfig/libxxx.pc 文件
+```
+prefix=/lib/xxx
+exec_prefix=${prefix}
+liddir=${exec_prefix}/lib
+includedir=${exec_prefix}/include
+
+Name: xxx
+Description: The xxx libary
+Version: 0.1
+Libs: -lxxx -L${liddir}
+Cflags: -I${includedir}
+```
+
+编译的时候, 需要将上述的 pkgconfig 目录添加到 PKG_CONFIG_PATH 环境变量当中. `export PKG_CONFIG_PATH=/lib/xxx/pkgconfig`,
+同时在动态库添加到 LD_LIBRARY_PATH 环境变量当中.  `export LD_LIBRARY_PATH=/lib/xxx/lib`. 最后, 就是在 CGO 当
+中使用了.
+
+```cgo
+package main
+
+/*
+#cgo pkg-config: libxxx
+#include <stdlib.h>
+#include <xxx.h>
+*/
+import "C"
+
+func main() {
+    // xxxx
+}
+```
+
+使用 `#cgo pkg-config` 去编译和链接. 
 
 
 ## 常用的cgo类型
@@ -1173,8 +1212,7 @@ C++ 代码:
 
 > buffer.h, buffer.cpp 是使用 c++ 实现的一个简单缓存类
 
-buffer.h
-
+// buffer.h
 ```cgo
 #include <string>
 
@@ -1191,12 +1229,10 @@ class Buffer {
 };
 ```
 
-buffer.cpp
-
+// buffer.cpp
 ```cgo
 #include "buffer.h"
 #include <string>
-
 
 Buffer::Buffer(int size) {
     this->s_ = new std::string(size, char('\0'));
@@ -1212,12 +1248,11 @@ char* Buffer::Data() {
 ```
 
 
-> **buffer_c.h 和 buffer.cpp 是使用 C 代码包装 C++ 的类 Buffer, 这个也称为桥接**
+> **bridge.h 和 bridge.cpp 是使用 C 代码包装 C++ 的类 Buffer, 这个也称为桥接**
 >
 > **需要深刻理解 `extern "C"` 的含义, 这是 Go 调用 C++ 的关键环节.**
 
-**buffer_c.h**
-
+// bridge.h
 ```cgo
 #ifdef __cplusplus
 extern "C" {
@@ -1236,11 +1271,10 @@ int Buffer_Size(Buffer_T* p);
 #endif
 ```
 
-**buffer_c.cpp**
-
+// bridge.cpp
 ```cgo
 #include "buffer.h"
-#include "buffer_c.h"
+#include "bridge.h"
 
 // 注意这里的包装继承机制
 struct Buffer_T: Buffer {
@@ -1266,20 +1300,18 @@ int Buffer_Size(Buffer_T* p) {
 }
 ```
 
-> **buffer_c.go 是使用 go 对 C 代码进行了一次包装.**
+> **bridge.go 是使用 go 对 C 代码进行了一次包装.**
 >
-> **注意: 在链接的时候一定要链接库 buffer 和 stdc++**
+> **注意: 在链接的时候一定要链接库stdc++(因为使用了C调用C++), buffer(Buffer库)**
 
-**buffer_c.go**
-
+// bridge.go
 ```cgo
 package main
 
 /*
 #cgo CXXFLAGS: -std=c++11 -I .
-#cgo LDFLAGS: -L . -l buffer -l stdc++
-
-#include "buffer_c.h"
+#cgo LDFLAGS: -L . -lbuffer -lstdc++
+#include "bridge.h"
 */
 import "C"
 
@@ -1310,13 +1342,13 @@ func cgo_Buffer_Size(p *cgo_Buffer_T) C.int {
 }
 ```
 
-> buffer_go.go, 按照 go 的规范包装 buffer_c.go 代码
 
-buffer_go.go
-
+// main.go, 最终的 go 测试函数
 ```cgo
 package main
 
+// #include <stdio.h>
+import "C"
 import "unsafe"
 
 type Buffer struct {
@@ -1333,53 +1365,53 @@ func (p *Buffer) Delete() {
 	cgo_DeleteBuffer(p.cptr)
 }
 
-// 获取Buffer的内容
 func (p *Buffer) Data() []byte {
 	data := cgo_Buffer_Data(p.cptr)
 	size := cgo_Buffer_Size(p.cptr)
 	return ((*[1 << 31]byte)(unsafe.Pointer(data)))[0:int(size):int(size)]
 }
-```
-
-> main.go, 最终的测试函数
-
-main.go
-
-```cgo
-// #include <stdio.h>
-import "C"
-import "unsafe"
 
 func main() {
-    // 创建 C++ Buffer
-	buf := NewBuffer(1024) 
+	buf := NewBuffer(1024)
 	defer buf.Delete()
-    
-    // 将 "Hello" 放置到 Buffer 当中
-	copy(buf.Data(), []byte("Hello\x00")) 
+
+	copy(buf.Data(), []byte("Hello World. \x00"))
 	C.puts((*C.char)(unsafe.Pointer(&(buf.Data()[0]))))
 }
 ```
 
-> makefile 编译
+// test.c, C 测试文件
+```cgo
+#include "bridge.h"
+#include <stdio.h>
 
-makefile
+int main() {
+    void* buf = NewBuffer(10);
 
+    char* data = Buffer_Data(buf);
+    int size = Buffer_Size(buf);
+    printf("data: %s, size: %d \n", data, size);
+    DeleteBuffer(buf);
+}
+```
+
+// makefile
 ```makefile
 export LIBRARY_PATH=$(CURDIR)
 SRC = $(wildcard *.go)
 
-# build go, dep buffer static lib
-gomain: $(SRC) libbuffer.a
-	go build -o gomain -ldflags "-w" -x $(SRC)
+gotest: $(SRC) static
+	go build -o gotest -ldflags "-w" -x $(SRC)
 
-# build libbuffer static lib
-libbuffer.a:
-	$(CXX) $(CXXFLAGS) -c buffer_c.cpp buffer_cpp.cpp
-	$(AR) -r libbuffer.a buffer_c.o buffer_cpp.o
+ctest: static
+	$(CC) -o ctest test.c -lbuffer -lstdc++
+
+static:
+	$(CXX) $(CXXFLAGS) -c *.cpp
+	$(AR) -r libbuffer.a *.o
+	@rm -r *.o
 
 .PHONY : clean
 clean:
-	-rm -rf gomain *.o *.a *.gch
-
+	-rm -rf ctest gotest *.o *.a *.gch
 ```

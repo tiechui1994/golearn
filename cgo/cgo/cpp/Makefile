@@ -1,13 +1,13 @@
 export LIBRARY_PATH=$(CURDIR)
 SRC = $(wildcard *.go)
 
-gotest: $(SRC) libbuffer.a
+gotest: $(SRC) static
 	go build -o gotest -ldflags "-w" -x $(SRC)
 
-ctest: libbuffer.a
+ctest: static
 	$(CC) -o ctest test.c -lbuffer -lstdc++
 
-libbuffer.a:
+static:
 	$(CXX) $(CXXFLAGS) -c *.cpp
 	$(AR) -r libbuffer.a *.o
 	@rm -r *.o
