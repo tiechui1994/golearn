@@ -804,6 +804,8 @@ main.cgo2.c
 其中 **main.cgo1.go [1]** 的代码如下:
 
 ```
+//main.cgo1.go 
+
 package main
 
 /*
@@ -818,12 +820,21 @@ func main() {
 }
 ```
 
-其中 `C.sum(1,1)` 函数调用替换成了 `(_Cfunc_sum)(1,1)`. 每一个 `C.xxx` 形式的函数都会被替换成 `_Cfunc_xxx`
-格式的纯 Go 函数, 其中前缀 `_Cfunc_` 表示这是一个C函数, 对应一个私有的 Go 桥接函数.
+其中 `C.sum(1,1)` 函数调用替换成了 `(_Cfunc_sum)(1,1)`. 每一个 `C.xxx` 形式的函数都会被替换成 `_Cfunc_xxx` 格
+式的纯 Go 函数, 其中前缀 `_Cfunc_` 表示这是一个C函数, 对应一个私有的 Go 桥接函数.
 
 **_Cfunc_sum** 函数在 cgo 生成的 **_cgo_gotypes.go [2]** 文件当中定义:
 
 ```
+// _cgo_gotypes.go
+
+//go:linkname _cgo_runtime_cgocall runtime.cgocall
+func _cgo_runtime_cgocall(unsafe.Pointer, uintptr) int32
+
+//go:linkname _cgo_runtime_cgocallback runtime.cgocallback
+func _cgo_runtime_cgocallback(unsafe.Pointer, unsafe.Pointer, uintptr, uintptr)
+
+
 //go:cgo_import_static _cgo_7b5139e7c7da_Cfunc_sum
 //go:linkname __cgofn__cgo_7b5139e7c7da_Cfunc_sum _cgo_7b5139e7c7da_Cfunc_sum
 var __cgofn__cgo_7b5139e7c7da_Cfunc_sum byte
@@ -842,9 +853,13 @@ func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
 ```
 
 `_Cfunc_sum` 函数的参数和返回值 `_Ctype_int` 类型对应 `C.int` 类型, 命名的规则和 `_C_func_xxx` 类似, 不同的前
-缀用于区分函数和类型.
+缀用于区分函数和类型. 
 
-`_cgo_runtime_cgocall` 对应 `runtime.cgocall` 函数, 声明如下:
+`_cgo_7b5139e7c7da_Cfunc_sum` 指针来自 `__cgofn__cgo_7b5139e7c7da_Cfunc_sum`, 而该值是通过 `go:linkname`
+连接到 `_cgo_7b5139e7c7da_Cfunc_sum`, 该值是又是通过 `go:cgo_import_static` 从 C 的静态库当中导入的符号. 该
+符号定义在了 `main.cgo2.c` 文件当中.
+
+`_cgo_runtime_cgocall` => `runtime.cgocall` 函数, 声明如下:
 
 ```
 func runtime.cgocall(fn, arg unsafe.Pointer) int32
@@ -857,6 +872,8 @@ func runtime.cgocall(fn, arg unsafe.Pointer) int32
 当中.
 
 ```
+// main.cgo2.c
+
 void _cgo_7b5139e7c7da_Cfunc_sum(void *v)
 {
 	struct {
@@ -887,14 +904,14 @@ struct {
 } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
 ```
 
-其中, p0, p1分别对应 sum 的第一个和第二个参数, r 对应 sum 的返回值. `_pad12` 用于填充结构体保证对齐CPU机器字的整
-数倍.
+其中, p0, p1分别对应 sum 的第一个和第二个参数, r 对应 sum 的返回值. `_pad12` 用于填充结构体保证对齐CPU机器字的整数
+倍.
 
 > 然后从参数执行的结构体获取参数后开始调用真实的C语言版sum函数, 并且将返回值保存到结构体的返回值对应的成员.
 
 
-因为 Go 语言和 C 语言有着不同的内存模型和函数调用规范, 其中 `_cgo_topofstack` 函数相关的代码用于 C 函数调用后恢复
-调用栈. `_cgo_tsan_acquire` 和 `_cgo_tsan_release` 则是用于扫描 CGO 相关函数的指针总相关检查.
+因为 Go 语言和 C 语言有着不同的内存模型和函数调用规范, 其中 `_cgo_topofstack` 函数相关的代码用于 C 函数调用后恢复调
+用栈. `_cgo_tsan_acquire` 和 `_cgo_tsan_release` 则是用于扫描 CGO 相关函数的指针总相关检查.
 
 调用链:
 
@@ -905,6 +922,10 @@ struct {
 ```
 main.go -> main.cgo1.go -> _cgo_gotypes.go -> main.cgo2.c
 ```
+
+
+理解 CGO 调用的黑盒子是 `go:cgo_import_static` 将 C 函数加载到 Go 空间中, `go:linkname` Go 当中的链接. 接下来就
+是 `runtime.cgocall`. 关于该函数, 在 export.go 当中有详细介绍.
 
 
 ## CGO 内存模型

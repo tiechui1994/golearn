@@ -543,6 +543,7 @@ asmcgocall 采用汇编实现:
 
 ```cgo
 // func asmcgocall(fn, arg unsafe.Pointer) int32
+// fn 是函数地址, arg 是第一个参数地址
 // 在 g0 上调用 fn(arg) 函数.
 TEXT ·asmcgocall(SB),NOSPLIT,$0-20
 	MOVQ	fn+0(FP), AX
