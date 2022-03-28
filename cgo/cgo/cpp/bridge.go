@@ -2,16 +2,16 @@ package main
 
 /*
 #cgo CXXFLAGS: -std=c++11 -I .
-#cgo LDFLAGS: -L . -l buffer -l stdc++
+#cgo LDFLAGS: -L . -lbuffer -lstdc++
 
-#include "buffer_c.h"
+#include "bridge.h"
 */
 import "C"
 
 /**
 这里采用了静态库链接的方式, 链接 libbuffer.a 文件
 
-在使用 gcc 编译包装了 C++ 库的时候, 一定要链接 "stdc++" 库.
+在使用 gcc 编译包装了 C++ 库的时候, 一定要链接 "stdc++" 库, 这个非常重要.
 **/
 
 type cgo_Buffer_T C.Buffer_T

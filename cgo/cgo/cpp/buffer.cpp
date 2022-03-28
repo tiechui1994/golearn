@@ -1,6 +1,5 @@
-#include "buffer_cpp.h"
+#include "buffer.h"
 #include <string>
-
 
 Buffer::Buffer(int size) {
     this->s_ = new std::string(size, char('\0'));

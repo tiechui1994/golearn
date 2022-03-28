@@ -2,8 +2,8 @@
  * C++ 类转换成 C 接口的实现
  */
 
-#include "buffer_cpp.h"
-#include "buffer_c.h"
+#include "bridge.h"
+#include "buffer.h"
 
 struct Buffer_T: Buffer {
     Buffer_T(int size): Buffer(size) {}
