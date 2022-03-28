@@ -108,7 +108,6 @@ func main() {
 
 ## 常用的cgo类型
 
-
 ### 数值类型
 
 | C | CGO | Go |
@@ -125,7 +124,6 @@ func main() {
 | size_t | C.size_t | uint | 
 
 数值类型使用案例:
-
 
 ```cgo
 /*
@@ -171,7 +169,6 @@ func main() {
 
 > 注: 在 C 语言当中 const char* ptr(指向字符常量的指针), char const* ptr(指向字符常量的指针), char* const ptr
 > (指向字符的指针常数, 即const指针), 在 cgo 调用的时候, 全部都转换成 `*C.char`.
-
 
 ### 结构体, 联合, 枚举类型
 
@@ -246,20 +243,14 @@ typedef struct option {
     int* iptr;
 } option;
 
-int call(option arg1, option* arg2) {
-    printf("arg1 iarg: %d\n", arg1.iarg);
-    printf("arg1 farg: %0.2f\n", arg1.farg);
-    printf("arg1 carg: %s\n", arg1.carg);
-    printf("arg1 iptr: %d\n", *arg1.iptr);
+void call(option arg1, option* arg2) {
+    printf("arg1 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg1.iarg, arg1.farg, arg1.carg, 
+        *arg1.iptr);
 
 	printf("\n==========================\n\n");
-
-    printf("arg2 iarg: %d\n", (*arg2).iarg);
-    printf("arg2 farg: %0.2f\n", (*arg2).farg);
-    printf("arg2 carg: %s\n", (*arg2).carg);
-    printf("arg2 iptr: %d\n", *(*arg2).iptr);
-
-    return 0;
+    
+    printf("arg2 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg2->iarg, arg2->farg, arg2->carg,
+        *(arg1->iptr));
 }
 */
 import "C"
@@ -269,25 +260,17 @@ import (
 )
 
 func main() {
-	type option struct {
-		iarg C.int
-		farg C.float
-		carg *C.char
-		iptr *C.int
-	}
-
 	val := 100
-	opt := option{
+	opt := C.struct_option{
 		iarg: C.int(10),
 		farg: C.float(100.00),
 		carg: C.CString("Hello World"),
 		iptr: (*C.int)(unsafe.Pointer(&val)),
 	}
-
 	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
     
     // 确定内存大小
-	size := 1 * int(unsafe.Sizeof(option{}))
+	size := 1 * int(unsafe.Sizeof(struct_option{}))
 	// malloc 分配内存
 	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
 	// unsafe 转换成数组
@@ -295,21 +278,161 @@ func main() {
 	// 对数组的元素进行赋值
 	arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
 
-	var res C.int
-	res = C.call(arg1, arg2)
-
-	fmt.Println(res)
+	C.call(arg1, arg2)
 }
 ```
 
-在 C 代码当中, 定义了一个 `typedef struct option` 类型, 然后在 call() 函数当中需要的参数类型分别是 `option` 和
-`*option`, call() 函数代码就是打印参数里的值.
+在 C 中, 定义了一个 `option` 类型, call() 函数当中需要的参数类型分别是 `option` 和 `*option`,  call() 函数代码
+就是打印参数里的值.
 
-在 Go 代码当中, 就是调用 C 语言的 call() 函数. Go当中定义了和 C 一致的结构体 `option`, 创建一个 `option` 类型
-的变量, 使用 `unsafe` 包直接将 `option` 变量直接转换成 `C.struct_option`(call函数参数 arg1).
+在 Go 中, 调用 C 中的 call() 函数. 创建一个 `struct_option` 类型的变量, 使用 `unsafe` 包直接将 `option` 变量直
+接转换成 `C.struct_option` (call函数参数 arg1). 对于 call 函数参数 arg2, 转换相对复杂了一些, 详细步骤参考代码当中
+的的注释.
 
-而对于 call 函数参数 arg2, 转换相对复杂了一些, 详细步骤参考代码当中的的注释.
+Go 调用 C 的指针传递原则: **Go传递给C的 Go Pointer 所指向的 Go Memory 中不能包含任何指向Go Memory的Pointer**. 接
+下来分情况讨论:
 
+- 传递一个指向 struct 的指针.
+
+```cgo
+/*
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+typedef struct foo {
+    int  a;
+    int* p;
+} foo;
+
+void plus(foo* f) {
+    (f->a)++;
+    *(f->p)++;
+}
+*/
+import "C"
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+    f := C.struct_foo{
+        a:5,
+        p: (*C.int)(unsafe.Pointer(new(int))), 
+    }
+    // f 是指向 Go Memory(Go分配的), 指针 f.p 也是指向 Go Memory (new(int), 违反了Go 调用 C 的指针传递原则.
+    // 将产生错误: cgo argument has Go pointer to Go pointer
+    args := (*C.struct_foo)(unsafe.Pointer(&f))
+    C.plus(args)
+    fmt.Println(f.a)
+}
+```
+
+- 传递一个指向 struct field 的指针.
+
+```cgo
+/*
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+typedef struct foo {
+    int  a;
+    int* p;
+} foo;
+
+void plus(int* f) {
+    (*f)++;
+}
+*/
+import "C"
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+    f := C.struct_foo{
+        a: 5,
+        p: (*C.int)(unsafe.Pointer(new(int))),
+    }
+    args := (*C.int)(unsafe.Pointer(&f.a))
+    //args := (*C.int)(unsafe.Pointer(f.p))
+    
+    // f.a, f.p 是指向 Go Memory 的, 因此可以成功执行
+    C.plus(args)
+    fmt.Println(f.a, *f.p)
+}
+```
+
+- 传递一个指向 slice 或 array 中的 element 的指针.
+
+```cgo
+/*
+void plus(int** f) {
+    (**f)++;
+}
+*/
+import "C"
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+    val := make([]*int, 5)
+    val[0] = new(int)
+    args := (**C.int)(unsafe.Pointer(&val[0]))
+    
+    // val[0] 的地址指向的是 Go Memory, 违反了Go 调用 C 的指针传递原则.
+    // 将产生错误: cgo argument has Go pointer to Go pointer
+    C.plus(args)
+    fmt.Println(*val[0])
+}
+```
+
+针对上述的 1 和 3 的破局: 主要的问题出现在传递给 C 的 Go Pointer 所指向的 Go Memory 中包含任何指向 Go Memory 的Pointer, 
+要想解决这个问题. 方式一, 在传递给 C 的 Go Pointer 所指向的 Go Memory 中, 将任何指向 Go Memory 的 Pointer 修改
+为指向 C 的 Pointer. 方式二, 传递给 C 全部使用 C 内存空间(推荐).
+ 
+方式一: 使用 C.malloc 分配子节点指针, 然后强制转换成相关类型
+```
+// 思路一, 消除Go子节点指针
+args := make([]C.struct_foo, 1)
+args[0] = C.struct_foo{
+    a: 5,
+    p: (*C.int)(unsafe.Pointer(C.malloc(C.size_t(4)))),
+}
+argsp := (*C.struct_foo)(unsafe.Pointer(&args[0]))
+C.plus(argsp)
+```
+
+方式二: 先使用 C.malloc 开辟出 C 内存空间, 然后使用将开辟的 C 地址转换为 Go 的 slice, 最后往 slice 当中填充数据.
+```
+// 思路二, 开辟 C 内存空间
+size := int(unsafe.Sizeof(C.struct_foo{}))
+args := (*C.struct_foo)(unsafe.Pointer(C.malloc(C.size_t(size)))) 
+
+// 使用数组的方式转换成 slice
+pa := (*[10]C.struct_foo)(unsafe.Pointer(args))[:1:1]
+pa[0] = C.struct_foo{
+   a: 5,
+   p: (*C.int)(unsafe.Pointer(new(int))),
+}
+
+// 使用 SliceHeadrer 方式转换
+sh := reflect.SliceHeader{
+    Data: uintptr(unsafe.Pointer(args)),
+    Len:1,
+    Cap:1,
+}
+ps := *(*[]C.struct_foo)(unsafe.Pointer(&sh))
+pa[0] = C.struct_foo{
+   a: 5,
+   p: (*C.int)(unsafe.Pointer(new(int))),
+}
+```
 
 **CGO函数调用的细节点:**
 
@@ -330,7 +453,7 @@ func main() {
 > 函数指针, 回调函数:
 
 
-> 关于 C 类型的定义:
+> 关于 C 当中类型的定义:
 
 ```
 1. 自定义数据类型, 方便移植
@@ -355,7 +478,6 @@ struct XXX {
 
 // 使用的类型: "struct Xxx x", "struct Xxx* x" 
 ```
-
 
 #### 联合类型
 
@@ -428,7 +550,6 @@ main(){
 ```
 
 > 在 C 语言当中, 枚举类型底层对应 int 类型, 支持负数类型的值. 可以通过 C.ONE, C.TWO 等直接访问定义的枚举值.
-
 
 ### 数组, 字符串和切片
 
@@ -510,7 +631,7 @@ type SliceHeader struct {
 `C 语言字符串, 数组转换成 Go 语言的字符串, 数组` 案例:
 
 ```cgo
-/**
+/*
 #include <string.h>
 
 char arr[10];
@@ -551,7 +672,9 @@ func main() {
 > Go 字符串是只读的, 用户需要自己保证 Go 字符串在使用期间, 底层对应的 C 字符串内容不会发生变化, 内存不会被提前释放掉.
 
 
-### 指针间的转换
+### 类型转换
+
+#### 指针间的转换
 
 - C 和 Go 关于指针的区别
 
@@ -598,8 +721,7 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 
 > 注: 如果在第一种状况下, 传递 C.NULL, 程序是会报错的. 因为 C.NULL 在 Go 当中就是一个整数类型, 并不是指针类型.
 
-
-### 数值和指针的转换
+#### 数值和指针的转换
 
 为了严格控制指针的使用, Go 语言禁止将数值类型直接转为指针类型! 不过, Go 语言针对 `unsafe.Pointer` 指针类型特别定义了
 一个 `unitptr` 类型. 可以以 `unitptr` 为中介, 实现数值类型到 `unsafe.Pointer` 指针类型的转换. 再结合前面提到的方
@@ -609,7 +731,7 @@ int32 类型到 C 语言的 `char*` 字符串指针类型的相互转换:
 
 ![image](/images/cgo_numtoptr.png)
 
-### 切片间的转换
+#### 切片间的转换
 
 在 C 语言当中数组也是一种指针, 因此两个不同类型数组之间的转换和指针类型间转换基本类似.
 

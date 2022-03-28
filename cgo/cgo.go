@@ -5,37 +5,34 @@ package main
 #include <string.h>
 #include <stdlib.h>
 
-typedef struct option {
-    int iarg;
-    float farg;
-    const char* carg;
-    int* iptr;
-} option;
+typedef struct sub {
+	int* p;
+} sub;
 
+typedef struct main {
+    int  a;
+    sub* p;
+} main;
 
-int call(const option arg1, const option* arg2, unsigned int arg2len) {
-    printf("arg1 iarg: %d\n", arg1.iarg);
-    printf("arg1 farg: %0.2f\n", arg1.farg);
-    printf("arg1 carg: %s\n", arg1.carg);
-    printf("arg1 iptr: %d\n", *arg1.iptr);
-
-	printf("%ld\n", sizeof(option));
-
-	printf("\n==========================\n\n");
-
-	for (unsigned int i=0; i<arg2len; i++) {
-		printf("arg2 iarg: %d\n", (arg2[i]).iarg);
-		printf("arg2 farg: %0.2f\n", (arg2[i]).farg);
-		printf("arg2 carg: %s\n", (arg2[i]).carg);
-		printf("arg2 iptr: %d\n", *(arg2[i]).iptr);
-		printf("\n--------------------\n\n");
-    }
-
-    return 0;
+void plus(main* f) {
+	printf("before: %d, %d\n", f->a, *((f->p)->p));
+    f->a+=1;
+    *((f->p)->p)+=1;
+    printf("after: %d, %d\n", f->a, *((f->p)->p));
 }
 
-char arr[10]={'h','e','l','l','o'};
-char *s = "Hello";
+typedef struct xyz {
+	int  a;
+	int* p;
+} xyz;
+
+void pplus(xyz* f) {
+	printf("before: %d, %d\n", f->a, *(f->p));
+    f->a+=1;
+    *(f->p)+=1;
+    printf("after: %d, %d\n", f->a, *(f->p));
+}
+
 */
 import "C"
 import (
@@ -44,58 +41,79 @@ import (
 	"unsafe"
 )
 
+// test parent memory
+func case1()  {
+	// malloc 
+	size := int(unsafe.Sizeof(C.struct_main{}))
+	args := (*C.struct_main)(unsafe.Pointer(C.malloc(C.size_t(size))))
+
+	// Go
+	p := (*[10]C.struct_main)(unsafe.Pointer(args))[:1:1]
+	sub := C.struct_sub{
+		p: (*C.int)(unsafe.Pointer(new(int))),
+	}
+	main := C.struct_main{
+		a: 5,
+		p: (*C.struct_sub)(unsafe.Pointer(&sub)),
+	}
+	p[0] = main
+
+	C.plus(args)
+	fmt.Println("p[0]", *(p[0].p.p), p[0].a)
+	fmt.Println("main", *(main.p.p), main.a)
+}
+
+// case2, Resolve parnet memory
+func case2()  {
+	// malloc
+	size := int(unsafe.Sizeof(C.struct_xyz{}))
+	args := (*C.struct_xyz)(unsafe.Pointer(C.malloc(C.size_t(size))))
+
+	// Go, Use Array
+	p := (*[10]C.struct_xyz)(unsafe.Pointer(args))[:1:1]
+	xyz := C.struct_xyz{
+		a: 5,
+		p: (*C.int)(unsafe.Pointer(new(int))),
+	}
+	p[0] = xyz
+
+	C.pplus(args)
+	fmt.Println("p[0]", *(p[0].p), p[0].a)
+	fmt.Println("xyz", *(xyz.p), xyz.a)
+
+	// Go, Use reflect.SliceHeader
+	sh := reflect.SliceHeader{
+		Data:uintptr(unsafe.Pointer(args)),
+		Len:1,
+		Cap:1,
+	}
+	px := *(*[]C.struct_xyz)(unsafe.Pointer(&sh))
+	xyz = C.struct_xyz{
+		a: 5,
+		p: (*C.int)(unsafe.Pointer(new(int))),
+	}
+	px[0] = xyz
+	C.pplus(args)
+	fmt.Println("px[0]", *(px[0].p), px[0].a)
+	fmt.Println("xyz", *(xyz.p), xyz.a)
+}
+
+// case3, Resolve Leaf Memory
+func case3()  {
+	slice := make([]C.struct_xyz, 1)
+	xyz := C.struct_xyz{
+		a: 5,
+		p: (*C.int)(unsafe.Pointer(C.malloc(C.size_t(4)))),
+	}
+	slice[0] = xyz
+
+	args := (*C.struct_xyz)(unsafe.Pointer(&slice[0]))
+	C.pplus(args)
+	fmt.Println("xyz", *(xyz.p), xyz.a)
+}
+
 func main() {
-	type option struct {
-		iarg C.int
-		farg C.float
-		carg *C.char
-		iptr *C.int
-	}
-
-	val := 100
-	opt := option{
-		iarg: C.int(10),
-		farg: C.float(100.00),
-		carg: C.CString("Hello World"),
-		iptr: (*C.int)(unsafe.Pointer(&val)),
-	}
-
-	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
-
-	N := 2
-	size := N * int(unsafe.Sizeof(option{}))
-	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
-	arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:N:N]
-
-	fmt.Println("size", size, "len", len(arg2ptr), size)
-
-	arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
-	arg2ptr[1] = *(*C.struct_option)(unsafe.Pointer(&opt))
-
-	var res C.int
-	res = C.call(arg1, arg2, C.uint(N))
-
-	fmt.Println(res)
-
-	// 通过 reflect.SliceHeader 转换
-	var arr []byte
-	array := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-	array.Data = uintptr(unsafe.Pointer(&C.arr[0]))
-	array.Len = 10
-	array.Cap = 10
-
-	// 切片
-	arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
-
-	// 通过 reflect.StringHeader 转换
-	var s string
-	str := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	str.Data = uintptr(unsafe.Pointer(C.s))
-	str.Len = int(C.strlen(C.s))
-
-	// 切片
-	length := int(C.strlen(C.s))
-	s1 := string((*[31]byte)(unsafe.Pointer(C.s))[:length:length])
-
-	fmt.Println("arr:", string(arr), "arr1:", string(arr1), "s:", s, "s1:", s1)
+	case1()
+	case2()
+	case3()
 }
