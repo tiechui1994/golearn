@@ -131,6 +131,8 @@ go run main.go bar.go
 > 量 a, 使用 `extern int a;` 即可.
 >
 > 2.使用动态链接库, 编译的时候添加 `-fPIC` 参数, 这样会生产与位置无关的内容. (参考cgo/question案例)
+>
+> 3.增加static修饰符, 这样可以隐藏文件.
  
 
 ### 提示找不到头文件

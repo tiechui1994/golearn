@@ -172,8 +172,8 @@ int call(int arg1, int* arg2, const char* arg3) {
     printf("arg1: %d\n", arg1);
     printf("arg2: %d\n", *arg2);
     printf("arg3: %s\n", arg3);
-
-	*arg2 = 13579;
+    
+    *arg2 = 13579;
     return 0;
 }
 */
@@ -184,16 +184,16 @@ import (
 )
 
 func main() {
-	p1, p2, p3 := 1, 10, "Hello World"
-
-	arg1 := C.int(p1)
-	arg2 := (*C.int)(unsafe.Pointer(&p2))
-	arg3 := C.CString(p3)
-
-	var res C.int
-	res = C.call(arg1, arg2, arg3)
-
-	fmt.Println(*arg2, *(*int)(unsafe.Pointer(arg2)), res)
+    p1, p2, p3 := 1, 10, "Hello World"
+    
+    arg1 := C.int(p1)
+    arg2 := (*C.int)(unsafe.Pointer(&p2))
+    arg3 := C.CString(p3)
+    
+    var res C.int
+    res = C.call(arg1, arg2, arg3)
+    
+    fmt.Println(*arg2, *(*int)(unsafe.Pointer(arg2)), res)
 }
 ```
 
@@ -285,8 +285,8 @@ typedef struct option {
 void call(option arg1, option* arg2) {
     printf("arg1 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg1.iarg, arg1.farg, arg1.carg, 
         *arg1.iptr);
-
-	printf("\n==========================\n\n");
+    
+    printf("\n==========================\n\n");
     
     printf("arg2 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg2->iarg, arg2->farg, arg2->carg,
         *(arg1->iptr));
@@ -299,25 +299,25 @@ import (
 )
 
 func main() {
-	val := 100
-	opt := C.struct_option{
-		iarg: C.int(10),
-		farg: C.float(100.00),
-		carg: C.CString("Hello World"),
-		iptr: (*C.int)(unsafe.Pointer(&val)),
-	}
-	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
-    
+    val := 100
+    opt := C.struct_option{
+        iarg: C.int(10),
+        farg: C.float(100.00),
+        carg: C.CString("Hello World"),
+        iptr: (*C.int)(unsafe.Pointer(&val)),
+    }
+    arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
+        
     // 确定内存大小
-	size := 1 * int(unsafe.Sizeof(struct_option{}))
-	// malloc 分配内存
-	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
-	// unsafe 转换成数组
-	arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:size:size]
-	// 对数组的元素进行赋值
-	arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
-
-	C.call(arg1, arg2)
+    size := 1 * int(unsafe.Sizeof(struct_option{}))
+    // malloc 分配内存
+    arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
+    // unsafe 转换成数组
+    arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:size:size]
+    // 对数组的元素进行赋值
+    arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
+    
+    C.call(arg1, arg2)
 }
 ```
 
@@ -351,8 +351,8 @@ void plus(foo* f) {
 */
 import "C"
 import (
-	"fmt"
-	"unsafe"
+    "fmt"
+    "unsafe"
 )
 
 func main() {
@@ -387,8 +387,8 @@ void plus(int* f) {
 */
 import "C"
 import (
-	"fmt"
-	"unsafe"
+    "fmt"
+    "unsafe"
 )
 
 func main() {
@@ -415,8 +415,8 @@ void plus(int** f) {
 */
 import "C"
 import (
-	"fmt"
-	"unsafe"
+    "fmt"
+    "unsafe"
 )
 
 func main() {
@@ -456,8 +456,8 @@ args := (*C.struct_foo)(unsafe.Pointer(C.malloc(C.size_t(size))))
 // 使用数组的方式转换成 slice
 pa := (*[10]C.struct_foo)(unsafe.Pointer(args))[:1:1]
 pa[0] = C.struct_foo{
-   a: 5,
-   p: (*C.int)(unsafe.Pointer(new(int))),
+    a: 5,
+    p: (*C.int)(unsafe.Pointer(new(int))),
 }
 
 // 使用 SliceHeadrer 方式转换
@@ -468,8 +468,8 @@ sh := reflect.SliceHeader{
 }
 ps := *(*[]C.struct_foo)(unsafe.Pointer(&sh))
 pa[0] = C.struct_foo{
-   a: 5,
-   p: (*C.int)(unsafe.Pointer(new(int))),
+    a: 5,
+    p: (*C.int)(unsafe.Pointer(new(int))),
 }
 ```
 
@@ -490,6 +490,10 @@ pa[0] = C.struct_foo{
 
 
 > 函数指针, 回调函数:
+> 如果在程序中定义了一个函数, 那么在编程时系统就会为这个函数代码分配一段存储空间, 这段存储空间的首地址称为这个函数的地址.
+而且函数名表示的就是这个地址. 既然是地址我们就可以定义一个指针变量来存放, 这个指针变量叫做函数指针变量, 简称函数指针.
+> 
+> 回调函数, 就是函数指针作为某个函数的参数.
 
 
 > 关于 C 当中类型的定义:
@@ -517,6 +521,9 @@ struct XXX {
 
 // 使用的类型: "struct Xxx x", "struct Xxx* x" 
 ```
+
+在 Go 调用 C 的时候, 无法直接将 Go 函数作为参数传递给 C 的. 唯一的方式就是先将 Go 函数导出为 C 函数, 然后将其作为指针
+(`*[0]byte`) 或 函数指针(需要使用 typedef 定义) 传递给函数. 具体案例参数 `callback.go` 的情况.
 
 #### 联合类型
 

@@ -78,7 +78,6 @@ defined (identifier)
 
 大多数编译器会提供预定义宏.
 
-
 ## gcc(g++) 编译选项
 
 - `-Wall`, 生成所有警告信息.
