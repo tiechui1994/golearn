@@ -176,3 +176,44 @@ curl -X POST https://reqbin.com/echo/post/json --data-raw '{
 
 `-v, -vv, --verbose` 打印请求的详细过程(TLS协商, 请求详细内容, 响应详细内容)
 
+### 输出参数
+
+-w, --write-out <format> 输出请求参数
+
+```
+time_total, client发出请求到server发送会所有的相应数据的时间(单位:s).
+
+time_starttransfer, client发出请求到server发送第一个字节的时间(单位: s).
+
+time_redirect, 重定向时间, 包括到最后一次传输前的几次重定向的DNS解析, 连接, 预传输, 传输的时间.
+
+time_connect, 建立TCP连接的时间.
+
+time_namelookup, DNS 解析域名的时间.
+
+size_download, 下载大小
+size_upload, 上传大小
+size_header 下载的header大小
+size_request 请求的大小
+
+speed_download, 下载速度, 单位: B/s
+speed_upload, 上传速度, 单位: B/s
+```
+
+
+vim curl_time
+```
+\n
+          http: %{http_code}\n
+           dns: %{time_namelookup} s\n
+      redirect: %{time_redirect} s\n
+       connect: %{time_connect} s\n
+ starttransfer: %{time_starttransfer} s\n
+ size_download: %{size_download} bytes\n
+speed_download: %{speed_download} B/s\n
+              ---------- \n
+    time_total: %{time_total}s\n
+\n
+```
+
+curl -o /dev/null -s -w "@curl_time" www.google.com
