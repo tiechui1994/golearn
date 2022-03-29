@@ -847,7 +847,7 @@ main.cgo1.go
 main.cgo2.c
 ```
 
-其中 **main.cgo1.go [1]** 的代码如下:
+#### main.cgo1.go
 
 ```
 //main.cgo1.go 
@@ -869,7 +869,9 @@ func main() {
 其中 `C.sum(1,1)` 函数调用替换成了 `(_Cfunc_sum)(1,1)`. 每一个 `C.xxx` 形式的函数都会被替换成 `_Cfunc_xxx` 格
 式的纯 Go 函数, 其中前缀 `_Cfunc_` 表示这是一个C函数, 对应一个私有的 Go 桥接函数.
 
-**_Cfunc_sum** 函数在 cgo 生成的 **_cgo_gotypes.go [2]** 文件当中定义:
+#### _cgo_gotypes.go
+
+`_Cfunc_sum` 函数在 cgo 生成的 _cgo_gotypes.go 文件当中定义:
 
 ```
 // _cgo_gotypes.go
@@ -880,12 +882,10 @@ func _cgo_runtime_cgocall(unsafe.Pointer, uintptr) int32
 //go:linkname _cgo_runtime_cgocallback runtime.cgocallback
 func _cgo_runtime_cgocallback(unsafe.Pointer, unsafe.Pointer, uintptr, uintptr)
 
-
 //go:cgo_import_static _cgo_7b5139e7c7da_Cfunc_sum
 //go:linkname __cgofn__cgo_7b5139e7c7da_Cfunc_sum _cgo_7b5139e7c7da_Cfunc_sum
 var __cgofn__cgo_7b5139e7c7da_Cfunc_sum byte
 var _cgo_7b5139e7c7da_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_7b5139e7c7da_Cfunc_sum)
-
 
 //go:cgo_unsafe_args
 func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
@@ -905,17 +905,18 @@ func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
 连接到 `_cgo_7b5139e7c7da_Cfunc_sum`, 该值是又是通过 `go:cgo_import_static` 从 C 的静态库当中导入的符号. 该
 符号定义在了 `main.cgo2.c` 文件当中.
 
-`_cgo_runtime_cgocall` => `runtime.cgocall` 函数, 声明如下:
+`_cgo_runtime_cgocall` 是对 `runtime.cgocall` 函数的连接, 声明如下:
 
-```
+```cgo
 func runtime.cgocall(fn, arg unsafe.Pointer) int32
 ```
 
 > 第一个参数是 C 语言函数的地址
 > 第二个参数是存储 C 语言函数对应的参数结构体(参数和返回值)的地址
 
-在此例当中, 被传入C语言函数 **_cgo_7b5139e7c7da_Cfunc_sum** 也是 cgo 生成的中间函数. 函数定义在**main.cgo2.c [3]** 
-当中.
+在此例当中, 被传入C语言函数 `_cgo_7b5139e7c7da_Cfunc_sum` 也是 cgo 生成的中间函数. 函数定义在 main.cgo2.c 当中.
+
+#### main.cgo2.c
 
 ```
 // main.cgo2.c
@@ -959,9 +960,15 @@ struct {
 因为 Go 语言和 C 语言有着不同的内存模型和函数调用规范, 其中 `_cgo_topofstack` 函数相关的代码用于 C 函数调用后恢复调
 用栈. `_cgo_tsan_acquire` 和 `_cgo_tsan_release` 则是用于扫描 CGO 相关函数的指针总相关检查.
 
-调用链:
+调用链(从调用者角度来看): 
 
-![image](/images/cgo_call_process.png)
+```cgo
+C.sum (调用方) =>
+    _Cfunc_sum(main.cgo1.go, 调用_cgo_gotypes.go当中的代码) =>
+        _cgo_runtime_cgocall(_cgo_gotypes.go当中导入C符号表, 调用汇编实现的runtime.cgocall函数, asm_amd64.s) =>
+            _cgo_7b5139e7c7da_Cfunc_sum(main.cgo2.c, 调用 C 库的 sum 函数) =>
+                sum(C当中的sum函数)
+```
 
 文件链:
 

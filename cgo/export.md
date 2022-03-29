@@ -621,10 +621,8 @@ nosave:
     RET
 ```
 
-
 **当Go调用C函数时, 会单独占用一个系统线程. 因此如果在 Go协程中并发调用C函数, 而C函数中又存在阻塞操作,就很可能会造成Go
 程序不停的创建新的系统线程,而Go并不会回收系统线程,过多的线程会拖垮整个系统**
-
 
 
 下面介绍一下将 C 符号导入 Go:
@@ -661,29 +659,122 @@ func main() {}
 
 导出的文件主要包含:
 ```
-test_cgo1.go
-_cgo_gotypes.go
-test_cgo2.c
+_cgo_export.c // 生成 C 库的 lib 文件
+_cgo_export.h // 生成 C 库的 header 文件
 
-_cgo_export.c
-_cgo_export.h
+_cgo_gotypes.go // 核心文件, 主要的代理作用
+test_cgo1.go    // Go 源码文件 
+test_cgo2.c
 ```
 
-// test_cgo1.go
-```cgo
-import _ "unsafe"
+#### _cgo_export.h
 
-//export Concat
-func Concat(a, b * /*line :9:19*/_Ctype_char /*line :9:25*/) * /*line :9:28*/_Ctype_char /*line :9:34*/ {
-	return ( /*line :10:9*/_Cfunc_CString /*line :10:17*/)(( /*line :10:19*/_Cfunc_GoString /*line :10:28*/)(a) + ( /*line :10:35*/_Cfunc_GoString /*line :10:44*/)(b))
+Go 类型在 C 当中的定义. 导出函数声明
+
+```cgo
+#ifndef GO_CGO_GOSTRING_TYPEDEF
+typedef struct { const char *p; ptrdiff_t n; } _GoString_;
+#endif
+
+typedef signed char GoInt8;
+typedef unsigned char GoUint8;
+typedef short GoInt16;
+typedef unsigned short GoUint16;
+typedef int GoInt32;
+typedef unsigned int GoUint32;
+typedef long long GoInt64;
+typedef unsigned long long GoUint64;
+typedef GoInt64 GoInt;
+typedef GoUint64 GoUint;
+typedef __SIZE_TYPE__ GoUintptr;
+typedef float GoFloat32;
+typedef double GoFloat64;
+typedef float _Complex GoComplex64;
+typedef double _Complex GoComplex128;
+
+#ifndef GO_CGO_GOSTRING_TYPEDEF
+typedef _GoString_ GoString;
+#endif
+typedef void *GoMap;
+typedef void *GoChan;
+typedef struct { void *t; void *v; } GoInterface;
+typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern char* Concat(char* a, char* b);
+
+#ifdef __cplusplus
+}
+#endif
+```
+
+#### _cgo_export.c
+
+_cgo_export.h 当中声明函数的具体实现. 最终是要生成库文件的.
+
+```cgo
+#include <stdlib.h>
+#include "_cgo_export.h"
+
+extern void crosscall2(void (*fn)(void *, int, __SIZE_TYPE__), void *, int, __SIZE_TYPE__);
+extern __SIZE_TYPE__ _cgo_wait_runtime_init_done(void);
+extern void _cgo_release_context(__SIZE_TYPE__);
+extern char* _cgo_topofstack(void);
+
+extern void _cgoexp_5154f501eb16_Concat(void *, int, __SIZE_TYPE__);
+
+char* Concat(char* a, char* b)
+{
+	__SIZE_TYPE__ _cgo_ctxt = _cgo_wait_runtime_init_done();
+	struct {
+		char* p0;
+		char* p1;
+		char* r0;
+	} __attribute__((__packed__, __gcc_struct__)) _cgo_a;
+	_cgo_a.p0 = a;
+	_cgo_a.p1 = b;
+	_cgo_tsan_release();
+	crosscall2(_cgoexp_5154f501eb16_Concat, &_cgo_a, 24, _cgo_ctxt);
+	_cgo_tsan_acquire();
+	_cgo_release_context(_cgo_ctxt);
+	return _cgo_a.r0;
 }
 
-func main() {}
+void _cgo_5154f501eb16_Cfunc__Cmalloc(void *v) {
+	struct {
+		unsigned long long p0;
+		void *r1;
+	} __attribute__((__packed__, __gcc_struct__)) *a = v;
+	void *ret;
+	_cgo_tsan_acquire();
+	ret = malloc(a->p0);
+	if (ret == 0 && a->p0 == 0) {
+		ret = malloc(1);
+	}
+	a->r1 = ret;
+	_cgo_tsan_release();
+}
 ```
 
-// _cgo_gotypes.go
-// 定义了 test_cgo1.go 当中使用的类型和方法.
-// 从 Go 空间导出符号表.
+crosscall2 函数是使用汇编实现的, 要遵循 C 语言函数调用栈(使用寄存器传递参数. DI(函数地址), SI(参数起始指针), DX(参数大小), 
+CX(上下文)). 在汇编当中调用函数.
+
+crosscall2 函数原型:
+```cgo
+func crosscall2(fn func(a unsafe.Pointer, n int32, ctxt uintptr), a unsafe.Pointer, n int32, ctxt uintptr)
+```
+
+#### _cgo_gotypes.go
+
+C 与 Go 的桥梁. 
+
+为 C 提供了 Go 的导出符号表, 方便 C 可以调用 Go 函数.
+
+为 Go 提供了需要的类型和方法, 并调用 Go 源代码的方法.
+
 ```cgo
 type _Ctype__GoString_ string
 
@@ -696,6 +787,18 @@ type _Ctype_long int64
 type _Ctype_ptrdiff_t = _Ctype_long
 
 type _Ctype_void [0]byte
+
+//go:linkname _cgo_runtime_cgocall runtime.cgocall
+func _cgo_runtime_cgocall(unsafe.Pointer, uintptr) int32
+
+//go:linkname _cgo_runtime_cgocallback runtime.cgocallback
+func _cgo_runtime_cgocallback(unsafe.Pointer, unsafe.Pointer, uintptr, uintptr)
+
+//go:linkname _cgoCheckPointer runtime.cgoCheckPointer
+func _cgoCheckPointer(interface{}, interface{})
+
+//go:linkname _cgoCheckResult runtime.cgoCheckResult
+func _cgoCheckResult(interface{})
 
 func _Cfunc_CString(s string) *_Ctype_char {
 	p := _cgo_cmalloc(uint64(len(s)+1))
@@ -747,6 +850,37 @@ func _cgo_cmalloc(p0 uint64) (r1 unsafe.Pointer) {
 }
 ```
 
+核心就是将 _cgoexp_5154f501eb16_Concat 导出去, 在汇编当中根据符号表, 动态获取到函数地址的位置. 经过这, 相当于已经
+进入了 Go 的区域了.
+
+在 Go 区域当中, 调用 runtime.cgocallback, 该函数的原型如下:
+
+```cgo
+func cgocallback(fn, frame unsafe.Pointer, framesize, ctxt uintptr)
+
+// fn 是一个函数指针
+// frame 是fn参数的起始位置
+// framesize 是fn参数的大小(包括返回值)
+// ctxt 是上下文
+```
+
+在 runtime.cgocallback 当中, 就是将函数调用的参数拷贝到栈上, 然后
+
+#### test_cgo1.go
+
+Go 源代码
+
+```cgo
+import _ "unsafe"
+
+//export Concat
+func Concat(a, b * /*line :9:19*/_Ctype_char /*line :9:25*/) * /*line :9:28*/_Ctype_char /*line :9:34*/ {
+	return ( /*line :10:9*/_Cfunc_CString /*line :10:17*/)(( /*line :10:19*/_Cfunc_GoString /*line :10:28*/)(a) + ( /*line :10:35*/_Cfunc_GoString /*line :10:44*/)(b))
+}
+
+func main() {}
+```
+
 // test_cgo2.c
 ```cgo
 typedef struct { const char *p; intgo n; } _GoString_;
@@ -765,90 +899,13 @@ __attribute__ ((unused))
 static const char *_GoStringPtr(_GoString_ s) { return s.p; }
 ```
 
-
-// _cgo_export.h
+调用链(从调用者角度来看): 
 
 ```cgo
-#ifndef GO_CGO_GOSTRING_TYPEDEF
-typedef struct { const char *p; ptrdiff_t n; } _GoString_;
-#endif
-
-typedef signed char GoInt8;
-typedef unsigned char GoUint8;
-typedef short GoInt16;
-typedef unsigned short GoUint16;
-typedef int GoInt32;
-typedef unsigned int GoUint32;
-typedef long long GoInt64;
-typedef unsigned long long GoUint64;
-typedef GoInt64 GoInt;
-typedef GoUint64 GoUint;
-typedef __SIZE_TYPE__ GoUintptr;
-typedef float GoFloat32;
-typedef double GoFloat64;
-typedef float _Complex GoComplex64;
-typedef double _Complex GoComplex128;
-
-#ifndef GO_CGO_GOSTRING_TYPEDEF
-typedef _GoString_ GoString;
-#endif
-typedef void *GoMap;
-typedef void *GoChan;
-typedef struct { void *t; void *v; } GoInterface;
-typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern char* Concat(char* a, char* b);
-
-#ifdef __cplusplus
-}
-#endif
-```
-
-// _cgo_export.c
-```cgo
-#include <stdlib.h>
-#include "_cgo_export.h"
-
-extern void crosscall2(void (*fn)(void *, int, __SIZE_TYPE__), void *, int, __SIZE_TYPE__);
-extern __SIZE_TYPE__ _cgo_wait_runtime_init_done(void);
-extern void _cgo_release_context(__SIZE_TYPE__);
-extern char* _cgo_topofstack(void);
-
-extern void _cgoexp_5154f501eb16_Concat(void *, int, __SIZE_TYPE__);
-
-char* Concat(char* a, char* b)
-{
-	__SIZE_TYPE__ _cgo_ctxt = _cgo_wait_runtime_init_done();
-	struct {
-		char* p0;
-		char* p1;
-		char* r0;
-	} __attribute__((__packed__, __gcc_struct__)) _cgo_a;
-	_cgo_a.p0 = a;
-	_cgo_a.p1 = b;
-	_cgo_tsan_release();
-	crosscall2(_cgoexp_5154f501eb16_Concat, &_cgo_a, 24, _cgo_ctxt);
-	_cgo_tsan_acquire();
-	_cgo_release_context(_cgo_ctxt);
-	return _cgo_a.r0;
-}
-
-void _cgo_5154f501eb16_Cfunc__Cmalloc(void *v) {
-	struct {
-		unsigned long long p0;
-		void *r1;
-	} __attribute__((__packed__, __gcc_struct__)) *a = v;
-	void *ret;
-	_cgo_tsan_acquire();
-	ret = malloc(a->p0);
-	if (ret == 0 && a->p0 == 0) {
-		ret = malloc(1);
-	}
-	a->r1 = ret;
-	_cgo_tsan_release();
-}
+Concat (_cgo_export.c当中的实现) =>
+    crosscall2(crosscall2 汇编实现, cgo/asm_amd64.s) => 
+        _cgoexp_5154f501eb16_Concat(桥梁代码, _cgo_gotypes.go) => 
+            _cgo_runtime_cgocallback(runtime.cgocallback 汇编实现, asm_amd64.s) => 
+                _cgoexpwrap_5154f501eb16_Concat(包装了 Concat, _cgo_gotypes.go) => 
+                    Concat(Go代码的函数, test_cgo1.go)
 ```
