@@ -11,8 +11,8 @@
 4. `//export Function` 导出函数标记. 注: `//` 和 `export` 之间没有任何空格. 导出的 `Function` 名称和 Go 函数
 名称必须一致.
 
-5. 导出的 Go 函数参数或返回值当中不能包含自定义的struct(不包含 string, int, slice, array, map, chan 的别名). 
-对于自定义的结构体, 可以使用 interface{} 或 unsafe.Pointer 替换.
+5. 导出的 Go 函数参数或返回值当中不能包含自定义的struct(对于 string, int, slice, array, map, chan 类型的别名除
+外). 对于自定义的结构体, 可以使用 interface{} 或 unsafe.Pointer 替换.
 
 6. 可以导出struct的方法, 但是这些 struct 必须是 string, int, slice, array, map, chan 的别名. 即:
 
@@ -29,10 +29,11 @@ type Chan chan struct{}
 
 > 关于 Go 导出函数的看法:
 1. 导出的函数建议使用 C 类型的参数, 这样方便外部函数进行调用.
-2. 如果导出函数的类型是 Go 内置的类型(int,float,map,interface,slice,chan), `函数导出` 和 `函数调用` 要分离, 否
-则会存在类型未定义的错误. 对于 string 类型, 建议最好使用 *C.char 类型进行替换, 否则存在一些问题.
-3. 在导出的函数中, 不建议将(map,interface,chan)类型作为参数进行传递, 因为它们会失去 Go 本身自带的一些属性, 导致一些
-异常的行为发生.
+2. 如果导出函数的类型是 Go 内置的类型(int,float,map,interface,slice,chan), `函数导出` 和 `函数调用` 要分离(不要
+在同一个 Go 文件当中), 否则会出现类型未定义的错误. 对于 string 类型, 建议最好使用 *C.char 类型进行替换, 否则存在某些
+bug.
+3. 在导出的函数中, 不建议将(map,interface,chan)类型作为参数或返回值进行传递, 因为它们会失去 Go 本身自带的一些属性, 
+导致一些奇怪的行为发生.
 
 
 案例1: 导出 C 类型参数函数
@@ -55,6 +56,8 @@ func main() {}
 ```cgo
 package main
 
+import "C"
+
 //export Add
 func Add(i, j int) int {
 	return i + j
@@ -68,6 +71,7 @@ func main() {}
 ```cgo
 package main
 
+import "C"
 import "fmt"
 
 type Int int
@@ -354,7 +358,7 @@ type StringHeader struct{
 }
 ```
 
-### Go => C 原理
+### Go 调用 C 原理
 
 // `export/export2_go_c.go`
 ```cgo
@@ -368,7 +372,7 @@ int sum(int a, int b) {
 import "C"
 
 func main() {
-	println(C.sum(11, 12))
+    println(C.sum(11, 12))
 }
 ```
 
@@ -385,20 +389,20 @@ extern char* _cgo_topofstack(void);
 
 void _cgo_9a439e687ff9_Cfunc_sum(void *v)
 {
-        struct {
-                int p0;
-                int p1;
-                int r;
-                char __pad12[4];
-        } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
-        char *_cgo_stktop = _cgo_topofstack(); // 获取栈顶
-        __typeof__(_cgo_a->r) _cgo_r;
-        _cgo_tsan_acquire();
-        _cgo_r = sum(_cgo_a->p0, _cgo_a->p1); // 调用 sum 函数
-        _cgo_tsan_release();
-        _cgo_a = (void*)((char*)_cgo_a + (_cgo_topofstack() - _cgo_stktop));
-        _cgo_a->r = _cgo_r;
-        _cgo_msan_write(&_cgo_a->r, sizeof(_cgo_a->r));
+    struct {
+            int p0;
+            int p1;
+            int r;
+            char __pad12[4];
+    } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
+    char *_cgo_stktop = _cgo_topofstack(); // 获取栈顶
+    __typeof__(_cgo_a->r) _cgo_r;
+    _cgo_tsan_acquire();
+    _cgo_r = sum(_cgo_a->p0, _cgo_a->p1); // 调用 sum 函数
+    _cgo_tsan_release();
+    _cgo_a = (void*)((char*)_cgo_a + (_cgo_topofstack() - _cgo_stktop));
+    _cgo_a->r = _cgo_r;
+    _cgo_msan_write(&_cgo_a->r, sizeof(_cgo_a->r));
 }
 ```
 
@@ -470,61 +474,61 @@ Go 当中变量可以分配在栈上或堆上. 栈中变量的地址随着 go �
 //
 //go:nosplit
 func cgocall(fn, arg unsafe.Pointer) int32 {
-	if !iscgo && GOOS != "solaris" && GOOS != "illumos" && GOOS != "windows" {
-		throw("cgocall unavailable")
-	}
+    if !iscgo && GOOS != "solaris" && GOOS != "illumos" && GOOS != "windows" {
+        throw("cgocall unavailable")
+    }
     
     // 函数检查
-	if fn == nil {
-		throw("cgocall nil")
-	}
-
-	if raceenabled {
-		racereleasemerge(unsafe.Pointer(&racecgosync))
-	}
-
-	mp := getg().m // 获取当前的 m
-	mp.ncgocall++  // 统计 m 调用 CGO 的次数
-	mp.ncgo++      // 周期内调用的次数
-
-	// Reset traceback.
-	mp.cgoCallers[0] = 0 // 如果在 cgo 中 crash. 记录 CGO 的 traceback
-
-	// 进入系统调用, 以便调度程序创建新的 M 来执行 G
-	// 对于 asmcgocall 的调用保证不会增加 stack 并且不会分配内存, 因此在超出 $GOMAXPROCS
-	// 之外的 "系统调用中" 中调用是安全的.
-	// fn 可能会会掉到 Go 代码中, 这种情况下, 将退出 "system call", 运行 Go 代码(可能会增加堆栈),
-	// 然后重新进入 "system call". PC和SP在这里被保存.
-	entersyscall() // 进入系统调用前期准备工作. M, P 分离, 防止系统调用阻塞 P 的调度, 保存上下文.
-
-	// 告诉异步抢占我们正在进入外部代码. 在 entersyscall 之后这样做, 因为这可能会阻塞并导致异步抢占失败,
-	// 但此时同步抢占会成功(尽管这不是正确性的问题)
-	osPreemptExtEnter(mp) // 在 linux 当中是空函数
-
-	mp.incgo = true
-	errno := asmcgocall(fn, arg) // 切换到 g0, 调用 C 函数 fn, 汇编实现
-
-	// Update accounting before exitsyscall because exitsyscall may
-	// reschedule us on to a different M.
-	mp.incgo = false
-	mp.ncgo--
-
-	osPreemptExtExit(mp) // 在 linux 当中是空函数
-
-	exitsyscall() // 退出系统调用, 寻找 P 来绑定 M
-
-	// Note that raceacquire must be called only after exitsyscall has
-	// wired this M to a P.
-	if raceenabled {
-		raceacquire(unsafe.Pointer(&racecgosync))
-	}
+    if fn == nil {
+        throw("cgocall nil")
+    }
+    
+    if raceenabled {
+        racereleasemerge(unsafe.Pointer(&racecgosync))
+    }
+    
+    mp := getg().m // 获取当前的 m
+    mp.ncgocall++  // 统计 m 调用 CGO 的次数
+    mp.ncgo++      // 周期内调用的次数
+    
+    // Reset traceback.
+    mp.cgoCallers[0] = 0 // 如果在 cgo 中 crash. 记录 CGO 的 traceback
+    
+    // 进入系统调用, 以便调度程序创建新的 M 来执行 G
+    // 对于 asmcgocall 的调用保证不会增加 stack 并且不会分配内存, 因此在超出 $GOMAXPROCS
+    // 之外的 "系统调用中" 中调用是安全的.
+    // fn 可能会会掉到 Go 代码中, 这种情况下, 将退出 "system call", 运行 Go 代码(可能会增加堆栈),
+    // 然后重新进入 "system call". PC和SP在这里被保存.
+    entersyscall() // 进入系统调用前期准备工作. M, P 分离, 防止系统调用阻塞 P 的调度, 保存上下文.
+    
+    // 告诉异步抢占我们正在进入外部代码. 在 entersyscall 之后这样做, 因为这可能会阻塞并导致异步抢占失败,
+    // 但此时同步抢占会成功(尽管这不是正确性的问题)
+    osPreemptExtEnter(mp) // 在 linux 当中是空函数
+    
+    mp.incgo = true
+    errno := asmcgocall(fn, arg) // 切换到 g0, 调用 C 函数 fn, 汇编实现
+    
+    // Update accounting before exitsyscall because exitsyscall may
+    // reschedule us on to a different M.
+    mp.incgo = false
+    mp.ncgo--
+    
+    osPreemptExtExit(mp) // 在 linux 当中是空函数
+    
+    exitsyscall() // 退出系统调用, 寻找 P 来绑定 M
+    
+    // Note that raceacquire must be called only after exitsyscall has
+    // wired this M to a P.
+    if raceenabled {
+        raceacquire(unsafe.Pointer(&racecgosync))
+    }
     
     // 防止 Go 的 gc, 在 C 函数执行期间回收相关参数, 用法与前述_Cgo_use类似
-	KeepAlive(fn) 
-	KeepAlive(arg)
-	KeepAlive(mp)
-
-	return errno
+    KeepAlive(fn) 
+    KeepAlive(arg)
+    KeepAlive(mp)
+    
+    return errno
 }
 ```
 
@@ -546,75 +550,75 @@ asmcgocall 采用汇编实现:
 // fn 是函数地址, arg 是第一个参数地址
 // 在 g0 上调用 fn(arg) 函数.
 TEXT ·asmcgocall(SB),NOSPLIT,$0-20
-	MOVQ	fn+0(FP), AX
-	MOVQ	arg+8(FP), BX
-
-	MOVQ	SP, DX // 保存当前的 SP 到 DX
-
-	// Figure out if we need to switch to m->g0 stack.
-	// We get called to create new OS threads too, and those
-	// come in on the m->g0 stack already.
-	// 切换 g 之前的检查
-	get_tls(CX)
-	MOVQ	g(CX), R8 // R8 = g
-	CMPQ	R8, $0    // g == 0
-	JEQ	nosave // 相等跳转, 则说明当前 g 为空
-	MOVQ	g_m(R8), R8 // 当前 m
-	MOVQ	m_g0(R8), SI // SI = m.g0
-	MOVQ	g(CX), DI    // DI = g  
-	CMPQ	SI, DI // m.g0 == g
-	JEQ	nosave // 相等跳转, 当前在 g0 上
-	MOVQ	m_gsignal(R8), SI // SI = m.gsignal
-	CMPQ	SI, DI // m.gsignal == g
-	JEQ	nosave // 相等跳转, 当前 m.gsignal 上
-
-	// 切换到 g0 上
-	MOVQ	m_g0(R8), SI // SI=m.g0
-	CALL	gosave<>(SB) // 调用 gosave, 参数是 gobuf
-	MOVQ	SI, g(CX) // 切换到 g0
-	MOVQ	(g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
-
-	// Now on a scheduling stack (a pthread-created stack).
-	// Make sure we have enough room for 4 stack-backed fast-call
-	// registers as per windows amd64 calling convention.
-	SUBQ	$64, SP     // SP=SP-64
-	ANDQ	$~15, SP	// SP=SP+16, 偏移 gcc ABI
-	MOVQ	DI, 48(SP)	// 保存 g 
-	MOVQ	(g_stack+stack_hi)(DI), DI // DI=g.stack.hi
-	SUBQ	DX, DI       // 计算 g 栈大小, 保存到 DI 当中
-	MOVQ	DI, 40(SP)	// 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
-	MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-	MOVQ	BX, CX		// CX = first argument in Win64
-	CALL	AX          // 调用函数, 参数 DI, SI, CX, DX, R8
-
-	// 函数调用完成, 恢复到 g, stack
-	get_tls(CX)
-	MOVQ	48(SP), DI // DI=g
-	MOVQ	(g_stack+stack_hi)(DI), SI // SI=g.stack.hi
-	SUBQ	40(SP), SI // SI=SI-size
-	MOVQ	DI, g(CX)  // tls 保存, 恢复到 g 
-	MOVQ	SI, SP     // 恢复 SP
-
-	MOVL	AX, ret+16(FP) // 函数返回错误码
-	RET
+    MOVQ	fn+0(FP), AX
+    MOVQ	arg+8(FP), BX
+    
+    MOVQ	SP, DX // 保存当前的 SP 到 DX
+    
+    // Figure out if we need to switch to m->g0 stack.
+    // We get called to create new OS threads too, and those
+    // come in on the m->g0 stack already.
+    // 切换 g 之前的检查
+    get_tls(CX)
+    MOVQ	g(CX), R8 // R8 = g
+    CMPQ	R8, $0    // g == 0
+    JEQ	nosave // 相等跳转, 则说明当前 g 为空
+    MOVQ	g_m(R8), R8 // 当前 m
+    MOVQ	m_g0(R8), SI // SI = m.g0
+    MOVQ	g(CX), DI    // DI = g  
+    CMPQ	SI, DI // m.g0 == g
+    JEQ	nosave // 相等跳转, 当前在 g0 上
+    MOVQ	m_gsignal(R8), SI // SI = m.gsignal
+    CMPQ	SI, DI // m.gsignal == g
+    JEQ	nosave // 相等跳转, 当前 m.gsignal 上
+    
+    // 切换到 g0 上
+    MOVQ	m_g0(R8), SI // SI=m.g0
+    CALL	gosave<>(SB) // 调用 gosave, 参数是 gobuf
+    MOVQ	SI, g(CX) // 切换到 g0
+    MOVQ	(g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
+    
+    // Now on a scheduling stack (a pthread-created stack).
+    // Make sure we have enough room for 4 stack-backed fast-call
+    // registers as per windows amd64 calling convention.
+    SUBQ	$64, SP     // SP=SP-64
+    ANDQ	$~15, SP	// SP=SP+16, 偏移 gcc ABI
+    MOVQ	DI, 48(SP)	// 保存 g 
+    MOVQ	(g_stack+stack_hi)(DI), DI // DI=g.stack.hi
+    SUBQ	DX, DI       // 计算 g 栈大小, 保存到 DI 当中
+    MOVQ	DI, 40(SP)	// 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
+    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
+    MOVQ	BX, CX		// CX = first argument in Win64
+    CALL	AX          // 调用函数, 参数 DI, SI, CX, DX, R8
+    
+    // 函数调用完成, 恢复到 g, stack
+    get_tls(CX)
+    MOVQ	48(SP), DI // DI=g
+    MOVQ	(g_stack+stack_hi)(DI), SI // SI=g.stack.hi
+    SUBQ	40(SP), SI // SI=SI-size
+    MOVQ	DI, g(CX)  // tls 保存, 恢复到 g 
+    MOVQ	SI, SP     // 恢复 SP
+    
+    MOVL	AX, ret+16(FP) // 函数返回错误码
+    RET
 
 nosave:
-	// 在系统栈上运行, 甚至可能没有 g.
+    // 在系统栈上运行, 甚至可能没有 g.
     // 在线程创建或线程拆除期间可能没有 g 发生(例如, 参见 Solaris 上的 needm/dropm).
     // 这段代码和上面的代码作用是一样的, 但没有saving/restoring g, 并且不用担心 stack 移动(因为我们在系统栈上,
     // 而不是在 goroutine 堆栈上).
     // 如果上面的代码已经在系统栈上, 则可以直接使用, 但是通过此代码的唯一路径在 Solaris 上很少见.
-	SUBQ	$64, SP
-	ANDQ	$~15, SP
-	MOVQ	$0, 48(SP)	// where above code stores g, in case someone looks during debugging
-	MOVQ	DX, 40(SP)	// save original stack pointer
-	MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-	MOVQ	BX, CX		// CX = first argument in Win64
-	CALL	AX
-	MOVQ	40(SP), SI	// restore original stack pointer
-	MOVQ	SI, SP
-	MOVL	AX, ret+16(FP)
-	RET
+    SUBQ	$64, SP
+    ANDQ	$~15, SP
+    MOVQ	$0, 48(SP)	// where above code stores g, in case someone looks during debugging
+    MOVQ	DX, 40(SP)	// save original stack pointer
+    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
+    MOVQ	BX, CX		// CX = first argument in Win64
+    CALL	AX
+    MOVQ	40(SP), SI	// restore original stack pointer
+    MOVQ	SI, SP
+    MOVL	AX, ret+16(FP)
+    RET
 ```
 
 
@@ -639,3 +643,212 @@ var _cgo_9a439e687ff9_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_9a439e687ff9_Cfun
 
 - 创建 Go 对象的 `_cgo_9a439e687ff9_Cfunc_sum` 并赋值 C 函数地址.
 
+
+### Go 导出 C 原理
+
+// test.go
+```cgo
+import "C"
+
+//export Concat
+func Concat(a, b *C.char) *C.char {
+	return C.CString(C.GoString(a) + C.GoString(b))
+}
+
+func main() {}
+```
+
+
+导出的文件主要包含:
+```
+test_cgo1.go
+_cgo_gotypes.go
+test_cgo2.c
+
+_cgo_export.c
+_cgo_export.h
+```
+
+// test_cgo1.go
+```cgo
+import _ "unsafe"
+
+//export Concat
+func Concat(a, b * /*line :9:19*/_Ctype_char /*line :9:25*/) * /*line :9:28*/_Ctype_char /*line :9:34*/ {
+	return ( /*line :10:9*/_Cfunc_CString /*line :10:17*/)(( /*line :10:19*/_Cfunc_GoString /*line :10:28*/)(a) + ( /*line :10:35*/_Cfunc_GoString /*line :10:44*/)(b))
+}
+
+func main() {}
+```
+
+// _cgo_gotypes.go
+// 定义了 test_cgo1.go 当中使用的类型和方法.
+// 从 Go 空间导出符号表.
+```cgo
+type _Ctype__GoString_ string
+
+type _Ctype_char int8
+
+type _Ctype_intgo = _Ctype_ptrdiff_t
+
+type _Ctype_long int64
+
+type _Ctype_ptrdiff_t = _Ctype_long
+
+type _Ctype_void [0]byte
+
+func _Cfunc_CString(s string) *_Ctype_char {
+	p := _cgo_cmalloc(uint64(len(s)+1))
+	pp := (*[1<<30]byte)(p)
+	copy(pp[:], s)
+	pp[len(s)] = 0
+	return (*_Ctype_char)(p)
+}
+
+//go:linkname _cgo_runtime_gostring runtime.gostring
+func _cgo_runtime_gostring(*_Ctype_char) string
+
+func _Cfunc_GoString(p *_Ctype_char) string {
+	return _cgo_runtime_gostring(p)
+}
+
+//go:cgo_export_dynamic Concat
+//go:linkname _cgoexp_5154f501eb16_Concat _cgoexp_5154f501eb16_Concat
+//go:cgo_export_static _cgoexp_5154f501eb16_Concat
+//go:nosplit
+//go:norace
+func _cgoexp_5154f501eb16_Concat(a unsafe.Pointer, n int32, ctxt uintptr) {
+	fn := _cgoexpwrap_5154f501eb16_Concat
+	_cgo_runtime_cgocallback(**(**unsafe.Pointer)(unsafe.Pointer(&fn)), a, uintptr(n), ctxt);
+}
+
+func _cgoexpwrap_5154f501eb16_Concat(p0 *_Ctype_char, p1 *_Ctype_char) (r0 *_Ctype_char) {
+	defer func() {
+		_cgoCheckResult(r0)
+	}()
+	return Concat(p0, p1)
+}
+
+//go:cgo_import_static _cgo_5154f501eb16_Cfunc__Cmalloc
+//go:linkname __cgofn__cgo_5154f501eb16_Cfunc__Cmalloc _cgo_5154f501eb16_Cfunc__Cmalloc
+var __cgofn__cgo_5154f501eb16_Cfunc__Cmalloc byte
+var _cgo_5154f501eb16_Cfunc__Cmalloc = unsafe.Pointer(&__cgofn__cgo_5154f501eb16_Cfunc__Cmalloc)
+
+//go:linkname runtime_throw runtime.throw
+func runtime_throw(string)
+
+//go:cgo_unsafe_args
+func _cgo_cmalloc(p0 uint64) (r1 unsafe.Pointer) {
+	_cgo_runtime_cgocall(_cgo_5154f501eb16_Cfunc__Cmalloc, uintptr(unsafe.Pointer(&p0)))
+	if r1 == nil {
+		runtime_throw("runtime: C malloc failed")
+	}
+	return
+}
+```
+
+// test_cgo2.c
+```cgo
+typedef struct { const char *p; intgo n; } _GoString_;
+typedef struct { char *p; intgo n; intgo c; } _GoBytes_;
+_GoString_ GoString(char *p);
+_GoString_ GoStringN(char *p, int l);
+_GoBytes_ GoBytes(void *p, int n);
+char *CString(_GoString_);
+void *CBytes(_GoBytes_);
+void *_CMalloc(size_t);
+
+__attribute__ ((unused))
+static size_t _GoStringLen(_GoString_ s) { return (size_t)s.n; }
+
+__attribute__ ((unused))
+static const char *_GoStringPtr(_GoString_ s) { return s.p; }
+```
+
+
+// _cgo_export.h
+
+```cgo
+#ifndef GO_CGO_GOSTRING_TYPEDEF
+typedef struct { const char *p; ptrdiff_t n; } _GoString_;
+#endif
+
+typedef signed char GoInt8;
+typedef unsigned char GoUint8;
+typedef short GoInt16;
+typedef unsigned short GoUint16;
+typedef int GoInt32;
+typedef unsigned int GoUint32;
+typedef long long GoInt64;
+typedef unsigned long long GoUint64;
+typedef GoInt64 GoInt;
+typedef GoUint64 GoUint;
+typedef __SIZE_TYPE__ GoUintptr;
+typedef float GoFloat32;
+typedef double GoFloat64;
+typedef float _Complex GoComplex64;
+typedef double _Complex GoComplex128;
+
+#ifndef GO_CGO_GOSTRING_TYPEDEF
+typedef _GoString_ GoString;
+#endif
+typedef void *GoMap;
+typedef void *GoChan;
+typedef struct { void *t; void *v; } GoInterface;
+typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern char* Concat(char* a, char* b);
+
+#ifdef __cplusplus
+}
+#endif
+```
+
+// _cgo_export.c
+```cgo
+#include <stdlib.h>
+#include "_cgo_export.h"
+
+extern void crosscall2(void (*fn)(void *, int, __SIZE_TYPE__), void *, int, __SIZE_TYPE__);
+extern __SIZE_TYPE__ _cgo_wait_runtime_init_done(void);
+extern void _cgo_release_context(__SIZE_TYPE__);
+extern char* _cgo_topofstack(void);
+
+extern void _cgoexp_5154f501eb16_Concat(void *, int, __SIZE_TYPE__);
+
+char* Concat(char* a, char* b)
+{
+	__SIZE_TYPE__ _cgo_ctxt = _cgo_wait_runtime_init_done();
+	struct {
+		char* p0;
+		char* p1;
+		char* r0;
+	} __attribute__((__packed__, __gcc_struct__)) _cgo_a;
+	_cgo_a.p0 = a;
+	_cgo_a.p1 = b;
+	_cgo_tsan_release();
+	crosscall2(_cgoexp_5154f501eb16_Concat, &_cgo_a, 24, _cgo_ctxt);
+	_cgo_tsan_acquire();
+	_cgo_release_context(_cgo_ctxt);
+	return _cgo_a.r0;
+}
+
+void _cgo_5154f501eb16_Cfunc__Cmalloc(void *v) {
+	struct {
+		unsigned long long p0;
+		void *r1;
+	} __attribute__((__packed__, __gcc_struct__)) *a = v;
+	void *ret;
+	_cgo_tsan_acquire();
+	ret = malloc(a->p0);
+	if (ret == 0 && a->p0 == 0) {
+		ret = malloc(1);
+	}
+	a->r1 = ret;
+	_cgo_tsan_release();
+}
+```
