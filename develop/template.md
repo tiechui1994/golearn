@@ -68,6 +68,26 @@ empty 值包括 false, 0, nil指针或接口, 长度为0的数组, 切片, 字�
 ```
 
 
+案例:
+
+```
+package main
+
+import (
+{{- range $idx, $ele := .Packages }}
+    {{ $ele.Alias }} "{{ $ele.Package }}"
+{{- end }}
+)
+
+type Manager struct {
+{{- range $idx, $ele := .Packages }}
+    {{ $ele.TypeName }}{{$idx}} {{ $ele.Alias }}.{{ $ele.TypeName }} {{ $ele.Tag }}
+{{- end }}
+}
+```
+
+> 注: 上面的 `$ele.Alias` 当中的 Alias 可以是一个字段, 也可以是一个方法
+
 ### 函数
 
 template 内置的函数. 
