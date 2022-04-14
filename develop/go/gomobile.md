@@ -11,9 +11,12 @@ gomobile 是将 Go 代码库转换成 Android/iOS 库的一种方式.
 
 ```
 mkdir -p ~/Documents/android
-curl https://dl.google.com/android/repository/android-ndk-r23b-linux.zip -o android-ndk-r23b.zip
-unzip android-ndk-r23b.zip && mv android-ndk-r23b ~/Documents/android
+curl https://dl.google.com/android/repository/android-ndk-r22b-linux.zip -o android-ndk-r23b.zip
+unzip android-ndk-r22b.zip && mv android-ndk-r22b ~/Documents/android
 ```
+
+> 注: 目前虽然已经有了 android-ndk-r23b, android-ndk-r24, 但是编译的时候存在点问题. 需要自己添加些文件连接. 建议
+使用 android-ndk-r22b 
 
 2. 下载 android-sdk. (android-sdk 是通过 commandlinetools 工具间接下载的).
 
@@ -22,13 +25,16 @@ unzip android-ndk-r23b.zip && mv android-ndk-r23b ~/Documents/android
 ```
 # download
 curl https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip -o commandlinetools.zip
-unzip android-ndk-r23b.zip
+unzip commandlinetools.zip
 mv commandlinetools-linux-7583922_latest/cmdline-tools . && rm -rf commandlinetools-linux-7583922_latest
 
 # sdk
 ./cmdline-tools/bin/sdkmanager "platform-tools" "platforms;android-23" --sdk_root=./cmdline-tools
 mv mv cmdline-tools ~/Documents/android/android-sdk
 ```
+
+> 注: android-23 当中的 23 是 API 级别. 这个对应的是 Android6.0, 对于 Android10, 需要 android-29. 自行决定使
+用哪个API级别的Android版本
 
 3. 安装 gomobile, gobind, 在 go 的版本升级到 go1.16 以上后, 执行命令:
 
@@ -47,13 +53,15 @@ SRC = $(wildcard *.go)
 
 # config
 export ANDROID_HOME=~/Documents/android/android-sdk
-export ANDROID_NDK_HOME=~/Documents/android/android-ndk-r23b
-export TOOL=~/Documents/android/android-ndk-r23b
+export ANDROID_NDK_HOME=~/Documents/android/android-ndk-r22b
+export TOOL=~/Documents/android/android-ndk-r22b
 
 android:
-	gomobile bind -target=android -o device.aar -v /home/user/go/src/cloud/vdevice/demo
+	GO111MODULE=off \
+	gomobile bind -target=android/arm64 -o device.aar -v -x /home/user/go/src/cloud/vdevice/demo
 
 ios:
+	GO111MODULE=off \
 	gomobile bind -target=ios -o device.framework -v /home/user/go/src/cloud/vdevice/demo
 
 clean:
