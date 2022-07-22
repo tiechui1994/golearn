@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+func init() {
+	log.SetPrefix("[client] ")
+	log.SetFlags(log.Ltime | log.Lshortfile)
+}
+
 /**
 // param network:
 // The network must be a UDP network name; "udp", "udp4" (IPv4-only), "udp6" (IPv6-only)
@@ -44,7 +49,8 @@ func ListenMulticastUDP(network string, ifi *Interface, gaddr *UDPAddr) (*UDPCon
 
 */
 
-// 广播的client
+// 广播 UDP 通信. client 和 server 都需要 listen
+// server 端需要 listen 255.255.255.255:80
 func BroadCastClient() {
 	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	dstAddr := &net.UDPAddr{IP: net.ParseIP("255.255.255.255"), Port: 80}
@@ -70,10 +76,12 @@ func BroadCastClient() {
 	}
 }
 
-// 多播的client
-func MulticastClient() {
+// 多播 UDP 通信. client 只能发送消息
+// server 端需要 listen 0.0.0.0:2000, 然后将其加入都多播组 (例如, 224.0.0.250) 当中.
+// server 端比较复杂
+func MultiCastClient() {
 	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	dstAddr := &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: 2000}
+	dstAddr := &net.UDPAddr{IP: net.ParseIP("224.0.0.250"), Port: 2000}
 	conn, err := net.DialUDP("udp", srcAddr, dstAddr)
 	if err != nil {
 		log.Println("DialUDP:", err)
@@ -81,22 +89,20 @@ func MulticastClient() {
 	}
 	defer conn.Close()
 
-	var buf = make([]byte, 1024)
-	_, err = conn.Write([]byte("hello"))
-	if err != nil {
-		log.Println("WriteToUDP:", err)
-		return
-	}
+	for {
+		_, err = conn.Write([]byte(time.Now().String()))
+		if err != nil {
+			log.Println("WriteToUDP:", err)
+			return
+		}
 
-	n, addr, err := conn.ReadFromUDP(buf)
-	if err != nil {
-		log.Println("ReadFromUDP:", err)
-		return
+		time.Sleep(time.Second)
 	}
-	log.Printf("read from <%v> data [%v]", addr.String(), n)
 }
 
-func UDPClient()  {
+// 单播, 点对点的进行 UDP 通信
+// server 端需要 listen 127.0.0.1:8899
+func SimpleCastClient() {
 	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	dstAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8899}
 	conn, err := net.DialUDP("udp", srcAddr, dstAddr)
@@ -121,6 +127,18 @@ func UDPClient()  {
 	}
 }
 
+var (
+	client  string
+	clients = map[string]func(){
+		"SimpleCastClient": SimpleCastClient,
+		"MultiCastClient":  MultiCastClient,
+		"BroadCastClient":  BroadCastClient,
+	}
+)
+
 func main() {
-	UDPClient()
+	log.Printf("client: %v", client)
+	if fun, ok := clients[client]; ok {
+		fun()
+	}
 }

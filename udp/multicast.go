@@ -26,10 +26,10 @@ func init() {
 }
 
 func main() {
-	multicast()
+	multiCast()
 }
 
-func multicast() {
+func multiCast() {
 	// 1. interface
 	inter, err := net.InterfaceByName(inetname)
 	if err != nil {
