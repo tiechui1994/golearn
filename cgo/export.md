@@ -121,6 +121,8 @@ go build -buildmode=c-archive -o libxxx.a xxx.go
 go build -ldflags='-buildmode=c-archive' -o libxxx.a xxx.go
 ```
 
+> 注: 使用 `ldflags` 方式编译是没有 header 文件输出的
+
 ### 常用的调用模式 
 
 - Go => C => Go => C 模式
