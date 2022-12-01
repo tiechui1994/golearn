@@ -1236,6 +1236,8 @@ C++ 代码:
 ```cgo
 #include <string>
 
+#ifdef __cplusplus
+
 class Buffer {
     private:
         std::string* s_;
@@ -1247,12 +1249,13 @@ class Buffer {
         int Size();
         char* Data();
 };
+
+#endif
 ```
 
 // buffer.cpp
 ```cgo
 #include "buffer.h"
-#include <string>
 
 Buffer::Buffer(int size) {
     this->s_ = new std::string(size, char('\0'));
@@ -1270,7 +1273,11 @@ char* Buffer::Data() {
 
 > **bridge.h 和 bridge.cpp 是使用 C 代码包装 C++ 的类 Buffer, 这个也称为桥接**
 >
-> **需要深刻理解 `extern "C"` 的含义, 这是 Go 调用 C++ 的关键环节.**
+> **1. 需要深刻理解 `extern "C"` 的含义, 这是包装成C++成C的关键环节.**
+>
+> **2. 在 bridge.h `typedef struct Buffer_T Buffer_T` 只是预定义结构体(有点类似 `void*` 的感觉), 真正的 
+> `Buffer_T` 是在 bridge.cpp 实现的时候具体化, 而且这里采用了继承, 也可以使用组合的方式. bridge.cpp 当中可以使用
+> C++ 的方式用.**
 
 // bridge.h
 ```cgo
@@ -1280,11 +1287,11 @@ extern "C" {
 
 typedef struct Buffer_T Buffer_T;
 
-Buffer_T* NewBuffer(int size);
-void DeleteBuffer(Buffer_T* p);
+extern Buffer_T* NewBuffer(int size);
+extern void DeleteBuffer(Buffer_T* p);
 
-char* Buffer_Data(Buffer_T* p);
-int Buffer_Size(Buffer_T* p);
+extern char* Buffer_Data(Buffer_T* p);
+extern int Buffer_Size(Buffer_T* p);
 
 #ifdef __cplusplus
 }
@@ -1295,6 +1302,10 @@ int Buffer_Size(Buffer_T* p);
 ```cgo
 #include "buffer.h"
 #include "bridge.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // 注意这里的包装继承机制
 struct Buffer_T: Buffer {
@@ -1318,6 +1329,10 @@ char* Buffer_Data(Buffer_T* p) {
 int Buffer_Size(Buffer_T* p) {
     return p->Size();
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 ```
 
 > **bridge.go 是使用 go 对 C 代码进行了一次包装.**
@@ -1329,8 +1344,8 @@ int Buffer_Size(Buffer_T* p) {
 package main
 
 /*
-#cgo CXXFLAGS: -std=c++11 -I .
-#cgo LDFLAGS: -L . -lbuffer -lstdc++
+#cgo CXXFLAGS: -std=c++11 -I.
+#cgo LDFLAGS: -static -L. -lbuffer -lstdc++
 #include "bridge.h"
 */
 import "C"
@@ -1417,21 +1432,22 @@ int main() {
 
 // makefile
 ```makefile
-export LIBRARY_PATH=$(CURDIR)
-SRC = $(wildcard *.go)
+GO = $(wildcard *.go)
+CPLUS = $(wildcard *.cpp)
+C = $(wildcard *.c)
 
-gotest: $(SRC) static
-	go build -o gotest -ldflags "-w" -x $(SRC)
+gotest: static
+	go build -o gotest -ldflags "-w" -x $(GO)
 
 ctest: static
-	$(CC) -o ctest test.c -lbuffer -lstdc++
+	$(CC) -o ctest $(C) -static -L. -lbuffer -lstdc++
 
-static:
-	$(CXX) $(CXXFLAGS) -c *.cpp
+static: clean
+	$(CXX) -c -std=c++11 $(CPLUS)
 	$(AR) -r libbuffer.a *.o
-	@rm -r *.o
+	@rm -rf *.o
 
 .PHONY : clean
 clean:
-	-rm -rf ctest gotest *.o *.a *.gch
+	@rm -rf ctest gotest *.o *.a *.gch
 ```

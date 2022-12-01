@@ -1,4 +1,4 @@
-#include "cxx.h"
+#include "func.h"
 #include <stdio.h>
 
 void cxx_function(int cmd) {
