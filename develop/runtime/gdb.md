@@ -25,14 +25,59 @@
 
 打印命令:
 
-- info functions: 查询函数
+- info functions `[regex]`: 查询函数
+
 - info frame: 当前调用栈的状况
+```
+(gdb) info frame
+Stack level 0, frame at 0xc000066f80:
+ rip = 0x47f780 in main.main (/home/user/workspace/videos/golang/main.go:18); saved rip = 0x432067
+ source language unknown.
+ Arglist at 0xc000066f70, args: 
+ Locals at 0xc000066f70, Previous frame's sp is 0xc000066f80
+ Saved registers:
+  rip at 0xc000066f78
+```
+
 - info registers `[rsp, rip, rax, ...]`: 当前`所有`寄存器的状况
 - info stack: stack backtrace
 - info args: 当前栈上的所有参数
 - info locals: 显示当前堆栈页的所有变量.
 - info threads: 显示当前所有的线程信息.
-- info files: 正在调试的 targets 和 file 的名称
+
+- info files: **正在调试程序 file 名称,  Entry point, 各个 section 地址分布**
+```
+(gdb) info files 
+Symbols from "/home/user/workspace/videos/golang/video".
+Local exec file:
+    `/home/user/workspace/videos/golang/video', file type elf64-x86-64.
+    Entry point: 0x45c220
+    0x0000000000401000 - 0x000000000047f8b1 is .text
+    0x0000000000480000 - 0x00000000004b52e5 is .rodata
+    0x00000000004b5480 - 0x00000000004b595c is .typelink
+    0x00000000004b5960 - 0x00000000004b59b8 is .itablink
+    0x00000000004b59b8 - 0x00000000004b59b8 is .gosymtab
+    0x00000000004b59c0 - 0x000000000050ebc8 is .gopclntab
+    0x000000000050f000 - 0x000000000050f020 is .go.buildinfo
+    0x000000000050f020 - 0x000000000051f600 is .noptrdata
+    0x000000000051f600 - 0x0000000000526e10 is .data
+    0x0000000000526e20 - 0x0000000000555d28 is .bss
+    ...
+```
+
+- info symbol ADDR: 打印存储在地址 ADDR 的符号名称. 如果没有符号恰好存储在 ADDR 中, GDB打印最近的符号及其偏移量.
+```
+(gdb) info symbol 0x47f8a0
+main.main.func1 in section .text of /home/user/workspace/videos/golang/video
+```
+
+- info address SYMBOL: 符号 SYMBOL 存储位置. 对于 register 变量, 显示存储在哪个寄存器. 对于 non-register 本
+地变量, 会输出 stack 偏移量.
+```
+(gdb) info address main.main
+Symbol "main.main" is a function at address 0x47f780.
+```
+
 - info display: 打印程序暂停时display的表达式
 - where: 显示所有帧栈的backtrace
 
