@@ -273,5 +273,44 @@ fmt.Println():
 
 ## nm
 
-## strip
+nm 列出某些文件中的符号
 
+```
+nm <option(s)> <file(s)>
+```
+
+option 选项:
+
+- `-f format`: 设置输出格式, 支持的格式: bsd(默认), sysv, posix. 个人比较喜欢 sysv 格式 
+
+- `-n`, `-v`, `--numeric-sort`: 将符号按照地址排序, 输出比较整洁
+
+- `-l`, `--line-numbers`, 显示符号的行号. 对于 Go 程序, 只显示汇编代码的文件, 行号.
+
+- `-g`, `--extern-only`, 只显示外部的符号.
+
+- `-D`, `--dynamic`, 只显示动态符号. 主要用于动态库文件.
+
+### 案例
+
+- 查看符号表
+
+```
+> nm -f sysv --line-numbers --numeric-sort video 
+
+Name                  Value           Class        Type         Size             Line  Section
+runtime.munmap      |00000000004032c0|   T  |              FUNC|00000000000000b4|     |.text
+runtime.munmap.func1|0000000000403380|   T  |              FUNC|0000000000000048|     |.text
+runtime.sigaction   |00000000004033e0|   T  |              FUNC|000000000000015f|     |.text
+runtime.sigaction.func1|0000000000403540|   T  |              FUNC|0000000000000068|     |.text
+runtime.cgocall     |00000000004035c0|   T  |              FUNC|00000000000000e6|     |.text
+runtime.cgoIsGoPointer|00000000004036c0|   T  |              FUNC|00000000000000c1|     |.text
+runtime.cgoCheckWriteBarrier|00000000004037a0|   T  |              FUNC|00000000000000ff|     |.text
+runtime.cgoCheckWriteBarrier.func1|00000000004038a0|   T  |              FUNC|0000000000000095|     |.text
+runtime.cgoCheckMemmove|0000000000403940|   T  |              FUNC|000000000000008b|     |.text
+runtime.cgoCheckSliceCopy|00000000004039e0|   T  |              FUNC|00000000000000b5|     |.text
+runtime.cgoCheckTypedBlock|0000000000403aa0|   T  |              FUNC|000000000000031f|     |.text
+runtime.cgoCheckTypedBlock.func1|0000000000403dc0|   T  |              FUNC|000000000000003a|     |.text
+runtime.cgoCheckBits|0000000000403e00|   T  |              FUNC|00000000000000c6|     |.text
+runtime.makechan    |0000000000404120|   T  |              FUNC|00000000000001c6|     |.text
+```

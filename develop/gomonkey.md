@@ -12,7 +12,7 @@ func (this *Patches) ApplyCore(target, double reflect.Value) *Patches {
     this.check(target, double)
     // 要细品这里 assTarget 的含义.
     // *(*uintptr)(getPointer(target)) .text 段当中的地址, 编译的机码位置.
-    // (getPointer(target))            .rodata 段当中的地址. 
+    // (getPointer(target))            内存当中的变量的指针位置(动态). 
     assTarget := *(*uintptr)(getPointer(target)) 
     original := replace(assTarget, uintptr(getPointer(double)))
     if _, ok := this.originals[assTarget]; !ok {
@@ -41,6 +41,8 @@ func getPointer(v reflect.Value) unsafe.Pointer {
 
 // 指针指向数据替换操作.
 ```
+// target 是机器码位置
+// double 当前替换的内存地址
 func replace(target, double uintptr) []byte {
     code := buildJmpDirective(double)        // 需要替换的数据 
     bytes := entryAddress(target, len(code)) // 获取原生 target 指向的数据
