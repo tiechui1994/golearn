@@ -11,8 +11,8 @@
 func (this *Patches) ApplyCore(target, double reflect.Value) *Patches {
     this.check(target, double)
     // 要细品这里 assTarget 的含义.
-    // *(*uintptr)(getPointer(target)) .text 段当中的地址, 编译的机码位置.
-    // (getPointer(target))            内存当中的变量的指针位置(动态). 
+    // *(*uintptr)(getPointer(target))    .text 段当中的地址, 编译的机码位置.
+    // (getPointer(double))               内存当中的变量的指针位置(动态). 
     assTarget := *(*uintptr)(getPointer(target)) 
     original := replace(assTarget, uintptr(getPointer(double)))
     if _, ok := this.originals[assTarget]; !ok {
@@ -34,6 +34,7 @@ type funcValue struct {
     p unsafe.Pointer
 }
 
+// 参考 reflect.Value 的数据结构, p 是 Pointer-valued data
 func getPointer(v reflect.Value) unsafe.Pointer {
     return (*funcValue)(unsafe.Pointer(&v)).p
 }
@@ -96,6 +97,11 @@ func mprotectCrossPage(addr uintptr, length int, prot int) error {
         }
     }
     return nil
+}
+
+// 内存对齐
+func pageStart(ptr uintptr) uintptr {
+	return ptr & ^(uintptr(syscall.Getpagesize() - 1))
 }
 ```
 
