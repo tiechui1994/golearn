@@ -11,7 +11,7 @@
 func (this *Patches) ApplyCore(target, double reflect.Value) *Patches {
     this.check(target, double)
     // 要细品这里 assTarget 的含义.
-    // *(*uintptr)(getPointer(target))    .text 段当中的地址, 编译的机码位置.
+    // *(*uintptr)(getPointer(target))    TEXT 段当中的函数开始地址, 代码编译后就确定.
     // (getPointer(double))               内存当中的变量的指针位置(动态). 
     assTarget := *(*uintptr)(getPointer(target)) 
     original := replace(assTarget, uintptr(getPointer(double)))
@@ -45,11 +45,12 @@ func getPointer(v reflect.Value) unsafe.Pointer {
 // target 是机器码位置
 // double 当前替换的内存地址
 func replace(target, double uintptr) []byte {
-    code := buildJmpDirective(double)        // 需要替换的数据 
-    bytes := entryAddress(target, len(code)) // 获取原生 target 指向的数据
+    code := buildJmpDirective(double)        // 需要替换的数据(指令)
+    bytes := entryAddress(target, len(code)) // 获取原生 target 开始的 len(code) 字节数据
     original := make([]byte, len(bytes))
-    copy(original, bytes)
-    modifyBinary(target, code)               // 将原生 target 指向的数据进行替换
+    copy(original, bytes)                    // 把这部分数据拷贝到 original
+
+    modifyBinary(target, code)               // 将原生 target 指向的指令数据进行替换, 这个涉及到 .text 操作
     return original
 }
 
@@ -75,7 +76,7 @@ func entryAddress(p uintptr, l int) []byte {
     return *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: p, Len: l, Cap: l}))
 }
 
-// 修改内存 
+// 修改原生而进行的 .text 内容
 func modifyBinary(target uintptr, bytes []byte) {
     function := entryAddress(target, len(bytes))
     err := mprotectCrossPage(target, len(bytes), syscall.PROT_READ|syscall.PROT_WRITE|syscall.PROT_EXEC)
