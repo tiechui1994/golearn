@@ -12,7 +12,7 @@ func (this *Patches) ApplyCore(target, double reflect.Value) *Patches {
     this.check(target, double)
     // 要细品这里 assTarget 的含义.
     // *(*uintptr)(getPointer(target))    TEXT 段当中的函数开始地址, 代码编译后就确定.
-    // (getPointer(double))               内存当中的变量的指针位置(动态). 
+    // (getPointer(double))               内存当中的变量的地址
     assTarget := *(*uintptr)(getPointer(target)) 
     original := replace(assTarget, uintptr(getPointer(double)))
     if _, ok := this.originals[assTarget]; !ok {
