@@ -392,15 +392,15 @@ Dump of assembler code for function main.main:
    0x000000000045dd40 <+0>:     mov    %fs:0xfffffffffffffff8,%rcx
    0x000000000045dd49 <+9>:     cmp    0x10(%rcx),%rsp
    0x000000000045dd4d <+13>:    jbe    0x45dd80 <main.main+64>
-   0x000000000045dd4f <+15>:    sub    $0x20,%rsp #为main函数预留32字节栈空间
-   0x000000000045dd53 <+19>:    mov    %rbp,0x18(%rsp) #保留调用者的rbp寄存器
-   0x000000000045dd58 <+24>:    lea    0x18(%rsp),%rbp #设置rbp的值使其指向main函数帧栈开始地址
-   0x000000000045dd5d <+29>:    movq   $0x1,(%rsp) #sum函数第一个参数(1)入栈
-   0x000000000045dd65 <+37>:    movq   $0x2,0x8(%rsp) #sum函数第二个参数(2)入栈
-   0x000000000045dd6e <+46>:    callq  0x45dce0 <main.sum> #调用sum函数
-   0x000000000045dd73 <+51>:    mov    0x18(%rsp),%rbp #恢复rbp的值
-   0x000000000045dd78 <+56>:    add    $0x20,%rsp #恢复rsp的值
-   0x000000000045dd7c <+60>:    retq  #返回到调用者
+   0x000000000045dd4f <+15>:    sub    $0x20,%rsp           # 为main函数预留32字节栈空间
+   0x000000000045dd53 <+19>:    mov    %rbp,0x18(%rsp)      # 保留调用者的rbp寄存器
+   0x000000000045dd58 <+24>:    lea    0x18(%rsp),%rbp      # 设置rbp的值使其指向main函数帧栈开始地址
+   0x000000000045dd5d <+29>:    movq   $0x1,(%rsp)          # sum函数第一个参数(1)入栈
+   0x000000000045dd65 <+37>:    movq   $0x2,0x8(%rsp)       # sum函数第二个参数(2)入栈
+   0x000000000045dd6e <+46>:    callq  0x45dce0 <main.sum>  # 调用sum函数
+   0x000000000045dd73 <+51>:    mov    0x18(%rsp),%rbp      # 恢复rbp的值
+   0x000000000045dd78 <+56>:    add    $0x20,%rsp           # 恢复rsp的值
+   0x000000000045dd7c <+60>:    retq                        # 返回到调用者
    0x000000000045dd7d <+61>:    nopl   (%rax)
    0x000000000045dd80 <+64>:    callq  0x458c20 <runtime.morestack_noctxt>
    0x000000000045dd85 <+69>:    jmp    0x45dd40 <main.main>
@@ -417,25 +417,25 @@ sum 函数的反汇编代码:
 ```
 (gdb) disass main.sum
 Dump of assembler code for function main.sum:
-   0x000000000045dce0 <+0>:     sub    $0x20,%rsp # 预留32字节
-   0x000000000045dce4 <+4>:     mov    %rbp,0x18(%rsp) #保存main函数的rbp值
-   0x000000000045dce9 <+9>:     lea    0x18(%rsp),%rbp #设置sum函数栈帧的开始地址rbp
-   0x000000000045dcee <+14>:    movq   $0x0,0x38(%rsp) #返回值初始化
-   0x000000000045dcf7 <+23>:    mov    0x28(%rsp),%rax #读取第一个参数a
-   0x000000000045dcfc <+28>:    mov    0x28(%rsp),%rcx #读取第一个参数a
-   0x000000000045dd01 <+33>:    imul   %rax,%rcx # 计算 a*a, 结果保存在 rcx
-   0x000000000045dd05 <+37>:    mov    %rcx,0x10(%rsp) #将rcx保存到变量 a2 上
-   0x000000000045dd0a <+42>:    mov    0x30(%rsp),%rax #读取第二个参数b
-   0x000000000045dd0f <+47>:    mov    0x30(%rsp),%rcx #读取第二个参数b
-   0x000000000045dd14 <+52>:    imul   %rax,%rcx # 计算 b*b, 保存到 rcx
-   0x000000000045dd18 <+56>:    mov    %rcx,0x8(%rsp) # 将rcx保存到变量 b2 上
+   0x000000000045dce0 <+0>:     sub    $0x20,%rsp      # 预留32字节
+   0x000000000045dce4 <+4>:     mov    %rbp,0x18(%rsp) # 保存main函数的rbp值
+   0x000000000045dce9 <+9>:     lea    0x18(%rsp),%rbp # 设置sum函数栈帧的开始地址rbp
+   0x000000000045dcee <+14>:    movq   $0x0,0x38(%rsp) # 返回值初始化
+   0x000000000045dcf7 <+23>:    mov    0x28(%rsp),%rax # 读取第一个参数a
+   0x000000000045dcfc <+28>:    mov    0x28(%rsp),%rcx # 读取第一个参数a
+   0x000000000045dd01 <+33>:    imul   %rax,%rcx       # 计算 a*a, 结果保存在 rcx
+   0x000000000045dd05 <+37>:    mov    %rcx,0x10(%rsp) # 将rcx保存到变量 a2 上
+   0x000000000045dd0a <+42>:    mov    0x30(%rsp),%rax # 读取第二个参数b
+   0x000000000045dd0f <+47>:    mov    0x30(%rsp),%rcx # 读取第二个参数b
+   0x000000000045dd14 <+52>:    imul   %rax,%rcx       # 计算 b*b, 保存到 rcx
+   0x000000000045dd18 <+56>:    mov    %rcx,0x8(%rsp)  # 将rcx保存到变量 b2 上
    0x000000000045dd1d <+61>:    mov    0x10(%rsp),%rax # 将a2加载到 rax 当中
-   0x000000000045dd22 <+66>:    add    %rcx,%rax # a2+b2结果保留到rax
-   0x000000000045dd25 <+69>:    mov    %rax,(%rsp) #将结果保留到c当中
-   0x000000000045dd29 <+73>:    mov    %rax,0x38(%rsp) #将结果复制给返回值
-   0x000000000045dd2e <+78>:    mov    0x18(%rsp),%rbp #恢复main函数的rbp
-   0x000000000045dd33 <+83>:    add    $0x20,%rsp #恢复rsp
-   0x000000000045dd37 <+87>:    retq # 返回函数
+   0x000000000045dd22 <+66>:    add    %rcx,%rax       # a2+b2结果保留到rax
+   0x000000000045dd25 <+69>:    mov    %rax,(%rsp)     # 将结果保留到c当中
+   0x000000000045dd29 <+73>:    mov    %rax,0x38(%rsp) # 将结果复制给返回值
+   0x000000000045dd2e <+78>:    mov    0x18(%rsp),%rbp # 恢复main函数的rbp
+   0x000000000045dd33 <+83>:    add    $0x20, %rsp     # 恢复rsp
+   0x000000000045dd37 <+87>:    retq                   # 返回函数
 End of assembler dump.
 ```
 
@@ -452,11 +452,11 @@ End of assembler dump.
 rsi, rdx, r10, r8, r9传递; 而 go语言函数调用时参数是通过栈传递给被调用函数的, 最后一个参数先入栈, 第一个参数后入栈,
 参数在调用者栈帧之中, 被调用函数通过 rsp加一定的偏移量来获取参数;**
 
-2. **call指令负责把执行call指令时rip寄存器(函数返回地址)入栈, 同时将 rbp 值入栈, 修改 rsp 值大小**
+2. **call指令负责把执行call指令时rip寄存器(函数返回地址)入栈, 同时将 rbp 值入栈**
 
 3. **gcc通过rbp寄存器加偏移量方式访问局部和临时变量, 而go编译器则使用rsp寄存器加偏移量的方式来访问它们;**
 
-4. **ret指令负责把call指令入栈的返回地址出栈给rip, 从而实现从被调用函数返回到调用函数继续执行; 同时恢复 rsp,rbp 的值**
+4. **ret指令负责把call指令入栈的返回地址出栈给rip, 从而实现从被调用函数返回到调用函数继续执行;**
 
 5. **gcc使用rax寄存器返回函数调用的返回值, 而go使用栈返回函数调用的返回值.**
 
