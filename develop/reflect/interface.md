@@ -192,7 +192,7 @@ type _type struct {
 	alg        *typeAlg // 包含了 hash 和 hash 两个方法.
 	gcdata     *byte
 	str        int32 // nameOff
-    ptrToThis  int32 // typeOff
+    	ptrToThis  int32 // typeOff
 }
 type typeAlg struct {
 	// hashing objects of this type (ptr to object, seed) -> hash
