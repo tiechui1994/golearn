@@ -6,9 +6,9 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/protobuf v1.5.2
 	go.uber.org/ratelimit v0.2.0
-	golang.org/x/image v0.0.0-20220617043117-41969df76e82
+	golang.org/x/image v0.5.0
 	golang.org/x/net v0.17.0
-	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	google.golang.org/grpc v1.47.0
 )
 
