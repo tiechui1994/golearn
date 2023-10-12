@@ -24,7 +24,7 @@
 - continue, c: 继续执行, 到下一个断点处(或运行结束)
 - next, n: 单步调试, 如果有函数调用, 不进入此函数体.
 - step, s: 单步调试, 如果有函数调用, 则进入函数. 
-- si: 执行单条指令.
+- stepi `[N]`, si `[N]`: 执行单条指令.
 - until <line>, u <line>: 运行到函数某一行.
 - finish: 运行程序, 知道当前函数完成后返回, 并打印函数返回时堆栈地址和返回值以及参数值等信息.
 - call func(args), 调用程序中可见的函数, 并传递"参数", 如: call gdb_test(55)
@@ -38,7 +38,7 @@
 - b <func>: 在函数 func() 的入口设置断点, 如: b main
 - delete <断点号n>: 删除第n个断点
 - disable/enable <断点号n>: 暂停/启用第n个断点
-- info b: 显示断点设置状况
+- info breakpoints: 显示断点设置状况
 
 
 打印命令:
