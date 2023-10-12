@@ -384,7 +384,7 @@ func main() {
 
 使用 `go build -gcflags '-N -l' -o main main.go` 编译代码, 其中 `-gcflags '-N -l'` 是关闭编译器优化. 
 
-首先来看 main 函数的反汇编代码:
+首先来看 main 函数的反汇编代码: 
 
 ```
 (gdb) disass main.main
@@ -392,14 +392,14 @@ Dump of assembler code for function main.main:
    0x000000000045dd40 <+0>:     mov    %fs:0xfffffffffffffff8,%rcx
    0x000000000045dd49 <+9>:     cmp    0x10(%rcx),%rsp
    0x000000000045dd4d <+13>:    jbe    0x45dd80 <main.main+64>
-   0x000000000045dd4f <+15>:    sub    $0x20,%rsp           # 为main函数预留32字节栈空间
-   0x000000000045dd53 <+19>:    mov    %rbp,0x18(%rsp)      # 保留调用者的rbp寄存器
-   0x000000000045dd58 <+24>:    lea    0x18(%rsp),%rbp      # 设置rbp的值使其指向main函数帧栈开始地址
+   0x000000000045dd4f <+15>:    sub    $0x20,%rsp           # 分配栈空间
+   0x000000000045dd53 <+19>:    mov    %rbp,0x18(%rsp)      # 保留调用者的 rbp 值
+   0x000000000045dd58 <+24>:    lea    0x18(%rsp),%rbp      # 重新设置当前的 rbp 的值(指向main函数帧栈开始地址)
    0x000000000045dd5d <+29>:    movq   $0x1,(%rsp)          # sum函数第一个参数(1)入栈
    0x000000000045dd65 <+37>:    movq   $0x2,0x8(%rsp)       # sum函数第二个参数(2)入栈
    0x000000000045dd6e <+46>:    callq  0x45dce0 <main.sum>  # 调用sum函数
-   0x000000000045dd73 <+51>:    mov    0x18(%rsp),%rbp      # 恢复rbp的值
-   0x000000000045dd78 <+56>:    add    $0x20,%rsp           # 恢复rsp的值
+   0x000000000045dd73 <+51>:    mov    0x18(%rsp),%rbp      # 恢复调用者 rbp 值
+   0x000000000045dd78 <+56>:    add    $0x20,%rsp           # 恢复 rsp
    0x000000000045dd7c <+60>:    retq                        # 返回到调用者
    0x000000000045dd7d <+61>:    nopl   (%rax)
    0x000000000045dd80 <+64>:    callq  0x458c20 <runtime.morestack_noctxt>
@@ -417,9 +417,9 @@ sum 函数的反汇编代码:
 ```
 (gdb) disass main.sum
 Dump of assembler code for function main.sum:
-   0x000000000045dce0 <+0>:     sub    $0x20,%rsp      # 预留32字节
-   0x000000000045dce4 <+4>:     mov    %rbp,0x18(%rsp) # 保存main函数的rbp值
-   0x000000000045dce9 <+9>:     lea    0x18(%rsp),%rbp # 设置sum函数栈帧的开始地址rbp
+   0x000000000045dce0 <+0>:     sub    $0x20,%rsp      # 分配栈空间
+   0x000000000045dce4 <+4>:     mov    %rbp,0x18(%rsp) # 保留调用者的 rbp 值
+   0x000000000045dce9 <+9>:     lea    0x18(%rsp),%rbp # 重新设置当前的 rbp 的值 (指向 sum 函数帧栈开始地址)
    0x000000000045dcee <+14>:    movq   $0x0,0x38(%rsp) # 返回值初始化
    0x000000000045dcf7 <+23>:    mov    0x28(%rsp),%rax # 读取第一个参数a
    0x000000000045dcfc <+28>:    mov    0x28(%rsp),%rcx # 读取第一个参数a
@@ -433,8 +433,8 @@ Dump of assembler code for function main.sum:
    0x000000000045dd22 <+66>:    add    %rcx,%rax       # a2+b2结果保留到rax
    0x000000000045dd25 <+69>:    mov    %rax,(%rsp)     # 将结果保留到c当中
    0x000000000045dd29 <+73>:    mov    %rax,0x38(%rsp) # 将结果复制给返回值
-   0x000000000045dd2e <+78>:    mov    0x18(%rsp),%rbp # 恢复main函数的rbp
-   0x000000000045dd33 <+83>:    add    $0x20, %rsp     # 恢复rsp
+   0x000000000045dd2e <+78>:    mov    0x18(%rsp),%rbp # 恢复调用者 rbp 值
+   0x000000000045dd33 <+83>:    add    $0x20, %rsp     # 恢复 rsp 值
    0x000000000045dd37 <+87>:    retq                   # 返回函数
 End of assembler dump.
 ```
@@ -445,6 +445,16 @@ End of assembler dump.
 以及栈寄存器的关系. 
 
 ![image](/images/develop_runtime_goreturn.png) 
+
+**函数调用汇编的套路:**
+
+1. **分配栈空间**
+2. **保存调用者的 rbp 值**
+3. **设置当前函数的 rbp 的值**
+4. 参数拷贝, 计算, 返回值设置等等
+5. **恢复调用者的 rbp 值**
+6. **恢复 rsp 值**
+7. **函数返回, 从栈中弹出返回地址(rip的值)**
 
 #### 函数调用过程总结: 
 
