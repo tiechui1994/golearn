@@ -115,19 +115,17 @@ x -count 20 -size 8 -x myPtrVar
 
 - `args`, 打印函数参数
 - `locals [<regex>]`, 打印局部变量
-- `display <expression>` 打印表达式的值(每执行一次). 有两个选项: '-a' 选项将一个表达式添加到每次调试执行完成时打印的表达式列表中;  '-d' 选项从列表中删除指定的表达式.
+- `display [%format] <expression>` 打印表达式的值(每执行一次). 有两个选项: '-a' 选项将一个表达式添加到每次调试执行完成时打印的表达式列表中;  '-d' 选项从列表中删除指定的表达式.
 - `print, p [%format] <expression>`, 解析表达式.
 
 关于 `<expression>`, 格式:
 
 ```
-1. 变量
+1. 当前局部变量
 
+2. 全局变量: "<package name>".Var
 
-
-2. 接口
-
-<interface name>(<concret type>) <value>
+3. 寄存器地址: RIP, RSP, RBP, .....
 ```
 
 - `set <variable> = <value>`, 设置变量的值
