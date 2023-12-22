@@ -81,11 +81,12 @@ Dump of assembler code for function main:
 将 0x64(100) 存储到 `%fs:0xfffffffffffffffc` 这个地址上. 可以看到全局变量 g 的地址为 `%fs:0xfffffffffffffffc`,
 fs 是段寄存器, 0xfffffffffffffffc 是有符号 -4, 因此全局变量 g 的地址为: `fs段基址 - 4`.
 
-通过系统调用 `arch_prctl` 获取 fs 段基地址. `0x1003` 表示 ARCH_GET_FS, `$rsp-8` 表示获取的数据存储的地址. `x`
-命令用于显示内存地址.
+通过系统调用 `arch_prctl` 可以获取 fs 段基地址. 需要两个参数, 第一个参数是系统调用号, `0x1003` 表示 ARCH_GET_FS, 第二个参数是返回值的存储位置, `$rsp-8` 表示获取的数据存储的地址. 
+`x` 命令用于打印内存地址的信息.
 
 > arch_prctl 设置/获取特定架构的线程状态.
 > 参考: https://man7.org/linux/man-pages/man2/arch_prctl.2.html
+
 
 ```
 (gdb) call (int)arch_prctl(0x1003, $rsp-8)
@@ -99,6 +100,13 @@ $6 = 0
 ```
 
 `0x7ffff7dce740` 为 fs 段基地址. `0x7ffff7dce73c` 为 &g 的地址. 可以看出两者相差值是 `4`.
+
+获取 fs 段基地址除了上述方法外, 还可以直接去读取, gdb8 以后, 可以直接读取寄存器 `fs_base` 和 `gs_base` 来获取 fs 段, gs 段的基地址. 在 Go 编译的可执行程序当中可以使用该手段去获取 fs 段基地址.
+
+```
+(gdb) x/a $fs_base
+0x7fffffffcb98: 0x7ffff7dce740
+```
 
 
 接着, 跳转到 start 函数. 反汇编 `start` 函数.
