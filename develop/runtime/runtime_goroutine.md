@@ -1,6 +1,6 @@
 ### main goroutine 
 
-下来, 看看 main 函数:
+下来, 看看 runtime.main 函数:
 
 ```cgo
 func main() {
@@ -107,7 +107,7 @@ func main() {
         gopark(nil, nil, waitReasonPanicWait, traceEvGoStop, 1)
     }
     
-    // 系统调用, 退出进程, main goroutine 并没有返回, 而是直接进入系统调用退出进程
+    // 系统调用, 退出进程.
     exit(0)
     
     // 保护性代码
@@ -130,10 +130,14 @@ runtime.main 函数工作:
 
 5. 调用 exit 系统调用退出进程.
 
-从上述流程来看, runtime.main 在执行完 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 这里
-需要注意, runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, 而是在 `schedule() -> execute() ->
-gogo()` 这个调用链的 gogo 函数中使用汇编代码跳过来的, 从这个角度, goroutine 没有地方可以返回. 但是, 前面的分析当中
-得知, 在创建 goroutine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
+`runtime.main()` 在程序初始化(汇编函数 `rt0_go()`) 快结尾时, 通过调用 `runtime.newproc()` 添加到 p (在 `schedinit()` 当中的 `procresize()`
+m 与 p 进行了绑定) 当中. 它使用了一些特殊手段, 让 `runtime.main()` 执行完的返回值指向了 `goexit()`
+
+从上述流程来看, runtime.main 在执行完 main.main 函数之后就直接调用 exit 结束进程了, 它并没有返回到调用它函数. 需要注意的是, 
+runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, 而是在 `schedule() -> execute() -> gogo()` 这个调用链
+的 gogo 函数中使用汇编代码跳过来的, 从这个角度, goroutine 没有地方可以返回. 
+
+但是, 前面的分析当中得知, 在创建 goroutine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
 使用到这个返回地址, 其实这个地址是为非 main goroutine 准备的, 让其在执行完成之后返回到 goexit 继续执行.
 
 
@@ -153,8 +157,7 @@ TEXT runtime·goexit(SB),NOSPLIT,$0-0
     BYTE	$0x90	// NOP
 ```
 
-非 main goroutine 返回时直接返回到 goexit 的第二条指令: `CALL	runtime·goexit1(SB)`, 该指令继续调用 goexit1 函
-数. 
+非 main goroutine 返回时直接返回到 goexit 的第二条指令: `CALL runtime·goexit1(SB)`, 该指令继续调用 goexit1 函数. 
 
 ```cgo
 func goexit1() {
@@ -168,27 +171,25 @@ func goexit1() {
 }
 ```
 
-goexit1 函数通过调用 mcall 从当前运行的用户 goroutine 切换到 g0, 然后在 g0 栈上调用和执行 goexit0 函数.
+goexit1 函数通过调用 mcall 从当前运行的用户 g 切换到 g0, 然后在 g0 栈上调用和执行 goexit0 函数.
 
 ```cgo
-// func mcall(fn func(*g))
-// 切换到 m->g0 栈上, 然后调用 fn(g) 函数
-// fn 函数必须不能返回.
-// It should gogo(&g->sched) to keep running g.
+// func mcall(fn func(*g)), 切换到 m->g0 栈上, 然后调用 fn(g) 函数, fn 函数必须不能返回(因为返回了就会导致程序panic).
+// g 对象, 是 m->curg
 // mcall 的参数是一个指向 funcval 对象的指针.
 TEXT runtime·mcall(SB), NOSPLIT, $0-8
     // 获取参数的值放入 DI 寄存器, 它是 funcval 对象的指针. 当前场景是 goexit0 的地址
     MOVQ	fn+0(FP), DI 
     
     get_tls(CX)
-    MOVQ	g(CX), AX	// AX=g, g是用户 goroutine
-    MOVQ	0(SP), BX	// 将 mcall 的返回地址(rip寄存器的值)放入 BX
+    MOVQ	g(CX), AX	// AX=g, g 是用户 goroutine
+    MOVQ	0(SP), BX	// 将 mcall 的返回地址 (rip寄存器的值, 调用 mcall 函数的下一条指令) 放入 BX
     
-    // 保存 g 的调度信息, 即将切换到 g0 栈
-    MOVQ	BX, (g_sched+gobuf_pc)(AX) // g.sched.pc = AX 
-    LEAQ	fn+0(FP), BX // fn 是调用方的栈顶元素, 其地址就是调用方的栈顶
+    // 保存 g 的调度信息.
+    MOVQ	BX, (g_sched+gobuf_pc)(AX) // g.sched.pc = BX 
+    LEAQ	fn+0(FP), BX               // fn 是调用方的栈顶元素, 其地址就是调用方的栈顶
     MOVQ	BX, (g_sched+gobuf_sp)(AX) // g.sched.sp = BX, 用户 goroutine 的 rsp 
-    MOVQ	AX, (g_sched+gobuf_g)(AX) // g.sched.g = AX
+    MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g = AX
     MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp = BP, 用户 goroutine 的 rbp 
     
     // 切换到 g0 栈, 然后调用 fn 
@@ -202,39 +203,39 @@ TEXT runtime·mcall(SB), NOSPLIT, $0-8
     MOVQ	$runtime·badmcall(SB), AX
     JMP	AX
     MOVQ	SI, g(CX) // 将本地存储设置为 g0
-    MOVQ	(g_sched+gobuf_sp)(SI), SP	// 从 g0.sched.sp 当中恢复 SP, 即 rsp 寄存器  
-    PUSHQ	AX  // fn 的参数 g 入栈
-    MOVQ	DI, DX // DX=fn 
+    MOVQ	(g_sched+gobuf_sp)(SI), SP	// 从 g0.sched.sp 当中恢复 SP, 即 rsp 寄存器, 此时栈已经发生变更
+    PUSHQ	AX        // fn 参数 g 入栈
+    MOVQ	DI, DX    // DX=fn 
     MOVQ	0(DI), DI // 判断fn不为nil
-    CALL	DI // 调用 fn 函数, 该函数不会返回, 这里调用的函数是 goexit0 
+    CALL	DI        // 调用 fn 函数(已经准备好了栈参数, 因此这里是 CALL), 该函数不会返回, 这里调用的函数是 goexit0 
     POPQ	AX // 正常状况下, 这里及其之后的指令不会执行的
     MOVQ	$runtime·badmcall2(SB), AX
     JMP	AX
     RET
 ```
 
-mcall 的参数是一个函数, 在 Go 当中, 函数变量并不是一个直接指向函数代码的指针, 而是一个指向 funcval 结构体对象的指针,
-funcval 结构体对象的第一个成员 fn 才是真正指向函数代码的指针.
+mcall 的参数是一个函数, 在 Go 当中, 函数变量并不是一个直接指向函数代码的指针, 而是一个指向 funcval 结构体对象的指针, funcval 
+结构体对象的第一个成员 fn 才是真正指向函数代码的指针.
 
 mcall 函数的功能:
 
-1. 首先从当前运行的 g 切换到 g0, 这一步包括保存当前 g 的调度信息(pc,sp,bp,g), 把 g0 设置到 tls 当中, 修改 CPU 的 
-rsp 寄存器使其指向 g0 的栈.
+1. 首先从当前运行的 g 切换到 g0, 这一步包括保存当前 g 的调度信息(pc,sp,bp,g), 把 g0 设置到 TLS 当中, 修改 rsp 寄存器
+使其指向 g0 的栈.
 
 2. 以当前运行的 g 为参数调用 fn 函数(此处是 goexit0). 
 
-> 注: 在 g0 保存有 pc, 但是这里并不会从 pc 处开始调用, 而是直接 call 给得的 fn 函数.
+> 注: 虽然在 g0 保存有 pc, 但是这里并不会从 pc 处开始调用, 而是直接调用 fn 函数, mcall 的目的是在 g0 栈上执行 fn, 在 fn 当中去进行新一轮的调度.
 
-从 mcall 的功能看, mcall 做的事情与 gogo 函数完全相反, gogo 实现了从 g0 切换到某个 goroutine 去运行, 而 mcall
-实现了从某个 goroutine 切换到 g0 来运行. 因此, mcall 和 gogo 的代码很相似.
+从 mcall 的功能看, mcall 做的事情与 gogo 函数完全相反, gogo 实现了从 g0 切换到某个 goroutine 去运行, 而 mcall 实现了从某个 goroutine 切换
+到 g0 来运行. 因此, mcall 和 gogo 的代码很相似.
 
-mcall 和 gogo 在做切换时有个重要的区别: gogo 函数在从 g0 切换到其他 goroutine 时, 首先切换了栈, 然后通过跳转指令
-从 runtime 切换到了用户 goroutine 的代码. 而 mcall 函数在从其他 goroutine 切换回 g0 时只切换了栈, 并未使用跳转
-指令跳转到 runtime 代码去执行. 为何有这种差别? 原因在于从 g0 切换到其他 goroutine 之前执行的是 runtime 的代码并且
-使用的是 g0 栈, 因此切换时先切换栈然后从 runtime 代码跳转某个 goroutine 的代码去执行(切换栈和跳转指令不能颠覆), 然而
-从某个 goroutine 切换回 g0 时, goroutine 使用的是 call 指令来调用 mcall 函数, **mcall 本身就是 runtime 的代码,
-所以 call 指令其实已经完成从 goroutine 代码切换 runtime 代码的跳转, 因此 mcall 函数自身无需再跳转了, 只需要把栈切
-回来即可.**
+mcall 和 gogo 在做切换时有个重要的区别: gogo 函数在从 g0 切换到其他 goroutine 时, 首先切换了栈, 然后通过跳转指令(JMP) 跳转到
+用户 goroutine 的代码. mcall 函数在从其他 goroutine 切换回 g0 时只切换了栈, 使用 CALL 指令执行需要函数. 
+
+为何有上述的差别? 原因在于从 g0 切换到其他 goroutine 之前执行的是 runtime 的代码并且使用的是 g0 栈, 因此切换时先切换栈然后
+从 runtime 代码跳转某个 goroutine 的代码去执行(切换栈和跳转指令不能颠覆), 然而从某个 goroutine 切换回 g0 时, goroutine 
+使用的是 call 指令来调用 mcall 函数, **mcall 本身就是 runtime 的代码, 所以 call 指令其实已经完成从 goroutine 代码切换 
+runtime 代码的跳转, 因此 mcall 函数自身无需再跳转了, 只需要把栈切回来即可.**
 
 
 从 goroutine 切换到 g0 之后, 在 g0 栈上执行 goexit0 函数, 完成最后的清理工作:
