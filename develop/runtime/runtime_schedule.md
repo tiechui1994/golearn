@@ -7,8 +7,18 @@
 schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->schedule()
 ```
 
-其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
-上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
+> `schedule()`, Go 实现, 查找到 g, 并调用 `execute(*g)` 进行 g 状态的修改, 调用 `gogo()` 去真正的执行. 整个过程都在 g0 上
+> `gogo()`, 汇编实现, 切換到 curg 上,  跳转(JMP)到 xxx 代码处开始执行(手动完成栈切换, 继续去执行代码) 
+> `goexit()`, 汇编实现, 调用(CALL) `goexit1()`.
+> `goexit1()`, Go 实现, `mcall(goexit0)`, `mcall()` 汇编实现, 切换到 g0, 调用(CALL) fn
+> `goexit0()`, Go 实现, 开启新一轮 schedule
+
+`schedule()->execute()` 是在 g0 上执行的. 
+
+`gogo()->xxx()->goexit()->goexit1()` 是在 curg 上执行的. `gogo()完成栈切换`
+
+`mcall()->goexit0()->schedule()` 又是在 g0 上执行的. `mcall()` 完成栈切换
+
 
 一轮调度是从调用 schedule 开始, 然后经过一系列代码的执行到最后再次通过调用 schedule 函数进行新一轮的调度. 
 
@@ -605,8 +615,11 @@ func futexwakeup(addr *uint32, cnt uint32) {
 schedule()->execute()->gogo()->xxx()->goexit()->goexit1()->mcall()->goexit0()->schedule()
 ```
 
-其中 `schedule()->execute()->gogo()` 是在 g0 上执行的. `xxx()->goexit()->goexit1()->mcall()` 是在 curg 
-上执行的. `goexit0()->schedule()` 又是在 g0 上执行的.
+`schedule()->execute()` 是在 g0 上执行的. 
+
+`gogo()->xxx()->goexit()->goexit1()` 是在 curg 上执行的. `gogo()完成栈切换`
+
+`mcall()->goexit0()->schedule()` 又是在 g0 上执行的. `mcall()` 完成栈切换
 
 #### 被动调度
 
