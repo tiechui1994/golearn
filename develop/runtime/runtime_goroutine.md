@@ -226,23 +226,20 @@ mcall 函数的功能:
 
 > 注: 虽然在 g0 保存有 pc, 但是这里并不会从 pc 处开始调用, 而是直接调用 fn 函数, mcall 的目的是在 g0 栈上执行 fn, 在 fn 当中去进行新一轮的调度.
 
-从 mcall 的功能看, mcall 做的事情与 gogo 函数完全相反, gogo 实现了从 g0 切换到某个 goroutine 去运行, 而 mcall 实现了从某个 goroutine 切换
-到 g0 来运行. 因此, mcall 和 gogo 的代码很相似.
+从 mcall 的功能看, mcall 做的事情与 gogo 函数完全相反, gogo 实现了从 g0 切换到某个 goroutine 去运行; mcall 实现了
+从某个 goroutine 切换到 g0 来运行. 因此, mcall 和 gogo 的代码很相似.
 
 mcall 和 gogo 在做切换时有个重要的区别: gogo 函数在从 g0 切换到其他 goroutine 时, 首先切换了栈, 然后通过跳转指令(JMP) 跳转到
 用户 goroutine 的代码. mcall 函数在从其他 goroutine 切换回 g0 时只切换了栈, 使用 CALL 指令执行需要函数. 
 
-为何有上述的差别? 原因在于从 g0 切换到其他 goroutine 之前执行的是 runtime 的代码并且使用的是 g0 栈, 因此切换时先切换栈然后
-从 runtime 代码跳转某个 goroutine 的代码去执行(切换栈和跳转指令不能颠覆), 然而从某个 goroutine 切换回 g0 时, goroutine 
-使用的是 call 指令来调用 mcall 函数, **mcall 本身就是 runtime 的代码, 所以 call 指令其实已经完成从 goroutine 代码切换 
-runtime 代码的跳转, 因此 mcall 函数自身无需再跳转了, 只需要把栈切回来即可.**
+为何有上述的差别? 第一个原因是两者的入参不一样, gogo 的入参 gobuf(保持的是跳转的 g 的上下文信息), mcall 的入参是一
+个回调函数, 回调函数的参数是 g (跳转前的 g, 非 g0); 其次, gogo 函数的目的恢复之前的函数执行, 而 mcall 是开启一次新的
+调度.
 
 
 从 goroutine 切换到 g0 之后, 在 g0 栈上执行 goexit0 函数, 完成最后的清理工作:
 
-- 把 g 的状态设置为 _Gdead
-
-- 把 g 的一些字段清空
+- 把 g 的状态设置为 _Gdead, 把 g 的一些字段清空
 
 - 调用 dropg 解除 g 和 m 的关系, 即 g.m=nil m.curg=nil
 
