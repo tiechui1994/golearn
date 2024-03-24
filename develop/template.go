@@ -60,7 +60,41 @@ total {{ (len $) }}
 	fmt.Println(buf.String())
 }
 
-func Main() {
+func Func()  {
+	tpl := `
+{{ (printValue 11) }}
+{{ (printValue "aabbcc") }}
+{{ (convertBool true) }}
+`
+	tpl = strings.Trim(tpl, "\n")
+	temp, err := template.New("t1").Funcs(template.FuncMap{
+		"convertBool": func(v interface{}) (bool, error) {
+			if val, ok := v.(bool); ok {
+				return val, nil
+			}
+
+			return false, fmt.Errorf("invalid bool")
+		},
+		"printValue": func(v interface{}) string {
+			return fmt.Sprintf("%+v", v)
+		},
+	}).Parse(tpl)
+	if err != nil {
+		fmt.Println("Parse", err)
+		return
+	}
+
+	var buf bytes.Buffer
+	err = temp.Execute(&buf, nil)
+	if err != nil {
+		fmt.Println("Execute", err)
+		return
+	}
+
+	fmt.Println(buf.String())
+}
+
+func Simple() {
 	tpl := `
 {{ $ }}
 {{ $x := (len $) -}}
@@ -85,6 +119,7 @@ func Main() {
 }
 
 func main() {
-	Main()
+	Simple()
 	List()
+	Func()
 }

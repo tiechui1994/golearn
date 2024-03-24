@@ -24,7 +24,7 @@ pipeline 通常是将一个 command 序列分割开, 再使用管道符`|`连接
 ```
 
 > 其中 $index 和 $element 分别设置为数组/切片的索引或map的键, 以及对应成员元素. 注: 这与 go range 当中只有一个参数时
-设置为索引/键不同!
+设置为索引/键不同! 可以使用 $element.XXX 去获取 $element 元素的成员变量.
 
 
 在一个链式的 pipeline 里, 每个 command 的结果都作为下一个 command 的最后一个参数. pipeline 最后一个 command 的输出
@@ -68,7 +68,7 @@ empty 值包括 false, 0, nil指针或接口, 长度为0的数组, 切片, 字�
 ```
 
 
-案例:
+案例(循环使用):
 
 ```
 package main
@@ -126,7 +126,7 @@ lt arg1 arg2 <=> arg1 < arg2
 gt arg1 arg2 <=> arg1 > arg2
 ```
 
-> 一般情况下函数调用方式是 `{{ (NAME arg1 arg2 ...) }}`, NAME 是函数名称, arg1, arg2 等是函数参数
+函数调用方式是 **`{{ (NAME arg1 arg2 ...) }}`**, NAME 是函数名称, arg1, arg2 等是函数参数
 
 
 案例1: 比较
@@ -143,6 +143,7 @@ gt arg1 arg2 <=> arg1 > arg2
 ```
 
 案例3: 文件列表
+
 ```
 total {{ (len $) }}
 {{- range $ }}
@@ -163,3 +164,34 @@ d  2021-04-24T07:36:48.591Z  111
 f  2021-04-24T07:36:48.591Z  222
 f  2021-04-24T07:36:48.591Z  333333
 ```
+
+关于自定义函数:
+
+Template 类型里面有个 `Func` 函数, 可以向该模板实例当中注册函数 `template.FuncMap` 本质上是一个 map 类型, 其中
+的 key 是作为模板当中调用的函数名称. 需要注意的是注册的函数的返回值只能是1到2个, 如果返回值是2个, 则第二个返回值必须
+是 error 类型, 在调用失败时返回给模板调用方.
+ 
+举个例子:
+
+```
+tpl := `
+{{ (printValue 11) }}
+{{ (printValue "aabbcc") }}
+{{ (convertBool true) }}
+`
+
+temp, err := template.New("t1").Funcs(template.FuncMap{
+    "convertBool": func(v interface{}) (bool, error) {
+        if val, ok := v.(bool); ok {
+            return val, nil
+        }
+
+        return false, fmt.Errorf("invalid bool")
+    },
+    "printValue": func(v interface{}) string {
+        return fmt.Sprintf("%+v", v)
+    },
+}).Parse(tpl)
+```
+
+> 上述代码里就包含了两个自定义函数, `convertBool` 和 `printValue`, 这两个函数就满足对函数定义的要求.
