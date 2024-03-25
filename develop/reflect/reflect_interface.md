@@ -62,7 +62,6 @@ func main() {
 | 值类型 | 方法会使用调用者的一个副本, 类似于"传值" | 使用`值的引用`来调用方法, 上例 `val.growUp()` 实际上是 `(&val).groupUp` |
 | 指针类型 | 指针类型`被解引用`为值, 上例中的 `ptr.howOld()` 实际上是 `(*ptr).howOld()` | 实际上也是"传值", 方法里的操作会影响到调用者, 类似与指针传参, 拷贝了一份指针 |
 
-
 ## 值接收者和指针接收者
 
 结论: **实现了接收者是值类型的方法, 相当于自动实现了接收者是指针类型的方法; 而实现了接收者是指针类型的方法, 不会自动生成
@@ -140,8 +139,7 @@ func main() {
 在实际的汇编当中, 对于接收者是值类型的方法, go 会自动添加接收者是指针类型的方法, 但是对于接收者是指针类型的方法, 却只添
 加其本身. 参考 `type.*"".X` 表示 X 指针类型, `type."".X` 表示 X 类型(这里的 X 可以为结构体, 函数等)
 
-
-## `eface` vs `iface`
+## `eface` vs `iface` (反射基础)
 
 `eface` 和 `iface` 都是 Go 中描述接口的底层数据结构, 区别在于 `iface` 描述的接口包含方法, 而 `eface` 则是不包含
 任何方法的空接口: `interface{}`. 
@@ -149,7 +147,7 @@ func main() {
 接口的底层数据结构:
 
 ```cgo
-// 不带方法
+// 不带方法, 就是 interface{}
 type eface struct {
 	_type *_type
 	data  unsafe.Pointer
@@ -161,8 +159,8 @@ type iface struct {
 	data unsafe.Pointer
 }
 type itab struct {
-	inter *interfacetype // 接口类型
-	_type *_type         // 值类型
+	inter *interfacetype // 接口的静态类型
+	_type *_type         // 值类型(动态混合类型)
 	hash  uint32         // 值类型 _type 当中的 hash 的拷贝
 	_     [4]byte
 	fun   [1]uintptr
@@ -179,6 +177,8 @@ type imethod struct {
 	name int32
 	ityp int32
 }
+
+
 
 // go1.13 之前的版本
 type _type struct {
@@ -243,7 +243,8 @@ type _type struct {
 ![image](/images/develop_interface_iface.png)
 
 
-相比 `iface`, `eface` 就比较简单, 只维护了一个 `_type` 字段, 表示空接口所承载的具体的实体类型. `data` 描述了其值.
+为了 `iface` 与 `eface` 的统一,  `eface` 也维护两个指针. `_type`, 表示空接口所承载的具体的实体类型. `data` 描
+述了其值.
 
 ![image](/images/develop_interface_eface.png)
 
@@ -403,7 +404,6 @@ func main() {
     fmt.Println(*(*int)(unsafe.Pointer(ic.data)))
 }
 ```
-
 
 ## 编译器自动检测类型是否实现接口
 
@@ -608,7 +608,6 @@ func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
 
 上述的代码逻辑都比较简单, 这里就不再解释了.
 
-
 ## 类型转换与断言的区别
 
 Go 当中不允许饮食类型转换, 也就是说在 `=` 两边, 变量的类型必须相同.
@@ -690,7 +689,6 @@ func (s *String) String() string {
 方法进行打印喽了.
 
 > 一般情况下, 实现 `String()` 方法最好是值接收者, 这样无论是值还是指针在打印的时候都会用到此方法.
-
 
 ## 接口间转换原理
 
