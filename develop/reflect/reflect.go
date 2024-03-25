@@ -51,12 +51,22 @@ type _type struct {
 	align      uint8
 	fieldalign uint8
 	kind       uint8
-	alg        uintptr
+	equal        func(unsafe.Pointer, unsafe.Pointer) bool
 	gcdata     *byte
 	str        int32
 	ptrToThis  int32
 }
 
+func escapes(x interface{}) {
+	if dummy.b {
+		dummy.x = x
+	}
+}
+
+var dummy struct {
+	b bool
+	x interface{}
+}
 
 type Sayer interface {
 	Bye()
@@ -153,16 +163,70 @@ func Test_Kind() {
 		flag
 	}
 
+	reflect.TypeOf(nil).Field(0)
 	var buf bytes.Buffer
 	t := reflect.ValueOf(buf.Read)
-	fmt.Println(t.Type(),t.CanAddr())
+	t.CanAddr()
 	v := (*value)(unsafe.Pointer(&t))
 	fmt.Printf("%b\n", v.flag)
 
-	fmt.Printf("FUNC  : %05b\n", reflect.Func)
-	fmt.Printf("UINT64: %05b\n", reflect.Uint64)
-	fmt.Printf("String: %05b\n", reflect.String)
-	fmt.Printf("PTR   : %05b\n", reflect.Ptr)
+	fmt.Printf("Int      : %06b\n", reflect.Int)
+	fmt.Printf("UINT64   : %06b\n", reflect.Uint64)
+	fmt.Printf("String   : %06b\n", reflect.String)
+	fmt.Printf("Struct   : %06b\n", reflect.Struct)
+	fmt.Printf("Slice    : %06b\n", reflect.Slice)
+
+	fmt.Printf("FUNC     : %06b\n", reflect.Func)
+	fmt.Printf("PTR      : %06b\n", reflect.Ptr)
+	fmt.Printf("Chan     : %06b\n", reflect.Chan)
+	fmt.Printf("Map      : %06b\n", reflect.Map)
+	fmt.Printf("Interface: %06b\n", reflect.Interface)
+
+	type eface struct {
+		typ *_type
+		ptr unsafe.Pointer
+	}
+	var x1 = 10
+	var x2 = "aaaa"
+	var x3 = fmt.Println
+	var x4 = eface{}
+	var x5 = &eface{}
+	var x6 chan int
+	var x7 []string
+
+	var xx interface{} = x1
+	vv := (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x1 = 10`, vv.typ.kind)
+
+	xx = x2
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x2 = "aaaa"`, vv.typ.kind)
+
+	xx = x3
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x3 = fmt.Println`, vv.typ.kind)
+
+	xx = x4
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x4 = eface{}`, vv.typ.kind)
+
+	xx = x5
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x5 = &eface{}`, vv.typ.kind)
+
+	xx = x6
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x6 chan int`, vv.typ.kind)
+
+	xx = x7
+	escapes(xx)
+	vv = (*eface)(unsafe.Pointer(&xx))
+	fmt.Printf("%20s : %06b\n", `var x7 []string`, vv.typ.kind)
 }
 
 func Nil(a interface{}) {
@@ -249,6 +313,5 @@ func Test_IsNil() {
 
 
 func main() {
-	var x uintptr = 12
-	fmt.Printf("%b, %v\n", -x, -x&7)
+	Test_Kind()
 }
