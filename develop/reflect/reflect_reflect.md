@@ -21,8 +21,8 @@ var i int
 var j MyInt
 ```
 
-尽管 i, j的底层类型都是 int, 但是, 他们是不同的静态类型, 除非类型转换, 否则, i和j 不能同时出现在等号两侧. j 的静态类
-型的 MyInt. 
+尽管 i, j的底层类型都是 int, 但是, 他们是不同的静态类型, 除非类型转换, 否则, i和j 不能同时出现在等号两侧. j 的静态
+类型的 MyInt. 
 
 反射主要和 `interface{}` 类型相关. 其底层数据结构:
 
@@ -31,7 +31,6 @@ type iface struct {
     tab *itab
     data unsafe.Pointer
 }
-
 type itab struct {
     inter  *interfacetype // 静态类型
     _type  *_type         // 动态类型
@@ -39,7 +38,6 @@ type itab struct {
     _     [4]byte
     fun    [1]unitptr     // method table
 }
-
 type interfacetype struct {
 	typ     _type
 	pkgpath name
@@ -80,8 +78,8 @@ type eface struct {
 }
 ```
 
-与 `iface` 相比, `eface` 就比较简单了. 只维护了一个 `_type` 字段, 表示空接口所承载的具体的实体类型. `data` 描述了
-具体的值.
+为了 `iface` 与 `eface` 的统一,  `eface` 也维护两个指针. `_type`, 表示空接口所承载的具体的实体类型. `data` 描
+述了其值.
 
 ![image](/images/develop_reflect_eface.png)
 
@@ -105,7 +103,7 @@ type Writer interface {
 
 ```cgo
 var r io.Reader
-tty, err := os.OpenFile("~/Desktop/test", os.O_RDWR, 0)
+tty, err := os.OpenFile("/tmp/xxx", os.O_RDWR, 0)
 if err != nil {
     return nil, err
 }
@@ -157,16 +155,31 @@ empty = w
 
 参考案例 `reflect.go` 当中的代码.
 
+## 反射三大定律
+
+1. Reflection goes from interface value to reflection object.
+2. Reflection goes from reflection object to interface value.
+3. To modify a reflection object, the value must be settable.
+
+- 第一条: 反射是检测存储在 `interface` 中的类型和值机制. 通过 `TypeOf()` 和 `ValueOf()` 可以获取到反射对象.
+
+- 第二条和第一条是相反的机制. 针对 `Value` 可以获取 `interface` 值(通过 `Interface()` 函数)
+
+- 第三条, 要想修改一个反射变量的值, 那么它必须是可设置的. 反射变量可设置的本质是它存储了原变量本身, 这样对反射变量的
+操作, 就会反映到原变量本身; 反之, 如果反射变量不能代表原变量, 那么操作了反射变量, 不会对原变量产生任何影响.
+
 
 ## 反射的基本函数
 
 `reflect` 包里定义了一个接口和一个结构体, 即 `reflect.Type` 和 `reflect.Value`, 它们提供很多函数来获取存储接口里
 的类型信息.
 
-`reflect.Type` 主要提供关于类型相关的信息, 所以它和 `_type` 关联比较紧密(前面说过, `_type` 保存了 Go 所有类型的元
-信息, 这些信息是在编译的时候已经确定的.);
+`reflect.Type` 主要提供关于类型相关的信息接口, `_type` 关联比较紧密(前面说过, `_type` 保存了 Go 所有类型的元信息,
+这些信息是在编译的时候已经确定的, `rttype`, `XxxType` 均实现了该接口);
 
 `reflect.Value` 则结合 `_type` 和 `data` 两者, 因此程序可获取甚至改变类型的值.
+
+#### 关于 reflect.Typeof
 
 `reflect.Typeof` 函数用于提取一个接口中值的"类型信息". 调用此函数, 实参会先被转换为 `interface{}` 类型, 这样. 实参
 的类型信息, 方法集, 值信息都会存储到 `interface{}` 变量当中了.
@@ -205,10 +218,10 @@ type rtype struct {
 	size       uintptr // 类型占用内存大小
 	ptrdata    uintptr // 包含所有指针的内存前缀大小
 	hash       uint32  // 类型 hash
-	tflag      tflag   // 标记位, 主要用于反射
+	tflag      tflag   // 额外标记位, 主要用于反射的额外数据. 目前主要使用了低4位
 	align      uint8   // 对其字节信息
 	fieldAlign uint8   // 当前结构体字段的对齐字节数
-	kind       uint8   // 基础类型枚举值
+	kind       uint8   // 类型枚举值(针对go中的类型不超过32种, 但是它还有其他标志位)
 	// comparing objects of this type (ptr to object A, ptr to object B) -> ==?
 	equal     func(unsafe.Pointer, unsafe.Pointer) bool
 	gcdata    *byte   // GC类型的数据
@@ -235,22 +248,20 @@ type chanType struct {
 }
 ```
 
+#### 关于 reflect.ValueOf
 
-`reflect.ValueOf` 函数用于提取一个接口中存储的实际变量. 它能提供实际变量的各种信息. 相关的方法需要结合类型信息和值信息.
-
+`reflect.ValueOf` 函数用于提取一个接口中存储的实际变量. 它能提供实际变量的各种信息. 相关的方法需要结合类型信息和值
+信息.
 
 ```cgo
 func ValueOf(i interface{}) Value {
 	if i == nil {
 		return Value{}
 	}
-
 	// 使变量 i 逃逸到堆内存上.
 	escapes(i)
-
 	return unpackEface(i)
 }
-
 
 func unpackEface(i interface{}) Value {
     // 这里的逻辑和 TypeOf() 类似
@@ -260,9 +271,9 @@ func unpackEface(i interface{}) Value {
 	if t == nil {
 		return Value{}
 	}
-	f := flag(t.Kind()) // 获取原信息当中的类型. 26+1 种类型
+	f := flag(t.Kind()) // 不超过32种
 	if ifaceIndir(t) {
-		f |= flagIndir // 标志位
+		f |= flagIndir // 这里的指针位的转移
 	}
 	return Value{t, e.word, f}
 }
@@ -285,7 +296,8 @@ type Value struct {
 	//	- flagIndir:    v 保存指向数据的指针. 1<<7
 	//	- flagAddr:     v.CanAddr 为 true (表示 flagIndir). 1<<8
 	//	- flagMethod:   v 是方法值. 1<<9
-    // 接下来的 5 个 bits 是 Kind 的值.
+    // 接下来的 5 个 bits 是 Kind 的值. 这里需要注意的是, rtype.kind 的第6位(1<<5)表示当前值是否是指针, 在进行
+    // ValueOf() 过程中, 将其 flag 设置为 flagIndir
     // 如果 flag.kind() != Func, 代码可以假定 flagMethod 没有设置.
     // 如果 ifaceIndir(typ), 代码可以假定设置了 flagIndir.
 	flag // uintptr
@@ -310,6 +322,8 @@ type Value struct {
 3. flagIndir, 表示 Value 是否保存指向数据的指针.
 ```
 
+后续所有关于 Value 的操作, 绝大多数都需要先进行 flag 的判断, 然后去操作.
+
 
 `Type()`, `Interface()` 可以打通 `interface`, `Type`, `Value` 三者.
 
@@ -322,17 +336,3 @@ type Value struct {
 
 > `rtype` 实现了 `Type` 接口, 是所有类型的公共部分, `emptyface` 结构体和 `eface` 其实是一个东西, 而 `rtype` 和
 `_type` 也是一个东西, 只是一些字段上稍微有点差别. 
-
-
-## 反射三大定律
-
-1. Reflection goes from interface value to reflection object.
-2. Reflection goes from reflection object to interface value.
-3. To modify a reflection object, the value must be settable.
-
-- 第一条: 反射是一种检测存储在 `interface` 中的类型和值机制. 这可以通过 `TypeOf()` 和 `ValueOf()` 得到.
-
-- 第二条和第一条是相反的机制, 它将 `Value` 通过 `Interface()` 函数反向转变成 `interface` 变量
-
-- 第三条, 如果需要修改一个反射变量的值, 那么它必须是可设置的. 反射变量可设置的本质是它存储了原变量本身, 这样对反射变量的
-操作, 就会反映到原变量本身; 反之, 如果反射变量不能代表原变量, 那么操作了反射变量, 不会对原变量产生任何影响.

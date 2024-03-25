@@ -163,10 +163,8 @@ func Test_Kind() {
 		flag
 	}
 
-	reflect.TypeOf(nil).Field(0)
 	var buf bytes.Buffer
 	t := reflect.ValueOf(buf.Read)
-	t.CanAddr()
 	v := (*value)(unsafe.Pointer(&t))
 	fmt.Printf("%b\n", v.flag)
 
