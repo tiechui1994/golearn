@@ -8,8 +8,8 @@ sync.Map 设计思路:
 
 3.double checking, 尽量减少加锁.
 
-4.延迟删除, 删除一个key值时只是打上标记, 在迁移dirty数据的时候才清理删除的数据(这个发生在Store的时候, 这里的数据的迁移
-是对底层的数据的拷贝, 可能是性能问题).
+4.延迟删除, 删除一个key值时只是打上标记, 在迁移dirty数据的时候才清理删除的数据(这个发生在Store的时候, 这里的数据的
+迁移是对底层的数据的拷贝, 可能是性能问题).
 
 5.优先从read当前读取,更新,删除. read的读取是不需要锁的
 
@@ -19,17 +19,25 @@ Map类型针对两种常见用例进行了优化:
 
 (2)当多个goroutine读取, 写入时, 并覆盖不相交的键集的条目. 
 
-在这两种情况下, 与与单独的 Mutex 或 RWMutex 配对的Go映射相比, 使用Map可以显着减少锁争用.
-
+在这两种情况下, 与单独的 Mutex 或 RWMutex 配对的Go映射相比, 使用Map可以显着减少锁争用.
 
 > 注意: Map的零值就可以开始使用,  但是首次使用后不得复制 Map.
 
+读取逻辑:
+
+![image](/images/develop_sync_map.png)
+
+
 ## 数据结构
 
-> 核心逻辑: 
+写操作: 直接写入dirty(负责写的map)
+
+读操作: 先读read(负责读操作的map), 没有再读dirty(负责写操作的map)
+
+> 核心逻辑:
 > - **dirty存储的数据 >= read存储的数据**
-> - **当misses超过dirty数据量, dirty转变为read**. 只有在read当中没有读取到数据, 且amended为true的情况下, misses 值才会增加.
-> - **当存储一个新的key的时, amended值才可能转正为true**
+> - **当misses超过dirty数据量, 需要将dirty转变为read**. 只有在 read 当中没有读取到数据, 且 amended = true 的情况下, misses 值才会增加.
+> - **当存储一个新的key的时, amended 值会转正为true**
 
 ```cgo
 type Map struct {
@@ -50,9 +58,7 @@ type Map struct {
     // 当 dirty 为空的时候, 比如初始化或者刚提升完, 下一次的写操作会复制read字段中未删除的数据到这个数据中.
     dirty map[interface{}]*entry
     
-    // 当从Map中读取entry的时候, 如果 read 中不包含这个 entry, 会尝试从 dirty 当中读取, 这个时候会将 misses 加1,
-    // 当 misses 累计到 dirty 的长度的时候, 就会将 dirty 提升为 read, 避免从 dirty 中 miss 太多次. 因为操作 
-    // dirty 需要加锁.
+    // 未命中 read 的累加次数. 当 misses 值增长到 dirty 长度, 切换 dirty 到 read
     misses int
 }
 ```
@@ -66,7 +72,7 @@ type Map struct {
 type readOnly struct {
     m       map[interface{}]*entry
     // 如果 Map.dirty 包含了一些在 readOnly.m 不存在 key, 这个值为 true.
-    // 这意味着 dirty 和 read 存在差异.
+    // 这意味着 dirty 和 read 存在差异. 要修正
     amended bool 
 }
 ```
@@ -123,8 +129,7 @@ func (m *Map) Store(key, value interface{}) {
     } else {
         // read 和 dirty 当中都不存在.
         if !read.amended {
-            // 将第一个新键添加到 dirty 中, 并将 read 映射标记为存在差异.
-            m.dirtyLocked()
+            m.dirtyLocked() // 保证 dirty 构建(没有从 read 当中构建)
             m.read.Store(readOnly{m: read.m, amended: true})
         }
         // dirty 当中存储 value
@@ -229,10 +234,10 @@ func (m *Map) Load(key interface{}) (value interface{}, ok bool) {
             // 不管 m.dirty 中存不存在, 都将 misses 计数加1. missLocked() 中满足条件后就会提升 m.dirty
             m.missLocked()
         }
-            m.mu.Unlock()
-        }
-        
-        if !ok {
+        m.mu.Unlock()
+    }
+
+    if !ok {
         return nil, false
     }
     
