@@ -9,7 +9,7 @@ import (
 // Lock() 时, readerCount 值要变为0, 否则自身要休眠等待
 func case1() {
 	var rw sync.RWMutex
-
+	_ = sync.Pool{}
 	go func() {
 		defer rw.RUnlock()
 		rw.RLock()
