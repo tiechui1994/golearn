@@ -148,9 +148,12 @@ func (d *poolDequeue) popHead() (interface{}, bool) {
 ```
 
 
-在 poolDequeue 的基础上的一种新的双链表队列:
+在 poolDequeue 的基础上的 `双链表队列`(poolChain):
+
+![image](/images/develop_sync_pool_poolChain.png)
 
 ```cgo
+// 双链表队列元素, 值是双端队列
 type poolChainElt struct {
 	poolDequeue
 	
@@ -159,8 +162,7 @@ type poolChainElt struct {
 	next, prev *poolChainElt
 }
 
-// c.head 指向的是双向队列的尾部.
-// c.tail 指向的是双向队列的头部.
+// 双链表的具体实现.
 // consumers 从 c.tail 获取数据, producer 将数据插入 c.head.
 type poolChain struct {
 	// push, head 只能被 producer 访问, 并写入数据.
@@ -255,7 +257,9 @@ func (c *poolChain) popHead() (interface{}, bool) {
 
 ### pool 原理
 
-pool 主要分为两级缓存. 一级是 private, 优先获取. 二级是 shared 
+pool 主要分为两级缓存. 一级是 private, 优先获取. 二级是 shared (双向链表数组, 数组的每个双向链表代表一个P)
+
+![image](/images/develop_sync_pool_pool.png)
 
 ```cgo
 type poolLocalInternal struct {
