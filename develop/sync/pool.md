@@ -1,5 +1,14 @@
 # pool 原理
 
+1. 利用 GMP 的特性, 将 P 与 G 绑定(pin), 防止抢占
+
+2. 针对本地(p)的 poolLocal, 优先使用 private, 然后是使用 shared(poolChain). 对于 Get, 先查询private, 然后查
+询本地 P(shared) 的 head (popHead), 接着查询其他 P (shared) 的 tail(popTail, 会存在并发), 以及 victim, 当
+都查询不到时, 才 New 一个新对象. 查询本地P 与 其他P采用不同的策略, 减少了数据竞争. 对于 Put, 优先存储到 private,
+接着是本地 P (shared) 的 head(pushHead)
+
+3. 底层的 DeQueue, PoolChain 采用 CAS 无锁的方式实现.
+
 ### 一种巧妙的双端队列
 
 针对一个 uint64 的数值, 组装和拆除为两个 uint32 的值. 原理很简单: 高32位, 低32位.
@@ -294,3 +303,105 @@ type Pool struct {
 在 Get 的时候, 根据 pid 获取对应的 poolLocal, 优先获取 private 数据, 如果不存在, 从 shared.popHead 获取, 如果
 仍然不存在, 则尝试从每个的 poolLocal 的 shared.popTail 获取. (特殊情况, 在 STW 期间, 会从 victim 当中获取). 在
 尝试了上述所有的方法的都无法获取的时候, 使用 New 去创建一个.
+
+
+```cgo
+func (p *Pool) Get() interface{} {
+	l, pid := p.pin()
+	x := l.private
+	l.private = nil
+	if x == nil {
+		// Try to pop the head of the local shard. We prefer
+		// the head over the tail for temporal locality of
+		// reuse.
+		x, _ = l.shared.popHead()
+		if x == nil {
+			x = p.getSlow(pid)
+		}
+	}
+	runtime_procUnpin()
+
+	if x == nil && p.New != nil {
+		x = p.New()
+	}
+	return x
+}
+
+func (p *Pool) getSlow(pid int) interface{} {
+	// See the comment in pin regarding ordering of the loads.
+	size := runtime_LoadAcquintptr(&p.localSize) // load-acquire
+	locals := p.local                            // load-consume
+	// Try to steal one element from other procs.
+	for i := 0; i < int(size); i++ {
+		l := indexLocal(locals, (pid+i+1)%int(size))
+		if x, _ := l.shared.popTail(); x != nil {
+			return x
+		}
+	}
+
+	// Try the victim cache. We do this after attempting to steal
+	// from all primary caches because we want objects in the
+	// victim cache to age out if at all possible.
+	size = atomic.LoadUintptr(&p.victimSize)
+	if uintptr(pid) >= size {
+		return nil
+	}
+	locals = p.victim
+	l := indexLocal(locals, pid)
+	if x := l.private; x != nil {
+		l.private = nil
+		return x
+	}
+	for i := 0; i < int(size); i++ {
+		l := indexLocal(locals, (pid+i)%int(size))
+		if x, _ := l.shared.popTail(); x != nil {
+			return x
+		}
+	}
+
+	// Mark the victim cache as empty for future gets don't bother
+	// with it.
+	atomic.StoreUintptr(&p.victimSize, 0)
+
+	return nil
+}
+
+// 获取当前 P 对应的 poolLocal, 调用完成之后必须解绑当前的 P 与 G(runtime_procUnpin)
+func (p *Pool) pin() (*poolLocal, int) {
+	pid := runtime_procPin()
+	// In pinSlow we store to local and then to localSize, here we load in opposite order.
+	// Since we've disabled preemption, GC cannot happen in between.
+	// Thus here we must observe local at least as large localSize.
+	// We can observe a newer/larger local, it is fine (we must observe its zero-initialized-ness).
+	s := runtime_LoadAcquintptr(&p.localSize) // load-acquire
+	l := p.local                              // load-consume
+	if uintptr(pid) < s {
+		return indexLocal(l, pid), pid
+	}
+	return p.pinSlow()
+}
+
+func (p *Pool) pinSlow() (*poolLocal, int) {
+	// Retry under the mutex.
+	// Can not lock the mutex while pinned.
+	runtime_procUnpin()
+	allPoolsMu.Lock()
+	defer allPoolsMu.Unlock()
+	pid := runtime_procPin()
+	// poolCleanup won't be called while we are pinned.
+	s := p.localSize
+	l := p.local
+	if uintptr(pid) < s {
+		return indexLocal(l, pid), pid
+	}
+	if p.local == nil {
+		allPools = append(allPools, p)
+	}
+	// If GOMAXPROCS changes between GCs, we re-allocate the array and lose the old one.
+	size := runtime.GOMAXPROCS(0)
+	local := make([]poolLocal, size)
+	atomic.StorePointer(&p.local, unsafe.Pointer(&local[0])) // store-release
+	runtime_StoreReluintptr(&p.localSize, uintptr(size))     // store-release
+	return &local[pid], pid
+}
+```

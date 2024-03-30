@@ -8,8 +8,9 @@ sync.Map 设计思路:
 
 3.double checking, 尽量减少加锁.
 
-4.延迟删除, 删除一个key值时只是打上标记, 在迁移dirty数据的时候才清理删除的数据(这个发生在Store的时候, 这里的数据的
-迁移是对底层的数据的拷贝, 可能是性能问题).
+4.延迟删除+标记删除(在将 read 数据迁移到 dirty 时, 若 read 数据被删除, 则其将其修改为标记删除), 在迁移dirty数据
+的时候才清理删除的数据 (这个发生在Store的时候, 这里的数据的迁移是对底层的数据的拷贝, 可能是性能问题). 两个操作都发生
+在 Store 时. 前者是延迟删除 read 当中的数据, 后者是复制 read 数据到 dirty.
 
 5.优先从read当前读取,更新,删除. read的读取是不需要锁的
 
@@ -209,7 +210,6 @@ func (e *entry) tryExpungeLocked() (isExpunged bool) {
 }
 ```
 
-
 ## 查询
 
 ```cgo
@@ -283,13 +283,13 @@ func (m *Map) Delete(key interface{}) {
         e, ok = read.m[key]
         // 加锁状况下, 双重确认
         if !ok && read.amended {
-            delete(m.dirty, key) // 从 dirty 当中移除 key
+            delete(m.dirty, key) // 从 dirty 当中移除 key, 直接删除.
         }
         m.mu.Unlock()
     }
     
     if ok {
-        e.delete() // 删除 entry
+        e.delete() // 标记删除
     }
 }
 
