@@ -2,30 +2,36 @@
 
 Mutex 可以处于2种操作模式: 正常和饥饿
 
-在正常模式下, 等待着按 FIFO 顺序排队, 当唤醒一个等待队列中的 goroutine 时, 此 goroutine 并不会错直接获取到锁, 而是
-会和新到达的 goroutine 竞争. 通常新到达的 goroutine 更容易获得锁(因为它已经在 CPU 上运行, 大概率可以直接执行到获取锁
-的逻辑). 在这种情况下, 被唤醒的 goroutine 排在等待队列的前面. 
+在正常模式下, 等待着按 FIFO 顺序排队, 当唤醒一个等待队列中的 goroutine 时, 此 goroutine 并不会错直接获取到锁, 而
+是会和新到达的 goroutine 竞争. 通常新到达的 goroutine 更容易获得锁(因为它已经在 CPU 上运行, 大概率可以直接执行到
+获取锁的逻辑). 在这种情况下, 被唤醒的 goroutine 排在等待队列的前面. 
 
-如果等待者超过1ms未能获得互斥锁, 它会将互斥锁切换到饥饿模式.
+如果等待者超过 1ms 未能获得互斥锁, 它会将互斥锁切换到 `饥饿模式`.
 
-在饥饿模式下, 互斥锁的所有权直接从 goroutine 移交给队列前面的等待者. 而新到达的 goroutine 不会尝试获取互斥锁, 即使它
-已解锁, 也不会尝试自旋. 相反, 它们将字节排在等待队列的尾部.
+在饥饿模式下, 互斥锁的所有权直接从 goroutine 移交给 `队列前面的等待者`. 而新到达的 goroutine 不会尝试获取互斥锁, 
+即使它已解锁, 也不会尝试自旋. 相反, 它们将字节排在等待队列的尾部.
 
-当获取锁的这个 goroutine "是队列中最后一个等待者", 或者"等待的时间不到1ms", 它会将互斥锁切换回正常操作模式.
+当获取锁的这个 goroutine 是 "队列中最后一个等待者", 或者 "等待的时间不到1ms", 它会将互斥锁切换回 `正常模式`.
+
+两种模式的特点:
 
 正常模式的性能比较好, 因为即使有阻塞的等待者, goroutine 也可以连续多次获取互斥锁.
 
 饥饿模式对于防止尾部 goroutine 延迟过长很重要.
 
+
+关于 state 表示的状态含义:
+
 ![image](/images/develop_sync_mutex_state.png)
 
 waiter_num: 记录当前等待抢占该锁 goroutine 数量.
 
-starving: 当前锁**是否处于饥饿状态**
+starving: 当前锁 **是否处于饥饿状态**
 
-woken: 当前锁**是否有goroutine已经被唤醒**
+woken: 用于加锁和解锁过程中的通信. 加锁的自旋过程中将其设置为1, 以通知解锁不用释放信号量. 正常模式下, 解锁过程中将其
+设置为1, 并不释放信号量
 
-locked: 当前锁**是否有goroutine持有**
+locked: 当前锁 **是否有goroutine持有**
 
 sema 信号量作用:
 
@@ -52,7 +58,7 @@ func (m *Mutex) Lock() {
     if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
         return
     }
-    // 缓慢之路, 尝试自旋竞争或饥饿状态下饥饿goroutine竞争
+    // 尝试 "自旋竞争" 或 "饥饿状态下饥饿goroutine竞争"
     m.lockSlow()
 }
 
@@ -63,9 +69,10 @@ func (m *Mutex) lockSlow() {
     iter := 0 // 自旋次数
     old := m.state // 当前的锁的状态
     for {
-        // 锁是非饥饿状态(正常状态), 尝试自旋. 版本3引进的内容
+        // 正常模式, 尝试自旋. 版本3引进的内容
+        // 自旋条件: 1. 自旋次数足够少(4); 2.CPU核数>1; 3. P>1; 4. 协程调度机制中可运行队列必须为空
         if old&(mutexLocked|mutexStarving) == mutexLocked && runtime_canSpin(iter) {
-            // 没有唤醒的状况下, 尝试设置唤醒(因为当前自旋的 goroutine 可以看作是被唤醒的 goroutine)
+            // 加锁自旋过程中, 将 woken 标记为1, 用于通知解锁协程不必释放信号量, 直接获取.
             if !awoke && old&mutexWoken == 0 && old>>mutexWaiterShift != 0 &&
                 atomic.CompareAndSwapInt32(&m.state, old, old|mutexWoken) {
                 awoke = true
@@ -75,8 +82,7 @@ func (m *Mutex) lockSlow() {
             old = m.state // 再次获取锁的状态
             continue
         }
-        
-        // 状态转移. 
+         
         new := old
         if old&mutexStarving == 0 {
             new |= mutexLocked // 正常状态, 确保加锁
@@ -146,14 +152,10 @@ func (m *Mutex) lockSlow() {
 
 ```cgo
 func (m *Mutex) Unlock() {
-	if race.Enabled {
-		_ = m.state
-		race.Release(unsafe.Pointer(m))
-	}
-
-	// Fast path: drop lock bit.
+    // 正常模式, 只需要将 Locked 设置为 0
 	new := atomic.AddInt32(&m.state, -mutexLocked)
 	if new != 0 {
+        // 当有的 waiter > 1, 需要唤醒等待者
 		m.unlockSlow(new)
 	}
 }
@@ -164,7 +166,7 @@ func (m *Mutex) unlockSlow(new int32) {
 	}
 	
 	if new&mutexStarving == 0 {
-	    // 正常状态下
+	    // 正常状态下. 
 		old := new
 		for {
 			// 如果等待的人数为0, 或有一个 goroutine 已经被唤醒, 或有一个 goroutine 抢占到了锁.
@@ -183,8 +185,7 @@ func (m *Mutex) unlockSlow(new int32) {
 			old = m.state
 		}
 	} else {
-	    // 饥饿状态下, 直接将锁移交给下一个 waiter, 并让出自身的时间片, 以便下一个 waiter 
-	    // 可以立即开始运行.
+	    // 饥饿状态下, 直接将锁移交给下一个 waiter, 并让出自身的时间片, 以便下一个 waiter 可以立即开始运行.
 	    // 注: mutexLocked 并没有设置, waiter 被唤醒后自己设置. 但是如果设置了 mutexStarving,
 	    // mutex 仍然被认为是锁定的, 因此新到达的 goroutine 不会获取它.
 		runtime_Semrelease(&m.sema, true, 1)
