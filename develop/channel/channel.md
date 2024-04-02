@@ -196,7 +196,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
         c.qcount++
         unlock(&c.lock)
         return true
-	}
+    }
     
     // 当前没有合适的缓冲区来存储发送的元素. 这个时候需要根据 "是否是阻塞发送" 来做出抉择
     // 如果是 "阻塞发送", 那么就需要休眠当前的 goroutine
@@ -377,8 +377,6 @@ func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
 // 否则, 用一个元素填充 *ep并返回(true, true)
 // ep 必须是非nil且指向heap或调用者的stack.
 func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
-    // raceenabled: 不需要检查ep, 因为它始终在stack中, 或者是反射所分配的新内存.
-    
     // 当前的 chan 为nil, 在非阻塞的状况下, 立即返回 (false,false), 否则阻塞当前的 goroutine 到永远
     if c == nil {
         if !block {
@@ -423,9 +421,6 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
     // 当前 chan 关闭的状况下, 并且"缓存队列(buf)"里面没有元素. 
     // 也就是说, 即使是关闭状态, 对于缓冲型的 chan, "缓冲队列(buf)" 里面的元素依旧可以被接收到(qcount>0).
     if c.closed != 0 && c.qcount == 0 {
-        if raceenabled {
-            raceacquire(c.raceaddr())
-        }
         unlock(&c.lock)
         if ep != nil {
             typedmemclr(c.elemtype, ep) // 根据类型清理相应的内存
@@ -449,11 +444,6 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
     // 缓冲型, 当前的缓存队列存在元素
     if c.qcount > 0 {
         qp := chanbuf(c, c.recvx)
-        if raceenabled {
-            raceacquire(qp)
-            racerelease(qp)
-        }
-        
         //  将 qp 的数据拷贝到 ep
         if ep != nil {
             typedmemmove(c.elemtype, ep, qp)
@@ -532,7 +522,7 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
         if ep != nil {
             recvDirect(c.elemtype, sg, ep) // 直接从 sender 复制数据.
         }
-	} else {
+    } else {
         // 缓冲型通道, 或者异步通道
         // 
         // 先获取 recvx 对应的 slot, 
@@ -556,19 +546,19 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
             c.recvx = 0
         }
         c.sendx = c.recvx // c.sendx = (c.sendx+1) % c.dataqsiz
-        }
+    }
         
-        // sg 清理工作
-        sg.elem = nil
-        gp := sg.g
-        unlockf()
-        
-        // 唤醒对应的发送者
-        gp.param = unsafe.Pointer(sg)
-        if sg.releasetime != 0 {
+    // sg 清理工作
+    sg.elem = nil
+    gp := sg.g
+    unlockf()
+    
+    // 唤醒对应的发送者
+    gp.param = unsafe.Pointer(sg)
+    if sg.releasetime != 0 {
         sg.releasetime = cputicks()
-        }
-        goready(gp, skip+1)
+    }
+    goready(gp, skip+1)
 }
 ```
 
@@ -628,9 +618,6 @@ func closechan(c *hchan) {
         }
         gp := sg.g
         gp.param = nil // 关闭的标志之一
-        if raceenabled {
-            raceacquireg(gp, c.raceaddr())
-        }
         glist.push(gp) // 将 goroutine 存入 glist
     }
     
@@ -647,9 +634,6 @@ func closechan(c *hchan) {
         
         gp := sg.g
         gp.param = nil
-        if raceenabled {
-            raceacquireg(gp, c.raceaddr())
-        }
         glist.push(gp) // 将 goroutine 存入 glist
     }
     unlock(&c.lock)

@@ -385,13 +385,13 @@ type valueCtx struct {
 
 ```cgo
 func WithValue(parent Context, key, val interface{}) Context {
-	if key == nil {
-		panic("nil key")
-	}
-	if !reflectlite.TypeOf(key).Comparable() {
-		panic("key is not comparable")
-	}
-	return &valueCtx{parent, key, val}
+    if key == nil {
+        panic("nil key")
+    }
+    if !reflectlite.TypeOf(key).Comparable() {
+        panic("key is not comparable")
+    }
+    return &valueCtx{parent, key, val}
 }
 ```
 
@@ -404,10 +404,10 @@ func WithValue(parent Context, key, val interface{}) Context {
 
 ```cgo
 func (c *valueCtx) Value(key interface{}) interface{} {
-	if c.key == key {
-		return c.val
-	}
-	return c.Context.Value(key)
+    if c.key == key {
+        return c.val
+    }
+    return c.Context.Value(key)
 }
 ```
 
