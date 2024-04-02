@@ -127,7 +127,7 @@ todo 通常用在并不知道传递什么 context 的情形. 例如, 调用一�
 ```cgo
 type cancelCtx struct {
     Context
-
+    
     // 保护之后的字段
     mu       sync.Mutex
     done     chan struct{}
@@ -146,9 +146,9 @@ type cancelCtx struct {
 
 ```cgo
 func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
-	c := newCancelCtx(parent)
-	propagateCancel(parent, &c)
-	return &c, func() { c.cancel(true, Canceled) }
+    c := newCancelCtx(parent)
+    propagateCancel(parent, &c)
+    return &c, func() { c.cancel(true, Canceled) }
 }
 ```
 
@@ -160,34 +160,34 @@ func WithCancel(parent Context) (ctx Context, cancel CancelFunc) {
 
 ```cgo
 func propagateCancel(parent Context, child canceler) {
-	if parent.Done() == nil {
-		return // parent is never canceled
-	}
-	
-	// 找到可以取消的父 context
-	if p, ok := parentCancelCtx(parent); ok {
-		p.mu.Lock()
-		if p.err != nil {
-		    // 父节点已经取消, 子节点也需要取消
-			child.cancel(false, p.err)
-		} else {
-		    // 父节点未取消, 将子节点加入到父节点当中.
-			if p.children == nil {
-				p.children = make(map[canceler]struct{})
-			}
-			p.children[child] = struct{}{}
-		}
-		p.mu.Unlock()
-	} else {
-	    // 没有找到可取消的父 context, 新启动协程监控父节点/子节点取消信号
-		go func() {
-			select {
-			case <-parent.Done():
-				child.cancel(false, parent.Err())
-			case <-child.Done():
-			}
-		}()
-	}
+    if parent.Done() == nil {
+        return // parent is never canceled
+    }
+    
+    // 找到可以取消的父 context
+    if p, ok := parentCancelCtx(parent); ok {
+        p.mu.Lock()
+        if p.err != nil {
+            // 父节点已经取消, 子节点也需要取消
+            child.cancel(false, p.err)
+        } else {
+            // 父节点未取消, 将子节点加入到父节点当中.
+            if p.children == nil {
+                p.children = make(map[canceler]struct{})
+            }
+            p.children[child] = struct{}{}
+        }
+        p.mu.Unlock()
+    } else {
+        // 没有找到可取消的父 context, 新启动协程监控父节点/子节点取消信号
+        go func() {
+            select {
+            case <-parent.Done():
+                child.cancel(false, parent.Err())
+            case <-child.Done():
+            }
+        }()
+    }
 }
 ```
 
@@ -206,18 +206,18 @@ func propagateCancel(parent Context, child canceler) {
 
 ```cgo
 func parentCancelCtx(parent Context) (*cancelCtx, bool) {
-	for {
-		switch c := parent.(type) {
-		case *cancelCtx:
-			return c, true
-		case *timerCtx:
-			return &c.cancelCtx, true
-		case *valueCtx:
-			parent = c.Context
-		default:
-			return nil, false
-		}
-	}
+    for {
+        switch c := parent.(type) {
+        case *cancelCtx:
+            return c, true
+        case *timerCtx:
+            return &c.cancelCtx, true
+        case *valueCtx:
+            parent = c.Context
+        default:
+            return nil, false
+        }
+    }
 }
 ```
 
@@ -239,34 +239,34 @@ func parentCancelCtx(parent Context) (*cancelCtx, bool) {
 ```cgo
 // removeFromParent 是否从 parent 移除的标记
 func (c *cancelCtx) cancel(removeFromParent bool, err error) {
-	if err == nil {
-		panic("context: internal error: missing cancel error")
-	}
-	c.mu.Lock()
-	if c.err != nil {
-		c.mu.Unlock()
-		return // already canceled
-	}
-	c.err = err
-	if c.done == nil {
-		c.done = closedchan // 已经关闭的 chan
-	} else {
-		close(c.done)
-	}
-	
-	// 取消子节点, 递归调用
-	for child := range c.children {
-		child.cancel(false, err)
-	}
-	c.children = nil
-	c.mu.Unlock()
+    if err == nil {
+        panic("context: internal error: missing cancel error")
+    }
+    c.mu.Lock()
+    if c.err != nil {
+        c.mu.Unlock()
+        return // already canceled
+    }
+    c.err = err
+    if c.done == nil {
+        c.done = closedchan // 已经关闭的 chan
+    } else {
+        close(c.done)
+    }
 
-	if removeFromParent {
-	    // 移除 c. 先使用 parentCancelCtx() 方法获取到 c.Context 的可取消的父节点 parent, 
-	    // 然后在 parent 加锁的状况下删除 c.
-	    // 如果 parent 是自定义的 context, 那么 child 将不会保存到 parent 当中. 
-		removeChild(c.Context, c)
-	}
+    // 取消子节点, 递归调用
+    for child := range c.children {
+        child.cancel(false, err)
+    }
+    c.children = nil
+    c.mu.Unlock()
+    
+    if removeFromParent {
+        // 移除 c. 先使用 parentCancelCtx() 方法获取到 c.Context 的可取消的父节点 parent, 
+        // 然后在 parent 加锁的状况下删除 c.
+        // 如果 parent 是自定义的 context, 那么 child 将不会保存到 parent 当中. 
+        removeChild(c.Context, c)
+    }
 }
 ```
 
@@ -283,10 +283,10 @@ timerCtx 直接继承了 cancelCtx, 因此, 它可以被cancel.
 
 ```cgo
 type timerCtx struct {
-	cancelCtx
-	timer *time.Timer // Under cancelCtx.mu.
-
-	deadline time.Time
+    cancelCtx
+    timer *time.Timer // Under cancelCtx.mu.
+    
+    deadline time.Time
 }
 ```
 
@@ -300,37 +300,36 @@ func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
     // 检查 parent 的 deadline
     // 如果有 deadline, 并且 deadline < d, 这说明当前即将创建的节点不可能到达 deadline, 
     // 那么当前即将创建的节点只能以取消的方式退出.
-	if cur, ok := parent.Deadline(); ok && cur.Before(d) {
-		return WithCancel(parent)
-	}
-	
-	
-	c := &timerCtx{
-		cancelCtx: newCancelCtx(parent),
-		deadline:  d,
-	}
-	
-	// "挂载"
-	propagateCancel(parent, c) 
-	
-	// 准备 cancel 函数
-	dur := time.Until(d)
-	if dur <= 0 {
-	    // deadline has already passed
-	    // 取消, 删除当前的节点
-		c.cancel(true, DeadlineExceeded) 
-		return c, func() { c.cancel(false, Canceled) }
-	}
-	
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.err == nil {
-	    // deadline 导致的取消操作. time.AfterFunc 是一个异步的任务操作.
-		c.timer = time.AfterFunc(dur, func() {
-			c.cancel(true, DeadlineExceeded)
-		})
-	}
-	return c, func() { c.cancel(true, Canceled) }
+    if cur, ok := parent.Deadline(); ok && cur.Before(d) {
+        return WithCancel(parent)
+    }
+    
+    c := &timerCtx{
+        cancelCtx: newCancelCtx(parent),
+        deadline:  d,
+    }
+    	
+    // "挂载"
+    propagateCancel(parent, c) 
+    
+    // 准备 cancel 函数
+    dur := time.Until(d)
+    if dur <= 0 {
+        // deadline has already passed
+        // 取消, 删除当前的节点
+        c.cancel(true, DeadlineExceeded) 
+        return c, func() { c.cancel(false, Canceled) }
+    }
+    
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    if c.err == nil {
+        // deadline 导致的取消操作. time.AfterFunc 是一个异步的任务操作.
+        c.timer = time.AfterFunc(dur, func() {
+            c.cancel(true, DeadlineExceeded)
+        })
+    }
+    return c, func() { c.cancel(true, Canceled) }
 }
 
 func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
@@ -346,20 +345,20 @@ func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
 ```cgo
 // removeFromParent 表示是否从可取消的父节点当中删除当前的节点
 func (c *timerCtx) cancel(removeFromParent bool, err error) {
-	c.cancelCtx.cancel(false, err) // 注意, 这里的值是 false
-	if removeFromParent {
-		// 在进行添加的时候, parent 实际上就是 c.cancelCtx.Context,
-		// 因此这里的移除的操作的 parent 才是 c.cancelCtx.Context
-		removeChild(c.cancelCtx.Context, c)
-	}
-	
-	// 停止掉 timer 的操作
-	c.mu.Lock()
-	if c.timer != nil {
-		c.timer.Stop()
-		c.timer = nil
-	}
-	c.mu.Unlock()
+    c.cancelCtx.cancel(false, err) // 注意, 这里的值是 false
+    if removeFromParent {
+        // 在进行添加的时候, parent 实际上就是 c.cancelCtx.Context,
+        // 因此这里的移除的操作的 parent 才是 c.cancelCtx.Context
+        removeChild(c.cancelCtx.Context, c)
+    }
+    
+    // 停止掉 timer 的操作
+    c.mu.Lock()
+    if c.timer != nil {
+        c.timer.Stop()
+        c.timer = nil
+    }
+    c.mu.Unlock()
 }
 ```
 
