@@ -270,9 +270,46 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 }
 ```
 
+```
+// 从 parent 当中删除 child. 这里的 parent 是 cancelCtx.parent
+func removeChild(parent Context, child canceler) {
+    p, ok := parentCancelCtx(parent)
+    if !ok {
+        return
+    }
+
+    // 这里找到的 p 是 *cancelCtx, 里面已经增加了 child
+    p.mu.Lock()
+    if p.children != nil {
+        delete(p.children, child)
+    }
+    p.mu.Unlock()
+}
+```
+
 这里的 `removeChild()` 函数的代码需要仔细阅读, 要不然会觉得奇怪. 将 child 节点添加到 child 可取消的父节点的位置是在
 函数 `propagateCancel()` 当中, 里面的 parent 就是 `c.Context`, child 是 `c`. 因此在 `removeChild()` 函数也
 是需要相同的参数, 相同的查找方式, 这样才能得到相同的元素. 
+
+```
+// 重写 Done 与 Err
+func (c *cancelCtx) Done() <-chan struct{} {
+	c.mu.Lock()
+	if c.done == nil {
+		c.done = make(chan struct{})
+	}
+	d := c.done
+	c.mu.Unlock()
+	return d
+}
+
+func (c *cancelCtx) Err() error {
+	c.mu.Lock()
+	err := c.err
+	c.mu.Unlock()
+	return err
+}
+```
 
 
 #### timerCtx
@@ -291,7 +328,7 @@ type timerCtx struct {
 ```
 
 注: `timerCtx` 继承了 `cancelCtx`, 间接的继承了 `Context` 接口. 本身只实现了 `Deadline()` 方法, 继承了 `cancelCtx`
-实现的  `Done()`, `Err()` 两个方法. 但是, 它重写了 `cancel()` 方法.
+实现的 `Done()` 与 `Err()` 的实现. 但是, 它重写了 `cancel()` 方法.
 
 由 timerCtx 派生的函数:
 
