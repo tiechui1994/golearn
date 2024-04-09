@@ -175,7 +175,7 @@ goexit1 函数通过调用 mcall 从当前运行的用户 g 切换到 g0, 然后
 
 ```cgo
 // func mcall(fn func(*g)), 切换到 m->g0 栈上, 然后调用 fn(g) 函数, fn 函数必须不能返回(因为返回了就会导致程序panic).
-// g 对象, 是 m->curg
+// 参数 g 对象, 是 m->curg(用户的 goroutine)
 // mcall 的参数是一个指向 funcval 对象的指针.
 TEXT runtime·mcall(SB), NOSPLIT, $0-8
     // 获取参数的值放入 DI 寄存器, 它是 funcval 对象的指针. 当前场景是 goexit0 的地址
@@ -208,7 +208,7 @@ TEXT runtime·mcall(SB), NOSPLIT, $0-8
     MOVQ	DI, DX    // DX=fn 
     MOVQ	0(DI), DI // 判断fn不为nil
     CALL	DI        // 调用 fn 函数(已经准备好了栈参数, 因此这里是 CALL), 该函数不会返回, 这里调用的函数是 goexit0 
-    POPQ	AX // 正常状况下, 这里及其之后的指令不会执行的
+    POPQ	AX        // 正常状况下, 这里及其之后的指令不会执行的
     MOVQ	$runtime·badmcall2(SB), AX
     JMP	AX
     RET

@@ -21,10 +21,9 @@ systemstack 在系统堆栈上运行 fn.
 如果从 per-OS-thread(g0) 栈调用 systemstack, 或者如果从 gsignal 栈调用 systemstack, 则 systemstack 直接调用
 fn 并返回.
 
-否则, systemstack 将从 goroutine 的栈中调用. 在这种情况下, systemstack 切换到 per-OS-thread 栈, 调用 fn, 然后
-切换回来.
+否则, systemstack 需要切换到 per-OS-thread(g0) 栈, 调用 fn, 然后切换回来.
 
-通常使用 func 字面量作为参数, 以便与调用系统栈共享输入和输出:
+通常使用 func 字面量(实际传递给 systemstack 的是一个指针)作为参数, 以便与调用系统栈共享输入和输出:
 
 ```cgo
 ... set up y ...
