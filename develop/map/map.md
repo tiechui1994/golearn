@@ -466,174 +466,163 @@ A  ^  B, 异或操作, 移除 A,B 共有的标记1, 添加 A,B 不共有的标�
 // 插入操作, 实际上就是找到一个写入 value 的内存地址, 后续通过内存地址操作进行赋值. 
 ```cgo
 func mapassign(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
-    // 如果h是空指针,赋值会引起panic
-    // 例如以下语句
-    // var m map[string]int
-    // m["k"] = 1
-    if h == nil {
-        panic(plainError("assignment to entry in nil map"))
-    }
-    
-    // 如果开启了竞态检测 -race
-    if raceenabled {
-        callerpc := getcallerpc()
-        pc := funcPC(mapassign)
-        racewritepc(unsafe.Pointer(h), callerpc, pc)
-        raceReadObjectPC(t.key, key, callerpc, pc)
-    }
-    // 如果开启了memory sanitizer -msan
-    if msanenabled {
-        msanread(key, t.key.size)
-    }
-    // 有其他goroutine正在往map中写key, 会抛出以下错误. 不能并发写, 或者并发读写. 可以并发读取
-    if h.flags&hashWriting != 0 {
-        throw("concurrent map writes")
-    }
-    // 哈希值
-    hash := t.hasher(key, uintptr(h.hash0))
-    
-    // 将flags的值与hashWriting做按位 "异或" 运算, 移除 hashWriting 的相应标记位
-    // 因为在当前goroutine可能还未完成key的写入, 再次调用t.hasher会发生panic.
-    // 设置 flags 为正在写入.
-    h.flags ^= hashWriting
-    
-    if h.buckets == nil {
-        h.buckets = newobject(t.bucket) // newarray(t.bucket, 1)
-    }
-
-again:
-    // bucketMask返回值是 2^B-1
-    // 因此,通过hash值与bucketMask返回值做按位与操作,返回的在buckets数组中的第几号桶
-    bucket := hash & bucketMask(h.B) // 获取bucket的位置
-    // 如果map正在扩容(即h.oldbuckets != nil)中, 则先进行搬移工作(当前的bucket). 
-    if h.growing() {
-        growWork(t, h, bucket) // 最多搬移两个bucket
-    }
-    
-    // 计算出上面求出的第几号bucket的内存位置
-    // post = start + bucketNumber * bucketsize
-    b := (*bmap)(unsafe.Pointer(uintptr(h.buckets) + bucket*uintptr(t.bucketsize)))
-    top := tophash(hash) // 获取 bucket 内的原始的位置(即hash的高8位)
-    
-    var inserti *uint8         // 记录 tophash 对应位置的指针
-    var insertk unsafe.Pointer // 记录 key 的底层内存位置(要剥离指针)
-    var elem unsafe.Pointer    // 记录 value 的底层内存位置
-  
-bucketloop:
-  for {
-        // 遍历桶中的8个cell
-    for i := uintptr(0); i < bucketCnt; i++ {
-            // 这里分两种情况:
-            // 第一种情况是cell位的tophash值和当前tophash值不相等.
-            // 在 b.tophash[i] != top 的情况下, 理论上有可能会是一个空槽位.
-            // 一般情况下 map 的槽位分布是这样的, e 表示 empty:
-            // [h0][h1][h2][h3][h4][e][e][e]
-            // 但在执行过 delete 操作时,可能会变成这样:
-            // [h0][h1][e][e][h5][e][e][e]
-            // 所以如果再插入的话,会尽量往前面的位置插
-            // [h0][h1][e][e][h5][e][e][e]
-            //          ^
-            //          ^
-            //       这个位置
-            // 所以在循环的时候还要顺便把前面的空位置先记下来
-            // 因为有可能在后面会找到相等的key,也可能找不到相等的key
-            if b.tophash[i] != top {
-                // 如果cell位为空(b.tophash[i] <= emptyOne), 那么就可以在对应位置进行插入
-                if isEmpty(b.tophash[i]) && inserti == nil {
-                    inserti = &b.tophash[i]
-                    // 这里需要注意实际的 bmap 结构. dataOffset 是前面的8个 tophash 的偏移量
-                    insertk = add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
-                    elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
-                }
-                
-                // 后面所有的 cell 和 overflow 都是空的. 但是前面已经记录了当前的位置, 无需再次记录
-                if b.tophash[i] == emptyRest {
-                    break bucketloop // goto done
-                }
-                continue
-            }
-            
-            // 第二种情况是cell位的tophash值和当前的tophash值相等
-            // indirectkey()  // store ptr to key instead of key itself
-            // indirectelem() // store ptr to elem instead of elem itself
-            k := add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
-            if t.indirectkey() {
-                k = *((*unsafe.Pointer)(k))
-            }
-            // 注意: 即使当前cell位的tophash值相等, 不一定它对应的key也是相等的,所以还要做一个key值判断
-            if !t.key.equal(key, k) {
-                continue
-            }
-            
-            // 到这里,说明 map 当中存在当前的 key, 只需要更新它即可. 这个时候是不再需要 inserti, insertk的值了
-            // 因为它们只是辅助后面的插入的动作的. 直接调到 done 即可.
-            // needkeyupdate() // true if we need to update key on an overwrite
-            if t.needkeyupdate() {
-                typedmemmove(t.key, k, key)
-            }
-            // pos = start(bucket) + dataOffset + 8*keysize + i*elemsize
-            elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
-                goto done
-            }
-            
-            // 进入到 overflow bucket 当中查找
-            // *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)), 很巧妙的方法
-            // 说明: t.bucketsize 是 bucket 的大小, 而最后一个指针就是 *bmap
-            ovf := b.overflow(t)
-            // overflow bucket 为空, 终止当前的循环. 
-            if ovf == nil {
-                break
-            }
-            b = ovf
+  // 如果h是空指针,赋值会引起panic
+  // 例如以下语句
+  // var m map[string]int
+  // m["k"] = 1
+  if h == nil {
+    panic(plainError("assignment to entry in nil map"))
   }
 
-    // 在已有的桶和溢出桶中都未找到合适的cell供key写入, 那么有可能会触发以下两种情况
-    // 情况一:
-    // 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一, 则进行扩容
-    // 操作. 
-    // hashGrow()实际并未完成扩容, 对哈希表数据的搬迁(复制)操作是通过growWork()来完成的. 
-    // 重新跳入again逻辑, 执行两次growWork()操作后, 再次遍历新的桶. 
-    // 分别分析情况1(装载因子) 和 情况2(buckets与overflow buckets)
-    if !h.growing() && (overLoadFactor(h.count+1, h.B) || tooManyOverflowBuckets(h.noverflow, h.B)) {
-        hashGrow(t, h)
-        goto again // Growing the table invalidates everything, so try again
+  // 有其他goroutine正在往map中写key, 会抛出以下错误. 不能并发写, 或者并发读写. 可以并发读取
+  if h.flags&hashWriting != 0 {
+    throw("concurrent map writes")
+  }
+  // 哈希值
+  hash := t.hasher(key, uintptr(h.hash0))
+
+  // 将flags的值与hashWriting做按位 "异或" 运算, 移除 hashWriting 的相应标记位
+  // 因为在当前goroutine可能还未完成key的写入, 再次调用t.hasher会发生panic.
+  // 设置 flags 为正在写入.
+  h.flags ^= hashWriting
+
+  if h.buckets == nil {
+    h.buckets = newobject(t.bucket) // newarray(t.bucket, 1)
+  }
+
+again:
+  // bucketMask返回值是 2^B-1
+  // 因此,通过hash值与bucketMask返回值做按位与操作,返回的在buckets数组中的第几号桶
+  bucket := hash & bucketMask(h.B) // 获取bucket的位置
+  // 如果map正在扩容(即h.oldbuckets != nil)中, 则先进行搬移工作(当前的bucket).
+  if h.growing() {
+    growWork(t, h, bucket) // 最多搬移两个bucket
+  }
+
+  // 计算出上面求出的第几号bucket的内存位置
+  // post = start + bucketNumber * bucketsize
+  b := (*bmap)(unsafe.Pointer(uintptr(h.buckets) + bucket*uintptr(t.bucketsize)))
+  top := tophash(hash) // 获取 bucket 内的原始的位置(即hash的高8位)
+
+  var inserti *uint8         // 记录 tophash 对应位置的指针
+  var insertk unsafe.Pointer // 记录 key 的底层内存位置(要剥离指针)
+  var elem unsafe.Pointer    // 记录 value 的底层内存位置
+
+bucketloop:
+  for {
+    // 遍历桶中的8个cell
+    for i := uintptr(0); i < bucketCnt; i++ {
+      // 这里分两种情况:
+      // 第一种情况是cell位的tophash值和当前tophash值不相等.
+      // 在 b.tophash[i] != top 的情况下, 理论上有可能会是一个空槽位.
+      // 一般情况下 map 的槽位分布是这样的, e 表示 empty:
+      // [h0][h1][h2][h3][h4][e][e][e]
+      // 但在执行过 delete 操作时,可能会变成这样:
+      // [h0][h1][e][e][h5][e][e][e]
+      // 所以如果再插入的话,会尽量往前面的位置插
+      // [h0][h1][e][e][h5][e][e][e]
+      //          ^
+      //          ^
+      //       这个位置
+      // 所以在循环的时候还要顺便把前面的空位置先记下来
+      // 因为有可能在后面会找到相等的key,也可能找不到相等的key
+      if b.tophash[i] != top {
+        // 如果cell位为空(b.tophash[i] <= emptyOne), 那么就可以在对应位置进行插入
+        if isEmpty(b.tophash[i]) && inserti == nil {
+          inserti = &b.tophash[i]
+          // 这里需要注意实际的 bmap 结构. dataOffset 是前面的8个 tophash 的偏移量
+          insertk = add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
+          elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
+        }
+
+        // 后面所有的 cell 和 overflow 都是空的. 但是前面已经记录了当前的位置, 无需再次记录
+        if b.tophash[i] == emptyRest {
+          break bucketloop // goto done
+        }
+        continue
+      }
+
+      // 第二种情况是cell位的tophash值和当前的tophash值相等
+      // indirectkey()  // store ptr to key instead of key itself
+      // indirectelem() // store ptr to elem instead of elem itself
+      k := add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
+      if t.indirectkey() {
+        k = *((*unsafe.Pointer)(k))
+      }
+      // 注意: 即使当前cell位的tophash值相等, 不一定它对应的key也是相等的,所以还要做一个key值判断
+      if !t.key.equal(key, k) {
+        continue
+      }
+
+      // 到这里,说明 map 当中存在当前的 key, 只需要更新它即可. 这个时候是不再需要 inserti, insertk的值了
+      // 因为它们只是辅助后面的插入的动作的. 直接调到 done 即可.
+      // needkeyupdate() // true if we need to update key on an overwrite
+      if t.needkeyupdate() {
+        typedmemmove(t.key, k, key)
+      }
+      // pos = start(bucket) + dataOffset + 8*keysize + i*elemsize
+      elem = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.elemsize))
+      goto done
     }
 
-    // 情况二:
-    // 在不满足情况一的条件下, 并且没有找到插入位置, 会为当前桶再新建溢出桶,并将tophash,key插入到新建溢出桶的对应内存
-    // 的0号位置
-    if inserti == nil {
-        // all current buckets are full, allocate a new one.
-        newb := h.newoverflow(t, b)
-        inserti = &newb.tophash[0]
-        insertk = add(unsafe.Pointer(newb), dataOffset)
-        elem = add(insertk, bucketCnt*uintptr(t.keysize))
+    // 进入到 overflow bucket 当中查找
+    // *(**bmap)(add(unsafe.Pointer(b), uintptr(t.bucketsize)-sys.PtrSize)), 很巧妙的方法
+    // 说明: t.bucketsize 是 bucket 的大小, 而最后一个指针就是 *bmap
+    ovf := b.overflow(t)
+    // overflow bucket 为空, 终止当前的 bucketloop 循环.
+    if ovf == nil {
+      break
     }
-    
-    // 在插入位置存入新的key和value
-    if t.indirectkey() {
-        kmem := newobject(t.key)
-        *(*unsafe.Pointer)(insertk) = kmem
-        insertk = kmem
-    }
-    if t.indirectelem() {
-        vmem := newobject(t.elem)
-        *(*unsafe.Pointer)(elem) = vmem
-    }
-    typedmemmove(t.key, insertk, key) // 写入 key
-    *inserti = top                    // 写入 tophash
-    h.count++                         // map中的key数量+1
+    b = ovf
+  }
+
+  // 在已有的桶和溢出桶中都未找到合适的cell供key写入, 那么有可能会触发以下两种情况
+  // 情况一:
+  // 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一, 则进行扩容
+  // 操作.
+  // hashGrow()实际并未完成扩容, 对哈希表数据的搬迁(复制)操作是通过growWork()来完成的.
+  // 重新跳入again逻辑, 执行两次growWork()操作后, 再次遍历新的桶.
+  // 分别分析情况1(装载因子) 和 情况2(buckets与overflow buckets)
+  if !h.growing() && (overLoadFactor(h.count+1, h.B) || tooManyOverflowBuckets(h.noverflow, h.B)) {
+    hashGrow(t, h)
+    goto again // Growing the table invalidates everything, so try again
+  }
+
+  // 情况二:
+  // 在不满足情况一的条件下, 并且没有找到插入位置, 会为当前桶再新建溢出桶,并将tophash,key插入到新建溢出桶的对应内存
+  // 的0号位置
+  if inserti == nil {
+    // all current buckets are full, allocate a new one.
+    newb := h.newoverflow(t, b)
+    inserti = &newb.tophash[0]
+    insertk = add(unsafe.Pointer(newb), dataOffset)
+    elem = add(insertk, bucketCnt*uintptr(t.keysize))
+  }
+
+  // 在插入位置存入新的key和value
+  if t.indirectkey() {
+    kmem := newobject(t.key)
+    *(*unsafe.Pointer)(insertk) = kmem
+    insertk = kmem
+  }
+  if t.indirectelem() {
+    vmem := newobject(t.elem)
+    *(*unsafe.Pointer)(elem) = vmem
+  }
+  typedmemmove(t.key, insertk, key) // 写入 key
+  *inserti = top                    // 写入 tophash
+  h.count++                         // map中的key数量+1
 
 done:
-    // 插入操作
-    if h.flags&hashWriting == 0 {
-        throw("concurrent map writes")
-    }
-    h.flags &^= hashWriting
-    if t.indirectelem() {
-        elem = *((*unsafe.Pointer)(elem))
-    }
-    return elem // 返回 value 的底层内存位置
+  // 插入操作
+  if h.flags&hashWriting == 0 {
+    throw("concurrent map writes")
+  }
+  h.flags &^= hashWriting
+  if t.indirectelem() {
+    elem = *((*unsafe.Pointer)(elem))
+  }
+  return elem // 返回 value 的底层内存位置
 }
 ```
 
@@ -653,22 +642,22 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
       h.extra.nextOverflow = (*bmap)(add(unsafe.Pointer(ovf), uintptr(t.bucketsize)))
     } else {
       // 最后一个预分配的溢出存储桶, 其地址有效, 指向了当前 buckets
-            // 重置此存储桶上的 overflow 指针(该指针已设置为非nil标记值).
+      // 重置此存储桶上的 overflow 指针(该指针已设置为非nil标记值).
       ovf.setoverflow(t, nil)
       h.extra.nextOverflow = nil
     }
   } else {
     ovf = (*bmap)(newobject(t.bucket))
   }
-  
+
   // 修改 noverflow
   h.incrnoverflow()
   // key和value 非指针
-  if t.bucket.ptrdata == 0 { 
+  if t.bucket.ptrdata == 0 {
     h.createOverflow() // 创建 extra 和 overflow
     *h.extra.overflow = append(*h.extra.overflow, ovf) // 将  overflow 存储到 extra 当中
   }
-  b.setoverflow(t, ovf) 
+  b.setoverflow(t, ovf)
   return ovf
 }
 ```
@@ -688,14 +677,14 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
 // 当有很多存储桶时, noverflow是一个近似计数.
 func (h *hmap) incrnoverflow() {
   // 如果overflow buckets的数量与buckets的数量相同, 将触发相同大小的 map 增长.
-    // 我们需要能够计数到 1<<h.B
+  // 我们需要能够计数到 1<<h.B
   if h.B < 16 {
     h.noverflow++
     return
   }
   
   // 以 1 / (1 <<(h.B-15)) 的概率递增.
-    // 当我们达到1<<15 - 1时, 我们将有大约与桶一样多的溢出桶.
+  // 当我们达到1<<15 - 1时, 我们将有大约与桶一样多的溢出桶.
   mask := uint32(1)<<(h.B-15) - 1
   // Example: if h.B == 18, then mask == 7,
   // and fastrand & 7 == 0 with probability 1/8.
@@ -710,19 +699,7 @@ func (h *hmap) incrnoverflow() {
 
 // 查询操作
 ```cgo
-func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
-  // 如果开启了竞态检测 -race
-  if raceenabled && h != nil {
-    callerpc := getcallerpc()
-    pc := funcPC(mapaccess1)
-    racereadpc(unsafe.Pointer(h), callerpc, pc)
-    raceReadObjectPC(t.key, key, callerpc, pc)
-  }
-  // 如果开启了memory sanitizer -msan
-  if msanenabled && h != nil {
-    msanread(key, t.key.size)
-  }
-  
+func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer { 
   // 如果map为空或者元素个数为0, 返回零值
   if h == nil || h.count == 0 {
     if t.hashMightPanic() {
@@ -746,7 +723,7 @@ func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
   // 如果 oldbuckets 不为空, 那么证明map发生了扩容
   // 如果有扩容发生, 老的buckets中的数据可能还未搬迁至新的buckets里, 所以需要先在老的buckets中找
   if c := h.oldbuckets; c != nil {
-      // 增量扩容
+    // 增量扩容
     if !h.sameSizeGrow() {
       m >>= 1
     }
@@ -768,11 +745,11 @@ func mapaccess1(t *maptype, h *hmap, key unsafe.Pointer) unsafe.Pointer {
   // 第三种是当前桶中有cell位的tophash值是emptyRest, 这个值在前面解释过, 它代表此时的桶后面的cell还未利用, 
   // 所以无需再继续遍历. 
 bucketloop:
-    // 第二种情况
+  // 第二种情况
   for ; b != nil; b = b.overflow(t) {
     for i := uintptr(0); i < bucketCnt; i++ {
       if b.tophash[i] != top {
-          // 第三种情况, 这种状况肯定是找不到了
+        // 第三种情况, 这种状况肯定是找不到了
         if b.tophash[i] == emptyRest {
           break bucketloop
         }
