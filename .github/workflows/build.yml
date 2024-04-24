@@ -1,0 +1,69 @@
+name: build
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      store: ${{ steps.install.outputs.store }}
+    strategy:
+      matrix:
+        node: [16.16.0]
+
+    steps:
+      - name: Use Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Checkout [blog]
+        uses: actions/checkout@v3
+        with:
+          repository: tiechui1994/blog
+          fetch-depth: 5
+          ref: master
+          persist-credentials: false
+          token: ${{secrets.TOKEN}}
+
+      - name: Checkout [golang]
+        uses: actions/checkout@v3
+        with:
+          repository: tiechui1994/golearn
+          fetch-depth: 5
+          ref: master
+          path: static/markdown
+          persist-credentials: false
+
+      - name: Restore Cache
+        uses: actions/cache@v3
+        with:
+          path: ./node_modules
+          key: ${{github.repository}}-vercel_golang_blog
+
+      - name: Install
+        id: install
+        run: |
+          if [[ -n $(git diff --name-status HEAD^ HEAD|grep -o 'package.json') || ! -e ./node_modules ]];
+          then
+            echo "store=1" >> $GITHUB_OUTPUT
+            rm -rf ./node_modules
+            npm install
+          fi
+        shell: bash
+
+      - name: Deploy vercel [golang]
+        timeout-minutes: 30
+        if: ${{ success() }}
+        run: |
+          npm i axios-retry@3.4.0 --save-dev
+          node src/deploy/vercel.js --project golearn --domain golang --token ${{secrets.VERCEL}}
+
+      - name: Store Cache
+        uses: actions/cache@v3
+        if: ${{ success() && steps.install.outputs.store == 1 }}
+        with:
+          path: ./node_modules
+          key: ${{github.repository}}-vercel_golearnblog
+
