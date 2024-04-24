@@ -1,4 +1,4 @@
-## dict
+## Redis - dict
 
 dict 为了实现增量式重哈希(incremental rehashing), dict 的数据结构包括两个哈希表. 在重哈希期间, 数据从第一个哈希表
 向第二个哈希表迁移.

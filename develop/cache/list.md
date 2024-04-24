@@ -1,4 +1,4 @@
-## List 
+## List 实现
 
 golang 里的 List (在`container/list`包当中) 是一个特殊的双向链表. 
 

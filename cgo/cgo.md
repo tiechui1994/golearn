@@ -1,4 +1,4 @@
-# golang cgo
+# CGO 原理
 
 [相关文章](https://colobu.com/2018/06/13/cgo-articles/)
 
