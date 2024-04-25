@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "header.h"
 
-void SayHello() {
-    printf("hello world! \n");
+int SayHello(char* s) {
+    printf("hello: %s \n", s);
+    return 0;
 }

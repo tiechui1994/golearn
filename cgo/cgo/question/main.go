@@ -5,10 +5,6 @@ package main
 // #include "header.h"
 import "C"
 
-func Hello() {
-	C.SayHello()
-}
-
 func main() {
-	Hello()
+	_ = C.SayHello(C.CString("abcd"))
 }

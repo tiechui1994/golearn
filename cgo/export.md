@@ -192,12 +192,12 @@ go build -o main main.go
 
 go 导入/导出符号表:
 
-> go:cgo_export_dynamic <local> <remote>
+> //go:cgo_export_dynamic <local> <remote>
 > 
 > 在 internal 链接模式下, 将名为 <local> 的 Go 符号作为 <remote> 放入程序导出的符号表中. 以便 C 代码可以通过该名称引
 用它. 这种机制使得 C 代码可以调用 Go 或共享 Go 的数据.
 
-> go:cgo_export_static <local> <remote>
+> //go:cgo_export_static <local> <remote>
 >
 > 在 external 链接模式下. 将名为 <local> 的 Go 符号作为 <remote> 放入程序导出的符号表中. 以便 C 代码可以通过该名称引
 用它. 这种机制使得 C 代码可以调用 Go 或共享 Go 的数据.
