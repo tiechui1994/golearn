@@ -1,4 +1,4 @@
-### 调度循环
+### go 调度 - 调度循环
 
 任何 goroutine 被调度运行起来都是通过 schedule() -> execute() -> gogo() 调用链, 而且这个调用链中的函数一直没有
 返回. 一个 goroutine 从调度到退出的路径:

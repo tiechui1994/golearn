@@ -1,4 +1,4 @@
-### main goroutine 
+### go 调度 - main goroutine 
 
 下来, 看看 runtime.main 函数:
 

@@ -1,4 +1,4 @@
-### GMP数据结构
+### go 调度 - GMP数据结构
 
 // g, Groutine, 协程
 ```cgo
