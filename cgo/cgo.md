@@ -283,41 +283,40 @@ typedef struct option {
 } option;
 
 void call(option arg1, option* arg2) {
-    printf("arg1 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg1.iarg, arg1.farg, arg1.carg, 
+    printf("arg1 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg1.iarg, arg1.farg, arg1.carg,
         *arg1.iptr);
-    
+
     printf("\n==========================\n\n");
-    
+
     printf("arg2 iarg: %d, farg: %0.2f, carg: %s, iptr: %d\n", arg2->iarg, arg2->farg, arg2->carg,
-        *(arg1->iptr));
+        *(arg1.iptr));
 }
 */
 import "C"
 import (
-	"fmt"
 	"unsafe"
 )
 
 func main() {
-    val := 100
-    opt := C.struct_option{
-        iarg: C.int(10),
-        farg: C.float(100.00),
-        carg: C.CString("Hello World"),
-        iptr: (*C.int)(unsafe.Pointer(&val)),
-    }
-    arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
-        
-    // 确定内存大小
-    size := 1 * int(unsafe.Sizeof(struct_option{}))
-    // malloc 分配内存
-    arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
-    // unsafe 转换成数组
-    arg2ptr := (*[1024]C.struct_option)(unsafe.Pointer(arg2))[:size:size]
-    // 对数组的元素进行赋值
-    arg2ptr[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
-    
-    C.call(arg1, arg2)
+	val := 100
+	opt := C.struct_option{
+		iarg: C.int(10),
+		farg: C.float(100.00),
+		carg: C.CString("Hello World"),
+		iptr: (*C.int)(unsafe.Pointer(&val)),
+	}
+	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
+
+	// 只能走 C malloc 路线
+	// 确定申请内存大小, 并进行内存申请
+	size := 2 * int(unsafe.Sizeof(C.struct_option{}))
+	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
+	// unsafe 转换成数组, 对数组的元素进行赋值. 注意: p 的长度是 2, 内存占用是 48
+	p := (*[2]C.struct_option)(unsafe.Pointer(arg2))[:]
+	p[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
+	p[1] = *(*C.struct_option)(unsafe.Pointer(&opt))
+	
+	C.call(arg1, arg2)
 }
 ```
 
@@ -397,7 +396,6 @@ func main() {
         p: (*C.int)(unsafe.Pointer(new(int))),
     }
     args := (*C.int)(unsafe.Pointer(&f.a))
-    //args := (*C.int)(unsafe.Pointer(f.p))
     
     // f.a, f.p 是指向 Go Memory 的, 因此可以成功执行
     C.plus(args)
@@ -453,20 +451,20 @@ C.plus(argsp)
 size := int(unsafe.Sizeof(C.struct_foo{}))
 args := (*C.struct_foo)(unsafe.Pointer(C.malloc(C.size_t(size)))) 
 
-// 使用数组的方式转换成 slice
-pa := (*[10]C.struct_foo)(unsafe.Pointer(args))[:1:1]
+// 使用数组的方式转换成 slice.
+pa := (*[10]C.struct_foo)(unsafe.Pointer(args))[:] // [10]C.struct_foo 与 args 本质上是统一的
 pa[0] = C.struct_foo{
     a: 5,
     p: (*C.int)(unsafe.Pointer(new(int))),
 }
 
-// 使用 SliceHeadrer 方式转换
+// 使用 SliceHeadrer 方式转换. 
 sh := reflect.SliceHeader{
     Data: uintptr(unsafe.Pointer(args)),
     Len:1,
     Cap:1,
 }
-ps := *(*[]C.struct_foo)(unsafe.Pointer(&sh))
+ps := *(*[]C.struct_foo)(unsafe.Pointer(&sh)) // []C.struct_foo 与 reflect.SliceHeader 本质上是统一的
 pa[0] = C.struct_foo{
     a: 5,
     p: (*C.int)(unsafe.Pointer(new(int))),
