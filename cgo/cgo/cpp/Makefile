@@ -5,7 +5,7 @@ gotest: $(SRC) static
 	go build -o gotest -ldflags "-w" -x $(SRC)
 
 ctest: static
-	$(CC) -o ctest test.c -lbuffer -lstdc++
+	$(CC) -o ctest main.c -lbuffer -lstdc++
 
 static:
 	$(CXX) $(CXXFLAGS) -c *.cpp

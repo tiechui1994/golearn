@@ -1,6 +1,6 @@
 SRC=$(wildcard *.c)
 
-# warning: curent lib can generate shared lib, not static lib
+# warning: current lib can generate shared lib, not static lib
 
 main: libheader.so
 	go build -o main main.go
