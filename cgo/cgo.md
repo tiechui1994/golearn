@@ -90,7 +90,7 @@ package main
 import "C"
 
 func main() {
-	print(C.GoString(C.os))
+    print(C.GoString(C.os))
 }
 ```
 
@@ -179,8 +179,8 @@ int call(int arg1, int* arg2, const char* arg3) {
 */
 import "C"
 import (
-	"fmt"
-	"unsafe"
+    "fmt"
+    "unsafe"
 )
 
 func main() {
@@ -294,29 +294,29 @@ void call(option arg1, option* arg2) {
 */
 import "C"
 import (
-	"unsafe"
+    "unsafe"
 )
 
 func main() {
-	val := 100
-	opt := C.struct_option{
-		iarg: C.int(10),
-		farg: C.float(100.00),
-		carg: C.CString("Hello World"),
-		iptr: (*C.int)(unsafe.Pointer(&val)),
-	}
-	arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
+    val := 100
+    opt := C.struct_option{
+        iarg: C.int(10),
+        farg: C.float(100.00),
+        carg: C.CString("Hello World"),
+        iptr: (*C.int)(unsafe.Pointer(&val)),
+    }
+    arg1 := *(*C.struct_option)(unsafe.Pointer(&opt))
 
-	// 只能走 C malloc 路线
-	// 确定申请内存大小, 并进行内存申请
-	size := 2 * int(unsafe.Sizeof(C.struct_option{}))
-	arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
-	// unsafe 转换成数组, 对数组的元素进行赋值. 注意: p 的长度是 2, 内存占用是 48
-	p := (*[2]C.struct_option)(unsafe.Pointer(arg2))[:]
-	p[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
-	p[1] = *(*C.struct_option)(unsafe.Pointer(&opt))
+    // 只能走 C malloc 路线
+    // 确定申请内存大小, 并进行内存申请
+    size := 2 * int(unsafe.Sizeof(C.struct_option{}))
+    arg2 := (*C.struct_option)(C.malloc(C.size_t(size)))
+    // unsafe 转换成数组, 对数组的元素进行赋值. 注意: p 的长度是 2, 内存占用是 48
+    p := (*[2]C.struct_option)(unsafe.Pointer(arg2))[:]
+    p[0] = *(*C.struct_option)(unsafe.Pointer(&opt))
+    p[1] = *(*C.struct_option)(unsafe.Pointer(&opt))
 	
-	C.call(arg1, arg2)
+    C.call(arg1, arg2)
 }
 ```
 
@@ -691,26 +691,26 @@ import "C"
 
 func main() {
     // 通过 reflect.SliceHeader 转换
-   	var arr []byte
-   	array := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-   	array.Data = uintptr(unsafe.Pointer(&C.arr[0]))
-   	array.Len = 10
-   	array.Cap = 10
+       var arr []byte
+       array := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+       array.Data = uintptr(unsafe.Pointer(&C.arr[0]))
+       array.Len = 10
+       array.Cap = 10
    
-   	// 切片
-   	arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
+       // 切片
+       arr1 := (*[31]byte)(unsafe.Pointer(&C.arr[0]))[:10:10]
    
-   	// 通过 reflect.StringHeader 转换
-   	var s string
-   	str := (*reflect.StringHeader)(unsafe.Pointer(&s))
-   	str.Data = uintptr(unsafe.Pointer(C.s))
-   	str.Len = int(C.strlen(C.s))
+       // 通过 reflect.StringHeader 转换
+       var s string
+       str := (*reflect.StringHeader)(unsafe.Pointer(&s))
+       str.Data = uintptr(unsafe.Pointer(C.s))
+       str.Len = int(C.strlen(C.s))
    
-   	// 切片
-   	length := int(C.strlen(C.s))
-   	s1 := string((*[31]byte)(unsafe.Pointer(C.s))[:length:length])
+       // 切片
+       length := int(C.strlen(C.s))
+       s1 := string((*[31]byte)(unsafe.Pointer(C.s))[:length:length])
    
-   	fmt.Println("arr:", string(arr), "arr1:", string(arr1), "s:", s, "s1:", s1)
+       fmt.Println("arr:", string(arr), "arr1:", string(arr1), "s:", s, "s1:", s1)
 }
 ```
 
@@ -866,7 +866,7 @@ int sum(int a, int b) {
 import _ "unsafe"
 
 func main() {
-	println((_Cfunc_sum)(1, 1))
+    println((_Cfunc_sum)(1, 1))
 }
 ```
 
@@ -893,12 +893,12 @@ var _cgo_7b5139e7c7da_Cfunc_sum = unsafe.Pointer(&__cgofn__cgo_7b5139e7c7da_Cfun
 
 //go:cgo_unsafe_args
 func _Cfunc_sum(p0 _Ctype_int, p1 _Ctype_int) (r1 _Ctype_int) {
-	_cgo_runtime_cgocall(_cgo_7b5139e7c7da_Cfunc_sum, uintptr(unsafe.Pointer(&p0)))
-	if _Cgo_always_false {
-		_Cgo_use(p0)
-		_Cgo_use(p1)
-	}
-	return
+    _cgo_runtime_cgocall(_cgo_7b5139e7c7da_Cfunc_sum, uintptr(unsafe.Pointer(&p0)))
+    if _Cgo_always_false {
+        _Cgo_use(p0)
+        _Cgo_use(p1)
+    }
+    return
 }
 ```
 
@@ -934,20 +934,20 @@ extern char* _cgo_topofstack(void);
 
 void _cgo_7b5139e7c7da_Cfunc_sum(void *v)
 {
-	struct {
-		int p0;
-		int p1;
-		int r;
-		char __pad12[4];
-	} __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
-	char *_cgo_stktop = _cgo_topofstack();
-	__typeof__(_cgo_a->r) _cgo_r;
-	_cgo_tsan_acquire();
-	_cgo_r = sum(_cgo_a->p0, _cgo_a->p1);
-	_cgo_tsan_release();
-	_cgo_a = (void*)((char*)_cgo_a + (_cgo_topofstack() - _cgo_stktop));
-	_cgo_a->r = _cgo_r;
-	_cgo_msan_write(&_cgo_a->r, sizeof(_cgo_a->r));
+    struct {
+        int p0;
+        int p1;
+        int r;
+        char __pad12[4];
+    } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
+    char *_cgo_stktop = _cgo_topofstack();
+    __typeof__(_cgo_a->r) _cgo_r;
+    _cgo_tsan_acquire();
+    _cgo_r = sum(_cgo_a->p0, _cgo_a->p1);
+    _cgo_tsan_release();
+    _cgo_a = (void*)((char*)_cgo_a + (_cgo_topofstack() - _cgo_stktop));
+    _cgo_a->r = _cgo_r;
+    _cgo_msan_write(&_cgo_a->r, sizeof(_cgo_a->r));
 }
 ```
 
@@ -958,10 +958,10 @@ void _cgo_7b5139e7c7da_Cfunc_sum(void *v)
 
 ```
 struct {
-		int p0;
-		int p1;
-		int r;
-		char __pad12[4];
+        int p0;
+        int p1;
+        int r;
+        char __pad12[4];
 } __attribute__((__packed__, __gcc_struct__)) *_cgo_a = v;
 ```
 
@@ -1059,56 +1059,56 @@ asmcgocall 采用汇编实现:
 // fn 是函数地址, arg 是第一个参数地址
 // 在 g0 上调用 fn(arg) 函数.
 TEXT ·asmcgocall(SB),NOSPLIT,$0-20
-    MOVQ	fn+0(FP), AX
-    MOVQ	arg+8(FP), BX
+    MOVQ    fn+0(FP), AX
+    MOVQ    arg+8(FP), BX
     
-    MOVQ	SP, DX // 保存当前的 SP 到 DX
+    MOVQ    SP, DX // 保存当前的 SP 到 DX
     
     // Figure out if we need to switch to m->g0 stack.
     // We get called to create new OS threads too, and those
     // come in on the m->g0 stack already.
     // 切换 g 之前的检查
     get_tls(CX)
-    MOVQ	g(CX), R8 // R8 = g
-    CMPQ	R8, $0    // g == 0
-    JEQ	nosave // 相等跳转, 则说明当前 g 为空
-    MOVQ	g_m(R8), R8 // 当前 m
-    MOVQ	m_g0(R8), SI // SI = m.g0
-    MOVQ	g(CX), DI    // DI = g  
-    CMPQ	SI, DI // m.g0 == g
-    JEQ	nosave // 相等跳转, 当前在 g0 上
-    MOVQ	m_gsignal(R8), SI // SI = m.gsignal
-    CMPQ	SI, DI // m.gsignal == g
-    JEQ	nosave // 相等跳转, 当前 m.gsignal 上
+    MOVQ    g(CX), R8 // R8 = g
+    CMPQ    R8, $0    // g == 0
+    JEQ    nosave // 相等跳转, 则说明当前 g 为空
+    MOVQ    g_m(R8), R8 // 当前 m
+    MOVQ    m_g0(R8), SI // SI = m.g0
+    MOVQ    g(CX), DI    // DI = g  
+    CMPQ    SI, DI // m.g0 == g
+    JEQ    nosave // 相等跳转, 当前在 g0 上
+    MOVQ    m_gsignal(R8), SI // SI = m.gsignal
+    CMPQ    SI, DI // m.gsignal == g
+    JEQ    nosave // 相等跳转, 当前 m.gsignal 上
     
     // 切换到 g0 上
-    MOVQ	m_g0(R8), SI // SI=m.g0
-    CALL	gosave<>(SB) // 调用 gosave, 参数是 gobuf
-    MOVQ	SI, g(CX) // 切换到 g0
-    MOVQ	(g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
+    MOVQ    m_g0(R8), SI // SI=m.g0
+    CALL    gosave<>(SB) // 调用 gosave, 参数是 gobuf
+    MOVQ    SI, g(CX) // 切换到 g0
+    MOVQ    (g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
     
     // Now on a scheduling stack (a pthread-created stack).
     // Make sure we have enough room for 4 stack-backed fast-call
     // registers as per windows amd64 calling convention.
-    SUBQ	$64, SP     // SP=SP-64
-    ANDQ	$~15, SP	// SP=SP+16, 偏移 gcc ABI
-    MOVQ	DI, 48(SP)	// 保存 g 
-    MOVQ	(g_stack+stack_hi)(DI), DI // DI=g.stack.hi
-    SUBQ	DX, DI       // 计算 g 栈大小, 保存到 DI 当中
-    MOVQ	DI, 40(SP)	// 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
-    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-    MOVQ	BX, CX		// CX = first argument in Win64
-    CALL	AX          // 调用函数, 参数 DI, SI, CX, DX, R8
+    SUBQ    $64, SP     // SP=SP-64
+    ANDQ    $~15, SP    // SP=SP+16, 偏移 gcc ABI
+    MOVQ    DI, 48(SP)    // 保存 g 
+    MOVQ    (g_stack+stack_hi)(DI), DI // DI=g.stack.hi
+    SUBQ    DX, DI       // 计算 g 栈大小, 保存到 DI 当中
+    MOVQ    DI, 40(SP)    // 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
+    MOVQ    BX, DI        // DI = first argument in AMD64 ABI
+    MOVQ    BX, CX        // CX = first argument in Win64
+    CALL    AX          // 调用函数, 参数 DI, SI, CX, DX, R8
     
     // 函数调用完成, 恢复到 g, stack
     get_tls(CX)
-    MOVQ	48(SP), DI // DI=g
-    MOVQ	(g_stack+stack_hi)(DI), SI // SI=g.stack.hi
-    SUBQ	40(SP), SI // SI=SI-size
-    MOVQ	DI, g(CX)  // tls 保存, 恢复到 g 
-    MOVQ	SI, SP     // 恢复 SP
+    MOVQ    48(SP), DI // DI=g
+    MOVQ    (g_stack+stack_hi)(DI), SI // SI=g.stack.hi
+    SUBQ    40(SP), SI // SI=SI-size
+    MOVQ    DI, g(CX)  // tls 保存, 恢复到 g 
+    MOVQ    SI, SP     // 恢复 SP
     
-    MOVL	AX, ret+16(FP) // 函数返回错误码
+    MOVL    AX, ret+16(FP) // 函数返回错误码
     RET
 
 nosave:
@@ -1117,16 +1117,16 @@ nosave:
     // 这段代码和上面的代码作用是一样的, 但没有saving/restoring g, 并且不用担心 stack 移动(因为我们在系统栈上,
     // 而不是在 goroutine 堆栈上).
     // 如果上面的代码已经在系统栈上, 则可以直接使用, 但是通过此代码的唯一路径在 Solaris 上很少见.
-    SUBQ	$64, SP
-    ANDQ	$~15, SP
-    MOVQ	$0, 48(SP)	// where above code stores g, in case someone looks during debugging
-    MOVQ	DX, 40(SP)	// save original stack pointer
-    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-    MOVQ	BX, CX		// CX = first argument in Win64
-    CALL	AX
-    MOVQ	40(SP), SI	// restore original stack pointer
-    MOVQ	SI, SP
-    MOVL	AX, ret+16(FP)
+    SUBQ    $64, SP
+    ANDQ    $~15, SP
+    MOVQ    $0, 48(SP)    // where above code stores g, in case someone looks during debugging
+    MOVQ    DX, 40(SP)    // save original stack pointer
+    MOVQ    BX, DI        // DI = first argument in AMD64 ABI
+    MOVQ    BX, CX        // CX = first argument in Win64
+    CALL    AX
+    MOVQ    40(SP), SI    // restore original stack pointer
+    MOVQ    SI, SP
+    MOVL    AX, ret+16(FP)
     RET
 ```
 
@@ -1524,33 +1524,33 @@ import "unsafe"
 **/
 
 type Buffer struct {
-	ptr *C.Buffer_T
+    ptr *C.Buffer_T
 }
 
 func NewBuffer(size int) *Buffer {
-	p := C.NewBuffer(C.int(size))
+    p := C.NewBuffer(C.int(size))
 
-	return &Buffer{
-		ptr: (*C.Buffer_T)(p),
-	}
+    return &Buffer{
+        ptr: (*C.Buffer_T)(p),
+    }
 }
 
 func (p *Buffer) Delete() {
-	C.DeleteBuffer(p.ptr)
+    C.DeleteBuffer(p.ptr)
 }
 
 func (p *Buffer) Data() []byte {
-	data := C.Buffer_Data(p.ptr)
-	size := C.Buffer_Size(p.ptr)
-	return ((*[1 << 31]byte)(unsafe.Pointer(data)))[0:int(size):int(size)]
+    data := C.Buffer_Data(p.ptr)
+    size := C.Buffer_Size(p.ptr)
+    return ((*[1 << 31]byte)(unsafe.Pointer(data)))[0:int(size):int(size)]
 }
 
 func main() {
-	buf := NewBuffer(1024)
-	defer buf.Delete()
+    buf := NewBuffer(1024)
+    defer buf.Delete()
 
-	copy(buf.Data(), []byte("Hello World. \x00"))
-	C.puts((*C.char)(unsafe.Pointer(&(buf.Data()[0]))))
+    copy(buf.Data(), []byte("Hello World. \x00"))
+    C.puts((*C.char)(unsafe.Pointer(&(buf.Data()[0]))))
 }
 ```
 
@@ -1576,17 +1576,17 @@ CPLUS = $(wildcard *.cpp)
 C = $(wildcard *.c)
 
 gotest: static
-	go build -o gotest -ldflags "-w" -x $(GO)
+    go build -o gotest -ldflags "-w" -x $(GO)
 
 ctest: static
-	$(CC) -o ctest $(C) -static -L. -lbuffer -lstdc++
+    $(CC) -o ctest $(C) -static -L. -lbuffer -lstdc++
 
 static: clean
-	$(CXX) -c -std=c++11 $(CPLUS)
-	$(AR) -r libbuffer.a *.o
-	@rm -rf *.o
+    $(CXX) -c -std=c++11 $(CPLUS)
+    $(AR) -r libbuffer.a *.o
+    @rm -rf *.o
 
 .PHONY : clean
 clean:
-	@rm -rf ctest gotest *.o *.a *.gch
+    @rm -rf ctest gotest *.o *.a *.gch
 ```

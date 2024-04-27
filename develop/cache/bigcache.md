@@ -29,31 +29,31 @@ bytesQueue: `varint(header) + wrapEntry`
 
 ```cgo
 type BigCache struct {
-	shards       []*cacheShard // 每个shared都有一个读写锁
-	lifeWindow   uint64 // 缓存时间窗口
-	clock        clock  // 时钟
-	hash         Hasher // hash算法
-	config       Config
-	shardMask    uint64 // shred mask
-	maxShardSize uint32 // shred的内存大小, 0表示内存没有限制的, 默认值是0
+    shards       []*cacheShard // 每个shared都有一个读写锁
+    lifeWindow   uint64 // 缓存时间窗口
+    clock        clock  // 时钟
+    hash         Hasher // hash算法
+    config       Config
+    shardMask    uint64 // shred mask
+    maxShardSize uint32 // shred的内存大小, 0表示内存没有限制的, 默认值是0
 }
 
 type cacheShard struct {
-	hashmap     map[uint64]uint64 // key: hash, value: entry pos in bytes
-	entries     queue.BytesQueue
-	lock        sync.RWMutex
-	entryBuffer []byte            // buffer 缓存
-	onRemove    onRemoveCallback
+    hashmap     map[uint64]uint64 // key: hash, value: entry pos in bytes
+    entries     queue.BytesQueue
+    lock        sync.RWMutex
+    entryBuffer []byte            // buffer 缓存
+    onRemove    onRemoveCallback
 
-	isVerbose    bool
-	statsEnabled bool
-	logger       Logger
-	clock        clock
-	lifeWindow   uint64
+    isVerbose    bool
+    statsEnabled bool
+    logger       Logger
+    clock        clock
+    lifeWindow   uint64
 
-	hashmapStats map[uint64]uint32 // 统计信息
-	stats        Stats
-	cleanEnabled bool
+    hashmapStats map[uint64]uint32 // 统计信息
+    stats        Stats
+    cleanEnabled bool
 }
 
 // 关于 entry 存储内容:
@@ -81,12 +81,12 @@ type cacheShard struct {
 ````cgo
 func (c *BigCache) Set(key string, entry []byte) error {
     // 根据key, 产生一个 uint64 的 hash 值
-	hashedKey := c.hash.Sum64(key)
+    hashedKey := c.hash.Sum64(key)
 	
-	// hashedKey & sharedMask 得到分片的位置
-	shard := c.getShard(hashedKey)
+    // hashedKey & sharedMask 得到分片的位置
+    shard := c.getShard(hashedKey)
 	
-	return shard.set(key, hashedKey, entry)
+    return shard.set(key, hashedKey, entry)
 }
 ````
 
@@ -94,22 +94,22 @@ func (c *BigCache) Set(key string, entry []byte) error {
 
 ```cgo
 func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
-	currentTimestamp := uint64(s.clock.epoch()) // 当前的时间, uint64
+    currentTimestamp := uint64(s.clock.epoch()) // 当前的时间, uint64
     
-	s.lock.Lock()
+    s.lock.Lock()
 
-	// 已经存在的hash值, 重置, 非删除
-	if previousIndex := s.hashmap[hashedKey]; previousIndex != 0 {
-		if previousEntry, err := s.entries.Get(int(previousIndex)); err == nil {
-		    // 重置, 将 hashkey 设置为 0 [底层]
-			resetKeyFromEntry(previousEntry)
-		}
-	}
+    // 已经存在的hash值, 重置, 非删除
+    if previousIndex := s.hashmap[hashedKey]; previousIndex != 0 {
+        if previousEntry, err := s.entries.Get(int(previousIndex)); err == nil {
+            // 重置, 将 hashkey 设置为 0 [底层]
+            resetKeyFromEntry(previousEntry)
+        }
+    }
 
-	// 检查 "队列" 头部 [窗口TTL的好处, 有效的值总是在一个范围内], 如果过期, 使用 removeOldestEntry 进行删除
-	if oldestEntry, err := s.entries.Peek(); err == nil {
-		s.onEvict(oldestEntry, currentTimestamp, s.removeOldestEntry)
-	}
+    // 检查 "队列" 头部 [窗口TTL的好处, 有效的值总是在一个范围内], 如果过期, 使用 removeOldestEntry 进行删除
+    if oldestEntry, err := s.entries.Peek(); err == nil {
+        s.onEvict(oldestEntry, currentTimestamp, s.removeOldestEntry)
+    }
 
     // 业务层存储:
     // header + key + value
@@ -119,21 +119,21 @@ func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
     // bytesqueue 存储:
     // varint[可变长度的data大小] + data
     // varint 一是为了节省空间, 二是为了读取内容的时候能够获取到全部内容
-	w := wrapEntry(currentTimestamp, hashedKey, key, entry, &s.entryBuffer)
+    w := wrapEntry(currentTimestamp, hashedKey, key, entry, &s.entryBuffer)
 
-	// 进队列, 如果内存不足, 则删除头元素[最老的元素], 以使得当前缓存入队列
-	for {
-	    // 下面的有解析
-		if index, err := s.entries.Push(w); err == nil {
-			s.hashmap[hashedKey] = uint32(index) // hashkey <-> index [push的开始位置]
-			s.lock.Unlock()
-			return nil
-		}
-		if s.removeOldestEntry(NoSpace) != nil {
-			s.lock.Unlock()
-			return fmt.Errorf("entry is bigger than max shard size")
-		}
-	}
+    // 进队列, 如果内存不足, 则删除头元素[最老的元素], 以使得当前缓存入队列
+    for {
+        // 下面的有解析
+        if index, err := s.entries.Push(w); err == nil {
+            s.hashmap[hashedKey] = uint32(index) // hashkey <-> index [push的开始位置]
+            s.lock.Unlock()
+            return nil
+        }
+        if s.removeOldestEntry(NoSpace) != nil {
+            s.lock.Unlock()
+            return fmt.Errorf("entry is bigger than max shard size")
+        }
+    }
 }
 ```
 
@@ -142,26 +142,26 @@ func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
 ````cgo
 func (q *BytesQueue) Push(data []byte) (int, error) {
     // 计算所需的字节大小 headerEntrySize + dataLen
-	dataLen := len(data)
-	headerEntrySize := getUvarintSize(uint32(dataLen))
+    dataLen := len(data)
+    headerEntrySize := getUvarintSize(uint32(dataLen))
     
     // 查找位置, 类似循环队列(数组的形式)
-	if !q.canInsertAfterTail(dataLen + headerEntrySize) {
-		if q.canInsertBeforeHead(dataLen + headerEntrySize) {
-			q.tail = leftMarginIndex
-		} else if q.capacity+headerEntrySize+dataLen >= q.maxCapacity && q.maxCapacity > 0 {
-			return -1, &queueError{"Full queue. Maximum size limit reached."}
-		} else {
-			q.allocateAdditionalMemory(dataLen + headerEntrySize)
-		}
-	}
+    if !q.canInsertAfterTail(dataLen + headerEntrySize) {
+        if q.canInsertBeforeHead(dataLen + headerEntrySize) {
+            q.tail = leftMarginIndex
+        } else if q.capacity+headerEntrySize+dataLen >= q.maxCapacity && q.maxCapacity > 0 {
+            return -1, &queueError{"Full queue. Maximum size limit reached."}
+        } else {
+            q.allocateAdditionalMemory(dataLen + headerEntrySize)
+        }
+    }
 
-	index := q.tail
+    index := q.tail
     
     // 存储数据
-	q.push(data, dataLen)
+    q.push(data, dataLen)
 
-	return index, nil
+    return index, nil
 }
 ````
 
@@ -169,21 +169,21 @@ func (q *BytesQueue) Push(data []byte) (int, error) {
 
 ```cgo
 const (
-	// offset64 FNVa offset basis. 
-	offset64 = 14695981039346656037
-	// prime64 FNVa prime value. 
-	prime64 = 1099511628211
+    // offset64 FNVa offset basis. 
+    offset64 = 14695981039346656037
+    // prime64 FNVa prime value. 
+    prime64 = 1099511628211
 )
 
 // Sum64 gets the string and returns its uint64 hash value.
 func (f fnv64a) Sum64(key string) uint64 {
-	var hash uint64 = offset64
-	for i := 0; i < len(key); i++ {
-		hash ^= uint64(key[i])
-		hash *= prime64
-	}
+    var hash uint64 = offset64
+    for i := 0; i < len(key); i++ {
+        hash ^= uint64(key[i])
+        hash *= prime64
+    }
 
-	return hash
+    return hash
 }
 ```
 
@@ -192,40 +192,40 @@ func (f fnv64a) Sum64(key string) uint64 {
 
 ```cgo
 func (c *BigCache) Get(key string) ([]byte, error) {
-	hashedKey := c.hash.Sum64(key)
-	shard := c.getShard(hashedKey)
-	return shard.get(key, hashedKey)
+    hashedKey := c.hash.Sum64(key)
+    shard := c.getShard(hashedKey)
+    return shard.get(key, hashedKey)
 }
 ```
 
 ```cgo
 func (s *cacheShard) get(key string, hashedKey uint64) ([]byte, error) {
-	s.lock.RLock()
+    s.lock.RLock()
 	
-	// 1. keyhash -> entry pos
+    // 1. keyhash -> entry pos
     // 2. get warp entry
-	wrappedEntry, err := s.getWrappedEntry(hashedKey)
-	if err != nil {
-		s.lock.RUnlock()
-		return nil, err
-	}
+    wrappedEntry, err := s.getWrappedEntry(hashedKey)
+    if err != nil {
+        s.lock.RUnlock()
+        return nil, err
+    }
 
     // 3. unpack entry, read key by struct
-	if entryKey := readKeyFromEntry(wrappedEntry); key != entryKey {
-		s.lock.RUnlock()
-		s.collision()
-		if s.isVerbose {
-			s.logger.Printf("Collision detected. Both %q and %q have the same hash %x", key, entryKey, hashedKey)
-		}
-		return nil, ErrEntryNotFound
-	}
+    if entryKey := readKeyFromEntry(wrappedEntry); key != entryKey {
+        s.lock.RUnlock()
+        s.collision()
+        if s.isVerbose {
+            s.logger.Printf("Collision detected. Both %q and %q have the same hash %x", key, entryKey, hashedKey)
+        }
+        return nil, ErrEntryNotFound
+    }
 	
-	// 4. unpack entry, read entry by struct
-	entry := readEntry(wrappedEntry)
-	s.lock.RUnlock()
-	s.hit(hashedKey) // statics
+    // 4. unpack entry, read entry by struct
+    entry := readEntry(wrappedEntry)
+    s.lock.RUnlock()
+    s.hit(hashedKey) // statics
 
-	return entry, nil
+    return entry, nil
 }
 ```
 
@@ -234,29 +234,29 @@ func (s *cacheShard) get(key string, hashedKey uint64) ([]byte, error) {
 ```cgo
 // 获取 index 位置的原始内容
 func (q *BytesQueue) peek(index int) ([]byte, int, error) {
-	err := q.peekCheckErr(index)
-	if err != nil {
-		return nil, 0, err
-	}
+    err := q.peekCheckErr(index)
+    if err != nil {
+        return nil, 0, err
+    }
 
-	blockSize, n := binary.Uvarint(q.array[index:])
-	return q.array[index+n: index+n+int(blockSize)], n, nil
+    blockSize, n := binary.Uvarint(q.array[index:])
+    return q.array[index+n: index+n+int(blockSize)], n, nil
 }
 
 // 检查 index 是否合法
 func (q *BytesQueue) peekCheckErr(index int) error {
-	if q.count == 0 {
-		return errEmptyQueue
-	}
+    if q.count == 0 {
+        return errEmptyQueue
+    }
 
-	if index <= 0 {
-		return errInvalidIndex
-	}
+    if index <= 0 {
+        return errInvalidIndex
+    }
 
-	if index >= len(q.array) {
-		return errIndexOutOfBounds
-	}
-	return nil
+    if index >= len(q.array) {
+        return errIndexOutOfBounds
+    }
+    return nil
 }
 ```
 
@@ -265,9 +265,9 @@ func (q *BytesQueue) peekCheckErr(index int) error {
 
 ```cgo
 func (c *BigCache) Delete(key string) error {
-	hashedKey := c.hash.Sum64(key)
-	shard := c.getShard(hashedKey)
-	return shard.del(hashedKey)
+    hashedKey := c.hash.Sum64(key)
+    shard := c.getShard(hashedKey)
+    return shard.del(hashedKey)
 }
 ```
 
@@ -275,51 +275,51 @@ func (c *BigCache) Delete(key string) error {
 
 ```cgo
 func (s *cacheShard) del(hashedKey uint64) error {
-	// 读锁定下快速判断缓存是否存在
-	s.lock.RLock()
-	{
-		itemIndex := s.hashmap[hashedKey]
+    // 读锁定下快速判断缓存是否存在
+    s.lock.RLock()
+    {
+        itemIndex := s.hashmap[hashedKey]
 
-		if itemIndex == 0 {
-			s.lock.RUnlock()
-			return ErrEntryNotFound
-		}
+        if itemIndex == 0 {
+            s.lock.RUnlock()
+            return ErrEntryNotFound
+        }
 
-		if err := s.entries.CheckGet(int(itemIndex)); err != nil {
-			s.lock.RUnlock()
-			return err
-		}
-	}
-	s.lock.RUnlock()
+        if err := s.entries.CheckGet(int(itemIndex)); err != nil {
+            s.lock.RUnlock()
+            return err
+        }
+    }
+    s.lock.RUnlock()
 
-	// 在缓存存在的状况下, 使用写锁进行删除, 删除在当前shared当中的hash, 以及重置hashkey
-	// "真正的移除元素内容是在过期的时间点, 或者队列满了的状况下进行移除"
-	s.lock.Lock()
-	{   
-	    // 再次查询, 避免已经被移除的情况, 并发考量
-		itemIndex := s.hashmap[hashedKey]
-		if itemIndex == 0 {
-			s.lock.Unlock()
-			return ErrEntryNotFound
-		}
+    // 在缓存存在的状况下, 使用写锁进行删除, 删除在当前shared当中的hash, 以及重置hashkey
+    // "真正的移除元素内容是在过期的时间点, 或者队列满了的状况下进行移除"
+    s.lock.Lock()
+    {   
+        // 再次查询, 避免已经被移除的情况, 并发考量
+        itemIndex := s.hashmap[hashedKey]
+        if itemIndex == 0 {
+            s.lock.Unlock()
+            return ErrEntryNotFound
+        }
         
         // 获取内容
-		wrappedEntry, err := s.entries.Get(int(itemIndex))
-		if err != nil {
-			s.lock.Unlock()
-			return err
-		}
+        wrappedEntry, err := s.entries.Get(int(itemIndex))
+        if err != nil {
+            s.lock.Unlock()
+            return err
+        }
         
         // 从 hashmap 当中移除 hash
-		delete(s.hashmap, hashedKey)
-		s.onRemove(wrappedEntry, Deleted) // 删除操作的回调函数
-		if s.statsEnabled {
-			delete(s.hashmapStats, hashedKey) // 统计信息的移除
-		}
-		resetKeyFromEntry(wrappedEntry) // 将 byte queue 的当中元素的 hashkey 重置
-	}
-	s.lock.Unlock()
+        delete(s.hashmap, hashedKey)
+        s.onRemove(wrappedEntry, Deleted) // 删除操作的回调函数
+        if s.statsEnabled {
+            delete(s.hashmapStats, hashedKey) // 统计信息的移除
+        }
+        resetKeyFromEntry(wrappedEntry) // 将 byte queue 的当中元素的 hashkey 重置
+    }
+    s.lock.Unlock()
 
-	return nil
+    return nil
 }
 ```

@@ -89,7 +89,7 @@ package main
 import "golearn/develop/assembly/pkg"
 
 func main() {
-	println(pkg.ID)
+    println(pkg.ID)
 }
 ```
 
@@ -127,8 +127,8 @@ go.string."gopher" SRODATA dupok size=6
 
 ```
 type reflect.StringHeader struct {
-	Data uintptr
-	Len int
+    Data uintptr
+    Len int
 }
 ```
 
@@ -159,7 +159,7 @@ package main
 import "golearn/develop/assembly/pkg"
 
 func main() {
-	println(pkg.Name)
+    println(pkg.Name)
 }
 ```
 
@@ -701,17 +701,17 @@ func asmFunTwiceClosureAddr() uintptr
 func asmFunTwiceClosureBody() int
 
 type TwiceClosure struct {
-	F uintptr
-	X int
+    F uintptr
+    X int
 }
 
 func NewTwiceClosure(x int) func() int {
-	var p = TwiceClosure{
-		F: asmFunTwiceClosureAddr(),
-		X: x,
-	}
+    var p = TwiceClosure{
+        F: asmFunTwiceClosureAddr(),
+        X: x,
+    }
 
-	return ptrToFunc(unsafe.Pointer(&p))
+    return ptrToFunc(unsafe.Pointer(&p))
 }
 ```
 

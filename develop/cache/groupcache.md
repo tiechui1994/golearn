@@ -20,49 +20,49 @@ groupcache 是一个分布式的缓存框架.
 // peer 必须现实 ProtoGetter, 它作用是向其他对端 peer 发送请求获取未在本端缓存的数据
 // 缓存同步的重要手段
 type ProtoGetter interface {
-	Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error
+    Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error
 }
 
 // PickPeer, 根据 key 获取到该 key 存储在哪个 peer
 type PeerPicker interface {
-	// ok 为 true, 表示已经开始了远程请求
-	// ok 为 false, 则表示 key 属于当前的 peer
-	PickPeer(key string) (peer ProtoGetter, ok bool)
+    // ok 为 true, 表示已经开始了远程请求
+    // ok 为 false, 则表示 key 属于当前的 peer
+    PickPeer(key string) (peer ProtoGetter, ok bool)
 }
 
 var (
     // 根据 groupName 获取 peer
-	portPicker func(groupName string) PeerPicker
+    portPicker func(groupName string) PeerPicker
 )
 
 // 当前的 peer 只有一个 groupName
 func RegisterPeerPicker(fn func() PeerPicker) {
-	if portPicker != nil {
-		panic("RegisterPeerPicker called more than once")
-	}
-	portPicker = func(_ string) PeerPicker { return fn() }
+    if portPicker != nil {
+        panic("RegisterPeerPicker called more than once")
+    }
+    portPicker = func(_ string) PeerPicker { return fn() }
 }
 
 // 当前的 peer 存在多个 groupName
 func RegisterPerGroupPeerPicker(fn func(groupName string) PeerPicker) {
-	if portPicker != nil {
-		panic("RegisterPeerPicker called more than once")
-	}
-	portPicker = fn
+    if portPicker != nil {
+        panic("RegisterPeerPicker called more than once")
+    }
+    portPicker = fn
 }
 
 // 注意, 上述的两个注册函数最多只能调用一个.
 
 // 根据 groupName 获取 PeerPicker  
 func getPeers(groupName string) PeerPicker {
-	if portPicker == nil {
-		return NoPeers{}
-	}
-	pk := portPicker(groupName)
-	if pk == nil {
-		pk = NoPeers{}
-	}
-	return pk
+    if portPicker == nil {
+        return NoPeers{}
+    }
+    pk := portPicker(groupName)
+    if pk == nil {
+        pk = NoPeers{}
+    }
+    return pk
 }
 ```
 
@@ -75,18 +75,18 @@ var initPeerServer     func()
 // 注册一个"创建Group"的回调函数, 每次创建Group的时候, 都会调用该函数
 // 用于新增修改 Peer 信息. 由于创建 Group 的时候不需要提供 Peer, 因此在此回调函数当中进行修改 Peer
 func RegisterNewGroupHook(fn func(*Group)) {
-	if newGroupHook != nil {
-		panic("RegisterNewGroupHook called more than once")
-	}
-	newGroupHook = fn
+    if newGroupHook != nil {
+        panic("RegisterNewGroupHook called more than once")
+    }
+    newGroupHook = fn
 }
 
 // 注册当第一个 Group 创建的时候, 初始化 Server 的回调函数. 该函数只会回调一次.
 func RegisterServerStart(fn func()) {
-	if initPeerServer != nil {
-		panic("RegisterServerStart called more than once")
-	}
-	initPeerServer = fn
+    if initPeerServer != nil {
+        panic("RegisterServerStart called more than once")
+    }
+    initPeerServer = fn
 }
 ```
 
@@ -95,33 +95,33 @@ func RegisterServerStart(fn func()) {
 ```cgo
 
 func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
-	g.peersOnce.Do(g.initPeers) // 初始化当前的 Group 的 peer
-	g.Stats.Gets.Add(1) // 统计信息
-	if dest == nil {
-		return errors.New("groupcache: nil dest Sink")
-	}
-	// 从当前 Group 的 mainCache, hotCache 查询
-	value, cacheHit := g.lookupCache(key)
+    g.peersOnce.Do(g.initPeers) // 初始化当前的 Group 的 peer
+    g.Stats.Gets.Add(1) // 统计信息
+    if dest == nil {
+        return errors.New("groupcache: nil dest Sink")
+    }
+    // 从当前 Group 的 mainCache, hotCache 查询
+    value, cacheHit := g.lookupCache(key)
 
-	if cacheHit {
-		g.Stats.CacheHits.Add(1)
-		return setSinkView(dest, value)
-	}
+    if cacheHit {
+        g.Stats.CacheHits.Add(1)
+        return setSinkView(dest, value)
+    }
     
     
     // 重点:
     // 为避免双重反序列化或复制而进行的优化: 
     // 跟踪目标是否已填充, 一个 caller (如果是 local) 将对此进行设置; 调用则不会.
     // 常见的情况可能是一个 caller.
-	destPopulated := false
-	value, destPopulated, err := g.load(ctx, key, dest) // 远程加载缓存
-	if err != nil {
-		return err
-	}
-	if destPopulated {
-		return nil
-	}
-	return setSinkView(dest, value)
+    destPopulated := false
+    value, destPopulated, err := g.load(ctx, key, dest) // 远程加载缓存
+    if err != nil {
+        return err
+    }
+    if destPopulated {
+        return nil
+    }
+    return setSinkView(dest, value)
 }
 ```
 
@@ -129,47 +129,47 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 ```cgo
 // 通过本地调用getter或将其发送到另一台计算机来加载key
 func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView, destPopulated bool, err error) {
-	g.Stats.Loads.Add(1)
-	// loadGroup 使用 flightGroup, 避免并发状况下相同的 key 被多次远程加载 
-	viewi, err := g.loadGroup.Do(key, func() (interface{}, error) {
-		// 再次检查缓存, 因为singleflight只能删除重复并发的调用. 
-		// 2个并发请求可能是 miss Cache, 从而导致2个load()调用.
-		// 不幸的是, goroutine 调度会导致此回调连续两次运行. 
-		// 如果不再次检查缓存, 即使此键只有一个条目, cache.nbytes也会增加到下面.
-		if value, cacheHit := g.lookupCache(key); cacheHit {
-			g.Stats.CacheHits.Add(1)
-			return value, nil
-		}
+    g.Stats.Loads.Add(1)
+    // loadGroup 使用 flightGroup, 避免并发状况下相同的 key 被多次远程加载 
+    viewi, err := g.loadGroup.Do(key, func() (interface{}, error) {
+        // 再次检查缓存, 因为singleflight只能删除重复并发的调用. 
+        // 2个并发请求可能是 miss Cache, 从而导致2个load()调用.
+        // 不幸的是, goroutine 调度会导致此回调连续两次运行. 
+        // 如果不再次检查缓存, 即使此键只有一个条目, cache.nbytes也会增加到下面.
+        if value, cacheHit := g.lookupCache(key); cacheHit {
+            g.Stats.CacheHits.Add(1)
+            return value, nil
+        }
 		
-		g.Stats.LoadsDeduped.Add(1)
-		var value ByteView
-		var err error
-		// 获取 key 对应的 Peer, 然后从该 peer 当中去获取Cache
-		if peer, ok := g.peers.PickPeer(key); ok {
-			value, err = g.getFromPeer(ctx, peer, key)
-			if err == nil {
-				g.Stats.PeerLoads.Add(1) // Peer 获取成功, 直接返回
-				return value, nil
-			}
-			g.Stats.PeerErrors.Add(1) // Peer 获取失败
-		}
+        g.Stats.LoadsDeduped.Add(1)
+        var value ByteView
+        var err error
+        // 获取 key 对应的 Peer, 然后从该 peer 当中去获取Cache
+        if peer, ok := g.peers.PickPeer(key); ok {
+            value, err = g.getFromPeer(ctx, peer, key)
+            if err == nil {
+                g.Stats.PeerLoads.Add(1) // Peer 获取成功, 直接返回
+                return value, nil
+            }
+            g.Stats.PeerErrors.Add(1) // Peer 获取失败
+        }
 		
-		// 从本地的 peer 再次获取 key
-		value, err = g.getLocally(ctx, key, dest)
-		if err != nil {
-			g.Stats.LocalLoadErrs.Add(1)
-			return nil, err
-		}
-		g.Stats.LocalLoads.Add(1)
-		destPopulated = true // only one caller of load gets this return value
-		g.populateCache(key, value, &g.mainCache) // 将当前的缓存填充到主存当中
-		return value, nil
-	})
+        // 从本地的 peer 再次获取 key
+        value, err = g.getLocally(ctx, key, dest)
+        if err != nil {
+            g.Stats.LocalLoadErrs.Add(1)
+            return nil, err
+        }
+        g.Stats.LocalLoads.Add(1)
+        destPopulated = true // only one caller of load gets this return value
+        g.populateCache(key, value, &g.mainCache) // 将当前的缓存填充到主存当中
+        return value, nil
+    })
 	
-	if err == nil {
-		value = viewi.(ByteView)
-	}
-	return
+    if err == nil {
+        value = viewi.(ByteView)
+    }
+    return
 }
 ```
 
@@ -177,22 +177,22 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 
 ```cgo
 func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (ByteView, error) {
-	req := &pb.GetRequest{
-		Group: &g.name,
-		Key:   &key,
-	}
-	res := &pb.GetResponse{}
-	err := peer.Get(ctx, req, res)
-	if err != nil {
-		return ByteView{}, err
-	}
-	value := ByteView{b: res.Value}
+    req := &pb.GetRequest{
+        Group: &g.name,
+        Key:   &key,
+    }
+    res := &pb.GetResponse{}
+    err := peer.Get(ctx, req, res)
+    if err != nil {
+        return ByteView{}, err
+    }
+    value := ByteView{b: res.Value}
 	
-	// 使用 res.MinuteQps 或一些灵巧的东西有条件地填充hotCache. 现在, 只需要一定比例的时间即可.
-	if rand.Intn(10) == 0 {
-		g.populateCache(key, value, &g.hotCache)
-	}
-	return value, nil
+    // 使用 res.MinuteQps 或一些灵巧的东西有条件地填充hotCache. 现在, 只需要一定比例的时间即可.
+    if rand.Intn(10) == 0 {
+        g.populateCache(key, value, &g.hotCache)
+    }
+    return value, nil
 }
 ```
 
@@ -200,11 +200,11 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 
 ```cgo
 func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView, error) {
-	err := g.getter.Get(ctx, key, dest)
-	if err != nil {
-		return ByteView{}, err
-	}
-	return dest.view()
+    err := g.getter.Get(ctx, key, dest)
+    if err != nil {
+        return ByteView{}, err
+    }
+    return dest.view()
 }
 ```
 
@@ -212,28 +212,28 @@ func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView
 
 ```cgo
 func (g *Group) populateCache(key string, value ByteView, cache *cache) {
-	if g.cacheBytes <= 0 {
-		return
-	}
-	// 在 "cache" 当中填充缓存
-	cache.add(key, value)
+    if g.cacheBytes <= 0 {
+        return
+    }
+    // 在 "cache" 当中填充缓存
+    cache.add(key, value)
     
     // 缓存淘汰
-	for {
-		mainBytes := g.mainCache.bytes()
-		hotBytes := g.hotCache.bytes()
-		// 空间足够, 没有超过上限
-		if mainBytes+hotBytes <= g.cacheBytes {
-			return
-		}
+    for {
+        mainBytes := g.mainCache.bytes()
+        hotBytes := g.hotCache.bytes()
+        // 空间足够, 没有超过上限
+        if mainBytes+hotBytes <= g.cacheBytes {
+            return
+        }
 
         // 空间不足, 淘汰策略, 热点缓存超过主存的 1/8, 则淘汰热点缓存, 否则淘汰主存
-		victim := &g.mainCache
-		if hotBytes > mainBytes/8 {
-			victim = &g.hotCache
-		}
-		victim.removeOldest()
-	}
+        victim := &g.mainCache
+        if hotBytes > mainBytes/8 {
+            victim = &g.hotCache
+        }
+        victim.removeOldest()
+    }
 }
 ```
 
@@ -243,11 +243,11 @@ Lock + lru 队列的实现
 
 ```cgo
 type cache struct {
-	mu         sync.RWMutex
-	nbytes     int64 // 缓存大小, k-v的总和
-	lru        *lru.Cache // lru 存储
-	nhit, nget int64 // 缓存命中次数, 缓存读取次数
-	nevict     int64 // 缓存淘汰次数
+    mu         sync.RWMutex
+    nbytes     int64 // 缓存大小, k-v的总和
+    lru        *lru.Cache // lru 存储
+    nhit, nget int64 // 缓存命中次数, 缓存读取次数
+    nevict     int64 // 缓存淘汰次数
 }
 ```
 
@@ -255,35 +255,35 @@ type cache struct {
 
 ```cgo
 func (c *cache) add(key string, value ByteView) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.lru == nil {
-	    // 初始化 lru, 指定淘汰的回调函数
-		c.lru = &lru.Cache{
-			OnEvicted: func(key lru.Key, value interface{}) {
-				val := value.(ByteView)
-				c.nbytes -= int64(len(key.(string))) + int64(val.Len())
-				c.nevict++
-			},
-		}
-	}
-	c.lru.Add(key, value)
-	c.nbytes += int64(len(key)) + int64(value.Len())
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    if c.lru == nil {
+        // 初始化 lru, 指定淘汰的回调函数
+        c.lru = &lru.Cache{
+            OnEvicted: func(key lru.Key, value interface{}) {
+                val := value.(ByteView)
+                c.nbytes -= int64(len(key.(string))) + int64(val.Len())
+                c.nevict++
+            },
+        }
+    }
+    c.lru.Add(key, value)
+    c.nbytes += int64(len(key)) + int64(value.Len())
 }
 
 func (c *cache) get(key string) (value ByteView, ok bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.nget++
-	if c.lru == nil {
-		return
-	}
-	vi, ok := c.lru.Get(key)
-	if !ok {
-		return
-	}
-	c.nhit++
-	return vi.(ByteView), true
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.nget++
+    if c.lru == nil {
+        return
+    }
+    vi, ok := c.lru.Get(key)
+    if !ok {
+        return
+    }
+    c.nhit++
+    return vi.(ByteView), true
 }
 ```
 
@@ -353,10 +353,10 @@ type Hash func(data []byte) uint32
 
 // 用于存储生成一致性 hash 算法的数据
 type Map struct {
-	hash     Hash
-	replicas int   // 节点的数量
-	keys     []int // 存储虚拟节点的 hash 值
-	hashMap  map[int]string // 虚拟节点 hash <-> 物理节点
+    hash     Hash
+    replicas int   // 节点的数量
+    keys     []int // 存储虚拟节点的 hash 值
+    hashMap  map[int]string // 虚拟节点 hash <-> 物理节点
 }
 ```
 
@@ -366,14 +366,14 @@ type Map struct {
 // keys 是物理节点的 ip/hostname 等
 func (m *Map) Add(keys ...string) {
     // 生成虚拟节点, 并填充数据
-	for _, key := range keys {
-		for i := 0; i < m.replicas; i++ {
-			hash := int(m.hash([]byte(strconv.Itoa(i) + key)))
-			m.keys = append(m.keys, hash)
-			m.hashMap[hash] = key
-		}
-	}
-	sort.Ints(m.keys) // 对虚拟节点的 hash 值进行排序, 方便后续查找 hash 值的所属区间
+    for _, key := range keys {
+        for i := 0; i < m.replicas; i++ {
+            hash := int(m.hash([]byte(strconv.Itoa(i) + key)))
+            m.keys = append(m.keys, hash)
+            m.hashMap[hash] = key
+        }
+    }
+    sort.Ints(m.keys) // 对虚拟节点的 hash 值进行排序, 方便后续查找 hash 值的所属区间
 }
 ```
 
@@ -381,25 +381,25 @@ func (m *Map) Add(keys ...string) {
 
 ```cgo
 func (m *Map) Get(key string) string {
-	if m.IsEmpty() {
-		return ""
-	}
+    if m.IsEmpty() {
+        return ""
+    }
     
     // 计算 hash 值
-	hash := int(m.hash([]byte(key)))
+    hash := int(m.hash([]byte(key)))
     
     // 二叉搜索, 找到第一个虚拟节点的hash值 >= hash 的位置 "顺时针存储".
-	idx := sort.Search(len(m.keys), func(i int) bool { 
-	    return m.keys[i] >= hash 
-	})
+    idx := sort.Search(len(m.keys), func(i int) bool { 
+        return m.keys[i] >= hash 
+    })
     
     // idx == len(m.keys) 说明该节点的值比最大的 hash 还要大, 那么它应该存储带第一个位置
-	if idx == len(m.keys) {
-		idx = 0
-	}
+    if idx == len(m.keys) {
+        idx = 0
+    }
     
     // 返回物理节点
-	return m.hashMap[m.keys[idx]]
+    return m.hashMap[m.keys[idx]]
 }
 ```
 
@@ -409,35 +409,35 @@ func (m *Map) Get(key string) string {
 
 ```cgo
 func NewHTTPPool(self string) *HTTPPool {
-	p := NewHTTPPoolOpts(self, nil)
-	http.Handle(p.opts.BasePath, p)
-	return p
+    p := NewHTTPPoolOpts(self, nil)
+    http.Handle(p.opts.BasePath, p)
+    return p
 }
 
 // self 是当前的节点
 func NewHTTPPoolOpts(self string, o *HTTPPoolOptions) *HTTPPool {
-	p := &HTTPPool{
-		self:        self,
-		httpGetters: make(map[string]*httpGetter),
-	}
+    p := &HTTPPool{
+        self:        self,
+        httpGetters: make(map[string]*httpGetter),
+    }
 	
-	// 设置 HTTPPool 的 HTTPPoolOptions 的默认选项
-	if o != nil {
-		p.opts = *o
-	}
-	if p.opts.BasePath == "" {
-		p.opts.BasePath = defaultBasePath 
-	}
-	if p.opts.Replicas == 0 {
-		p.opts.Replicas = defaultReplicas // 50
-	}
+    // 设置 HTTPPool 的 HTTPPoolOptions 的默认选项
+    if o != nil {
+        p.opts = *o
+    }
+    if p.opts.BasePath == "" {
+        p.opts.BasePath = defaultBasePath 
+    }
+    if p.opts.Replicas == 0 {
+        p.opts.Replicas = defaultReplicas // 50
+    }
 	
-	// 创建一致性 hash 算法
-	p.peers = consistenthash.New(p.opts.Replicas, p.opts.HashFn)
+    // 创建一致性 hash 算法
+    p.peers = consistenthash.New(p.opts.Replicas, p.opts.HashFn)
 
     // 注册获取本地 PeerPicker
-	RegisterPeerPicker(func() PeerPicker { return p })
-	return p
+    RegisterPeerPicker(func() PeerPicker { return p })
+    return p
 }
 ```
 
@@ -445,18 +445,18 @@ func NewHTTPPoolOpts(self string, o *HTTPPoolOptions) *HTTPPool {
 
 ```cgo
 func (p *HTTPPool) Set(peers ...string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+    p.mu.Lock()
+    defer p.mu.Unlock()
 	
-	// 重新设置一致性 hash 算法
-	p.peers = consistenthash.New(p.opts.Replicas, p.opts.HashFn)
-	p.peers.Add(peers...)
+    // 重新设置一致性 hash 算法
+    p.peers = consistenthash.New(p.opts.Replicas, p.opts.HashFn)
+    p.peers.Add(peers...)
 	
-	// 注册每个物理节点对应的获取缓存的方法, http方法
-	p.httpGetters = make(map[string]*httpGetter, len(peers))
-	for _, peer := range peers {
-		p.httpGetters[peer] = &httpGetter{transport: p.Transport, baseURL: peer + p.opts.BasePath}
-	}
+    // 注册每个物理节点对应的获取缓存的方法, http方法
+    p.httpGetters = make(map[string]*httpGetter, len(peers))
+    for _, peer := range peers {
+        p.httpGetters[peer] = &httpGetter{transport: p.Transport, baseURL: peer + p.opts.BasePath}
+    }
 }
 ```
 
@@ -464,52 +464,52 @@ func (p *HTTPPool) Set(peers ...string) {
 
 ```cgo
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Parse request.
-	if !strings.HasPrefix(r.URL.Path, p.opts.BasePath) {
-		panic("HTTPPool serving unexpected path: " + r.URL.Path)
-	}
-	// URL格式: BasePath/GroupName/Key, 只有满足这个请求的才会被解析
-	parts := strings.SplitN(r.URL.Path[len(p.opts.BasePath):], "/", 2)
-	if len(parts) != 2 {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	groupName := parts[0]
-	key := parts[1]
+    // Parse request.
+    if !strings.HasPrefix(r.URL.Path, p.opts.BasePath) {
+        panic("HTTPPool serving unexpected path: " + r.URL.Path)
+    }
+    // URL格式: BasePath/GroupName/Key, 只有满足这个请求的才会被解析
+    parts := strings.SplitN(r.URL.Path[len(p.opts.BasePath):], "/", 2)
+    if len(parts) != 2 {
+        http.Error(w, "bad request", http.StatusBadRequest)
+        return
+    }
+    groupName := parts[0]
+    key := parts[1]
     
     // 根据 groupName 获取对应的 group
-	group := GetGroup(groupName)
-	if group == nil {
-		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
-		return
-	}
+    group := GetGroup(groupName)
+    if group == nil {
+        http.Error(w, "no such group: "+groupName, http.StatusNotFound)
+        return
+    }
 	
-	// 构造 ctx
-	var ctx context.Context
-	if p.Context != nil {
-		ctx = p.Context(r)
-	} else {
-		ctx = r.Context()
-	}
+    // 构造 ctx
+    var ctx context.Context
+    if p.Context != nil {
+        ctx = p.Context(r)
+    } else {
+        ctx = r.Context()
+    }
 
-	group.Stats.ServerRequests.Add(1)
-	var value []byte
+    group.Stats.ServerRequests.Add(1)
+    var value []byte
 	
-	// 获取对应的 group 的 key 对应的 value, 使用了 protobuf 协议
-	err := group.Get(ctx, key, AllocatingByteSliceSink(&value))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    // 获取对应的 group 的 key 对应的 value, 使用了 protobuf 协议
+    err := group.Get(ctx, key, AllocatingByteSliceSink(&value))
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
     
     // 解析内容
-	body, err := proto.Marshal(&pb.GetResponse{Value: value})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/x-protobuf")
-	w.Write(body)
+    body, err := proto.Marshal(&pb.GetResponse{Value: value})
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "application/x-protobuf")
+    w.Write(body)
 }
 ```
 
@@ -517,45 +517,45 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 ```cgo
 func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
-	u := fmt.Sprintf(
-		"%v%v/%v",
-		h.baseURL,
-		url.QueryEscape(in.GetGroup()),
-		url.QueryEscape(in.GetKey()),
-	)
-	req, err := http.NewRequest("GET", u, nil)
-	if err != nil {
-		return err
-	}
-	req = req.WithContext(ctx)
-	tr := http.DefaultTransport
-	if h.transport != nil {
-		tr = h.transport(ctx)
-	}
-	res, err := tr.RoundTrip(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned: %v", res.Status)
-	}
+    u := fmt.Sprintf(
+        "%v%v/%v",
+        h.baseURL,
+        url.QueryEscape(in.GetGroup()),
+        url.QueryEscape(in.GetKey()),
+    )
+    req, err := http.NewRequest("GET", u, nil)
+    if err != nil {
+        return err
+    }
+    req = req.WithContext(ctx)
+    tr := http.DefaultTransport
+    if h.transport != nil {
+        tr = h.transport(ctx)
+    }
+    res, err := tr.RoundTrip(req)
+    if err != nil {
+        return err
+    }
+    defer res.Body.Close()
+    if res.StatusCode != http.StatusOK {
+        return fmt.Errorf("server returned: %v", res.Status)
+    }
 	
-	// 使用 pool 的形式 copy 数据
-	b := bufferPool.Get().(*bytes.Buffer)
-	b.Reset()
-	defer bufferPool.Put(b)
-	_, err = io.Copy(b, res.Body)
-	if err != nil {
-		return fmt.Errorf("reading response body: %v", err)
-	}
+    // 使用 pool 的形式 copy 数据
+    b := bufferPool.Get().(*bytes.Buffer)
+    b.Reset()
+    defer bufferPool.Put(b)
+    _, err = io.Copy(b, res.Body)
+    if err != nil {
+        return fmt.Errorf("reading response body: %v", err)
+    }
 	
-	// protobuf 反序列化
-	err = proto.Unmarshal(b.Bytes(), out)
-	if err != nil {
-		return fmt.Errorf("decoding response body: %v", err)
-	}
-	return nil
+    // protobuf 反序列化
+    err = proto.Unmarshal(b.Bytes(), out)
+    if err != nil {
+        return fmt.Errorf("decoding response body: %v", err)
+    }
+    return nil
 }
 ```
 
@@ -584,27 +584,27 @@ type entry struct{
 
 ```cgo
 func (c *Cache) Add(key Key, value interface{}) {
-	// 初始化
-	if c.cache == nil {
-		c.cache = make(map[interface{}]*list.Element)
-		c.ll = list.New()
-	}
+    // 初始化
+    if c.cache == nil {
+        c.cache = make(map[interface{}]*list.Element)
+        c.ll = list.New()
+    }
 	
-	// 查找 key 对应的 value, 如果找到, 则将该元素移动到最前面
-	if ee, ok := c.cache[key]; ok {
-		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
-		return
-	}
+    // 查找 key 对应的 value, 如果找到, 则将该元素移动到最前面
+    if ee, ok := c.cache[key]; ok {
+        c.ll.MoveToFront(ee)
+        ee.Value.(*entry).value = value
+        return
+    }
 	
-	// 该元素不存在, 则在最前端新添加一个元素
-	ele := c.ll.PushFront(&entry{key, value})
-	c.cache[key] = ele
+    // 该元素不存在, 则在最前端新添加一个元素
+    ele := c.ll.PushFront(&entry{key, value})
+    c.cache[key] = ele
 	
-	// 元素淘汰处理
-	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
-		c.RemoveOldest()
-	}
+    // 元素淘汰处理
+    if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
+        c.RemoveOldest()
+    }
 }
 ```
 
@@ -613,24 +613,24 @@ func (c *Cache) Add(key Key, value interface{}) {
 ```cgo
 // 淘汰元素
 func (c *Cache) RemoveOldest() {
-	if c.cache == nil {
-		return
-	}
+    if c.cache == nil {
+        return
+    }
 	
-	// 从最尾端开始淘汰, 删除
-	ele := c.ll.Back()
-	if ele != nil {
-		c.removeElement(ele)
-	}
+    // 从最尾端开始淘汰, 删除
+    ele := c.ll.Back()
+    if ele != nil {
+        c.removeElement(ele)
+    }
 }
 
 func (c *Cache) removeElement(e *list.Element) {
-	c.ll.Remove(e) // 从链表移除
-	kv := e.Value.(*entry)
-	delete(c.cache, kv.key) // 从缓存当中移除
-	if c.OnEvicted != nil {
-		c.OnEvicted(kv.key, kv.value) // 淘汰回调
-	}
+    c.ll.Remove(e) // 从链表移除
+    kv := e.Value.(*entry)
+    delete(c.cache, kv.key) // 从缓存当中移除
+    if c.OnEvicted != nil {
+        c.OnEvicted(kv.key, kv.value) // 淘汰回调
+    }
 }
 ```
 
@@ -638,16 +638,16 @@ func (c *Cache) removeElement(e *list.Element) {
 
 ```cgo
 func (c *Cache) Get(key Key) (value interface{}, ok bool) {
-	if c.cache == nil {
-		return
-	}
+    if c.cache == nil {
+        return
+    }
 	
-	// 直接访问 cache, 然后将元素移动到最前面
-	if ele, hit := c.cache[key]; hit {
-		c.ll.MoveToFront(ele)
-		return ele.Value.(*entry).value, true
-	}
-	return
+    // 直接访问 cache, 然后将元素移动到最前面
+    if ele, hit := c.cache[key]; hit {
+        c.ll.MoveToFront(ele)
+        return ele.Value.(*entry).value, true
+    }
+    return
 }
 ```
 

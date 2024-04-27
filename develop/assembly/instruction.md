@@ -112,18 +112,18 @@ TEXT ·add(SB), NOSPLIT, $8-24
 
 ```
 "".add STEXT nosplit size=48 args=0x18 locals=0x10
-	0x0000 00000 (pkg/add_amd64.s:66)	TEXT	"".add(SB), NOSPLIT, $16-24
-	0x0000 00000 (pkg/add_amd64.s:66)	SUBQ	$16, SP
-	0x0004 00004 (pkg/add_amd64.s:66)	MOVQ	BP, 8(SP)
-	0x0009 00009 (pkg/add_amd64.s:66)	LEAQ	8(SP), BP
-	0x000e 00014 (pkg/add_amd64.s:66)	FUNCDATA	$0, "".add.args_stackmap(SB)
-	0x000e 00014 (pkg/add_amd64.s:67)	MOVQ	$0, r1+40(FP)
-	0x0017 00023 (pkg/add_amd64.s:69)	MOVQ	a+24(FP), AX
-	0x001c 00028 (pkg/add_amd64.s:70)	ADDQ	b+32(FP), AX
-	0x0021 00033 (pkg/add_amd64.s:71)	MOVQ	AX, r1+40(FP)
-	0x0026 00038 (pkg/add_amd64.s:72)	MOVQ	8(SP), BP
-	0x002b 00043 (pkg/add_amd64.s:72)	ADDQ	$16, SP
-	0x002f 00047 (pkg/add_amd64.s:72)	RET
+    0x0000 00000 (pkg/add_amd64.s:66)    TEXT    "".add(SB), NOSPLIT, $16-24
+    0x0000 00000 (pkg/add_amd64.s:66)    SUBQ    $16, SP
+    0x0004 00004 (pkg/add_amd64.s:66)    MOVQ    BP, 8(SP)
+    0x0009 00009 (pkg/add_amd64.s:66)    LEAQ    8(SP), BP
+    0x000e 00014 (pkg/add_amd64.s:66)    FUNCDATA    $0, "".add.args_stackmap(SB)
+    0x000e 00014 (pkg/add_amd64.s:67)    MOVQ    $0, r1+40(FP)
+    0x0017 00023 (pkg/add_amd64.s:69)    MOVQ    a+24(FP), AX
+    0x001c 00028 (pkg/add_amd64.s:70)    ADDQ    b+32(FP), AX
+    0x0021 00033 (pkg/add_amd64.s:71)    MOVQ    AX, r1+40(FP)
+    0x0026 00038 (pkg/add_amd64.s:72)    MOVQ    8(SP), BP
+    0x002b 00043 (pkg/add_amd64.s:72)    ADDQ    $16, SP
+    0x002f 00047 (pkg/add_amd64.s:72)    RET
 ```
 
 在这段代码当中可以得到的信息: (代码当中的 SP 都是硬件SP寄存器, 假设当前被调用的是 add 函数)

@@ -65,19 +65,19 @@ typedef struct zset {
 
 ```
 type Node struct{
-	val interface{}  // 当前节点的值
-	next []*Node     // 指向下一个节点的数组
+    val interface{}  // 当前节点的值
+    next []*Node     // 指向下一个节点的数组
 }
 
 type SkipList struct{
-	header *Node  // 保存所有的头节点, 不存储任何值 
-	level int     // 表示当前的level
+    header *Node  // 保存所有的头节点, 不存储任何值 
+    level int     // 表示当前的level
 }
 
 func insert(sk *SkipList, val int)  {
-	prefix := map[int]*Node{} // 前驱节点
-	node := sk.header
-	// 查询顺序: 自上而下, 自左向右 
+    prefix := map[int]*Node{} // 前驱节点
+    node := sk.header
+    // 查询顺序: 自上而下, 自左向右 
     for level:=sk.level-1; level>=0; level-- {
         for {
             if node.next[level] == nil {

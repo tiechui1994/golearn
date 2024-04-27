@@ -45,7 +45,7 @@ import "C"
 
 //export Concat
 func Concat(a, b *C.char) *C.char {
-	return C.CString(C.GoString(a) + C.GoString(b))
+    return C.CString(C.GoString(a) + C.GoString(b))
 }
 
 func main() {}
@@ -60,7 +60,7 @@ import "C"
 
 //export Add
 func Add(i, j int) int {
-	return i + j
+    return i + j
 }
 
 func main() {}
@@ -78,12 +78,12 @@ type Int int
 
 //export String
 func (i Int) String() string {
-	return fmt.Sprintf("%d", i)
+    return fmt.Sprintf("%d", i)
 }
 
 //export Inc
 func (i *Int) Inc(j int) {
-	*i = *i + Int(j)
+    *i = *i + Int(j)
 }
 
 func main() {}
@@ -155,7 +155,7 @@ import "C"
 
 //export Add
 func Add(a, b C.int) C.int {
-	return C.add(a, b)
+    return C.add(a, b)
 }
 
 func main() {}
@@ -176,7 +176,7 @@ import "fmt"
 
 // Go => C => Go => C
 func main() {
-	fmt.Println(C.Add(1, 7))
+    fmt.Println(C.Add(1, 7))
 }
 ```
 
@@ -320,13 +320,13 @@ func _Cfunc_GoString(p *_Ctype_char) string {
 
 // runtime.gostring
 func gostring(p *byte) string {
-	l := findnull(p) // 查找 NULL 的位置
-	if l == 0 {
-		return ""
-	}
-	s, b := rawstring(l) // 在 go 内存上分配一个 l 长度的内存空间
-	memmove(unsafe.Pointer(&b[0]), unsafe.Pointer(p), uintptr(l)) // 内存拷贝
-	return s
+    l := findnull(p) // 查找 NULL 的位置
+    if l == 0 {
+        return ""
+    }
+    s, b := rawstring(l) // 在 go 内存上分配一个 l 长度的内存空间
+    memmove(unsafe.Pointer(&b[0]), unsafe.Pointer(p), uintptr(l)) // 内存拷贝
+    return s
 }
 ```
 
@@ -368,7 +368,7 @@ package main
 
 /*
 int sum(int a, int b) {
-	return a+b;
+    return a+b;
 }
 */
 import "C"
@@ -552,56 +552,56 @@ asmcgocall 采用汇编实现:
 // fn 是函数地址, arg 是第一个参数地址
 // 在 g0 上调用 fn(arg) 函数.
 TEXT ·asmcgocall(SB),NOSPLIT,$0-20
-    MOVQ	fn+0(FP), AX
-    MOVQ	arg+8(FP), BX
+    MOVQ    fn+0(FP), AX
+    MOVQ    arg+8(FP), BX
     
-    MOVQ	SP, DX // 保存当前的 SP 到 DX
+    MOVQ    SP, DX // 保存当前的 SP 到 DX
     
     // Figure out if we need to switch to m->g0 stack.
     // We get called to create new OS threads too, and those
     // come in on the m->g0 stack already.
     // 切换 g 之前的检查
     get_tls(CX)
-    MOVQ	g(CX), R8 // R8 = g
-    CMPQ	R8, $0    // g == 0
-    JEQ	nosave // 相等跳转, 则说明当前 g 为空
-    MOVQ	g_m(R8), R8 // 当前 m
-    MOVQ	m_g0(R8), SI // SI = m.g0
-    MOVQ	g(CX), DI    // DI = g  
-    CMPQ	SI, DI // m.g0 == g
-    JEQ	nosave // 相等跳转, 当前在 g0 上
-    MOVQ	m_gsignal(R8), SI // SI = m.gsignal
-    CMPQ	SI, DI // m.gsignal == g
-    JEQ	nosave // 相等跳转, 当前 m.gsignal 上
+    MOVQ    g(CX), R8 // R8 = g
+    CMPQ    R8, $0    // g == 0
+    JEQ    nosave // 相等跳转, 则说明当前 g 为空
+    MOVQ    g_m(R8), R8 // 当前 m
+    MOVQ    m_g0(R8), SI // SI = m.g0
+    MOVQ    g(CX), DI    // DI = g  
+    CMPQ    SI, DI // m.g0 == g
+    JEQ    nosave // 相等跳转, 当前在 g0 上
+    MOVQ    m_gsignal(R8), SI // SI = m.gsignal
+    CMPQ    SI, DI // m.gsignal == g
+    JEQ    nosave // 相等跳转, 当前 m.gsignal 上
     
     // 切换到 g0 上
-    MOVQ	m_g0(R8), SI // SI=m.g0
-    CALL	gosave<>(SB) // 调用 gosave, 参数是 gobuf
-    MOVQ	SI, g(CX) // 切换到 g0
-    MOVQ	(g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
+    MOVQ    m_g0(R8), SI // SI=m.g0
+    CALL    gosave<>(SB) // 调用 gosave, 参数是 gobuf
+    MOVQ    SI, g(CX) // 切换到 g0
+    MOVQ    (g_sched+gobuf_sp)(SI), SP // 恢复 g0 的 SP 
     
     // Now on a scheduling stack (a pthread-created stack).
     // Make sure we have enough room for 4 stack-backed fast-call
     // registers as per windows amd64 calling convention.
-    SUBQ	$64, SP     // SP=SP-64
-    ANDQ	$~15, SP	// SP=SP+16, 偏移 gcc ABI
-    MOVQ	DI, 48(SP)	// 保存 g 
-    MOVQ	(g_stack+stack_hi)(DI), DI // DI=g.stack.hi
-    SUBQ	DX, DI       // 计算 g 栈大小, 保存到 DI 当中
-    MOVQ	DI, 40(SP)	// 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
-    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-    MOVQ	BX, CX		// CX = first argument in Win64
-    CALL	AX          // 调用函数, 参数 DI, SI, CX, DX, R8
+    SUBQ    $64, SP     // SP=SP-64
+    ANDQ    $~15, SP    // SP=SP+16, 偏移 gcc ABI
+    MOVQ    DI, 48(SP)    // 保存 g 
+    MOVQ    (g_stack+stack_hi)(DI), DI // DI=g.stack.hi
+    SUBQ    DX, DI       // 计算 g 栈大小, 保存到 DI 当中
+    MOVQ    DI, 40(SP)    // 保存 g 栈大小(这里不能保存 SP, 因为在回调时栈可能被拷贝)
+    MOVQ    BX, DI        // DI = first argument in AMD64 ABI
+    MOVQ    BX, CX        // CX = first argument in Win64
+    CALL    AX          // 调用函数, 参数 DI, SI, CX, DX, R8
     
     // 函数调用完成, 恢复到 g, stack
     get_tls(CX)
-    MOVQ	48(SP), DI // DI=g
-    MOVQ	(g_stack+stack_hi)(DI), SI // SI=g.stack.hi
-    SUBQ	40(SP), SI // SI=SI-size
-    MOVQ	DI, g(CX)  // tls 保存, 恢复到 g 
-    MOVQ	SI, SP     // 恢复 SP
+    MOVQ    48(SP), DI // DI=g
+    MOVQ    (g_stack+stack_hi)(DI), SI // SI=g.stack.hi
+    SUBQ    40(SP), SI // SI=SI-size
+    MOVQ    DI, g(CX)  // tls 保存, 恢复到 g 
+    MOVQ    SI, SP     // 恢复 SP
     
-    MOVL	AX, ret+16(FP) // 函数返回错误码
+    MOVL    AX, ret+16(FP) // 函数返回错误码
     RET
 
 nosave:
@@ -610,16 +610,16 @@ nosave:
     // 这段代码和上面的代码作用是一样的, 但没有saving/restoring g, 并且不用担心 stack 移动(因为我们在系统栈上,
     // 而不是在 goroutine 堆栈上).
     // 如果上面的代码已经在系统栈上, 则可以直接使用, 但是通过此代码的唯一路径在 Solaris 上很少见.
-    SUBQ	$64, SP
-    ANDQ	$~15, SP
-    MOVQ	$0, 48(SP)	// where above code stores g, in case someone looks during debugging
-    MOVQ	DX, 40(SP)	// save original stack pointer
-    MOVQ	BX, DI		// DI = first argument in AMD64 ABI
-    MOVQ	BX, CX		// CX = first argument in Win64
-    CALL	AX
-    MOVQ	40(SP), SI	// restore original stack pointer
-    MOVQ	SI, SP
-    MOVL	AX, ret+16(FP)
+    SUBQ    $64, SP
+    ANDQ    $~15, SP
+    MOVQ    $0, 48(SP)    // where above code stores g, in case someone looks during debugging
+    MOVQ    DX, 40(SP)    // save original stack pointer
+    MOVQ    BX, DI        // DI = first argument in AMD64 ABI
+    MOVQ    BX, CX        // CX = first argument in Win64
+    CALL    AX
+    MOVQ    40(SP), SI    // restore original stack pointer
+    MOVQ    SI, SP
+    MOVL    AX, ret+16(FP)
     RET
 ```
 
@@ -652,7 +652,7 @@ import "C"
 
 //export Concat
 func Concat(a, b *C.char) *C.char {
-	return C.CString(C.GoString(a) + C.GoString(b))
+    return C.CString(C.GoString(a) + C.GoString(b))
 }
 
 func main() {}
@@ -730,34 +730,34 @@ extern void _cgoexp_5154f501eb16_Concat(void *, int, __SIZE_TYPE__);
 
 char* Concat(char* a, char* b)
 {
-	__SIZE_TYPE__ _cgo_ctxt = _cgo_wait_runtime_init_done();
-	struct {
-		char* p0;
-		char* p1;
-		char* r0;
-	} __attribute__((__packed__, __gcc_struct__)) _cgo_a;
-	_cgo_a.p0 = a;
-	_cgo_a.p1 = b;
-	_cgo_tsan_release();
-	crosscall2(_cgoexp_5154f501eb16_Concat, &_cgo_a, 24, _cgo_ctxt);
-	_cgo_tsan_acquire();
-	_cgo_release_context(_cgo_ctxt);
-	return _cgo_a.r0;
+    __SIZE_TYPE__ _cgo_ctxt = _cgo_wait_runtime_init_done();
+    struct {
+        char* p0;
+        char* p1;
+        char* r0;
+    } __attribute__((__packed__, __gcc_struct__)) _cgo_a;
+    _cgo_a.p0 = a;
+    _cgo_a.p1 = b;
+    _cgo_tsan_release();
+    crosscall2(_cgoexp_5154f501eb16_Concat, &_cgo_a, 24, _cgo_ctxt);
+    _cgo_tsan_acquire();
+    _cgo_release_context(_cgo_ctxt);
+    return _cgo_a.r0;
 }
 
 void _cgo_5154f501eb16_Cfunc__Cmalloc(void *v) {
-	struct {
-		unsigned long long p0;
-		void *r1;
-	} __attribute__((__packed__, __gcc_struct__)) *a = v;
-	void *ret;
-	_cgo_tsan_acquire();
-	ret = malloc(a->p0);
-	if (ret == 0 && a->p0 == 0) {
-		ret = malloc(1);
-	}
-	a->r1 = ret;
-	_cgo_tsan_release();
+    struct {
+        unsigned long long p0;
+        void *r1;
+    } __attribute__((__packed__, __gcc_struct__)) *a = v;
+    void *ret;
+    _cgo_tsan_acquire();
+    ret = malloc(a->p0);
+    if (ret == 0 && a->p0 == 0) {
+        ret = malloc(1);
+    }
+    a->r1 = ret;
+    _cgo_tsan_release();
 }
 ```
 
@@ -803,18 +803,18 @@ func _cgoCheckPointer(interface{}, interface{})
 func _cgoCheckResult(interface{})
 
 func _Cfunc_CString(s string) *_Ctype_char {
-	p := _cgo_cmalloc(uint64(len(s)+1))
-	pp := (*[1<<30]byte)(p)
-	copy(pp[:], s)
-	pp[len(s)] = 0
-	return (*_Ctype_char)(p)
+    p := _cgo_cmalloc(uint64(len(s)+1))
+    pp := (*[1<<30]byte)(p)
+    copy(pp[:], s)
+    pp[len(s)] = 0
+    return (*_Ctype_char)(p)
 }
 
 //go:linkname _cgo_runtime_gostring runtime.gostring
 func _cgo_runtime_gostring(*_Ctype_char) string
 
 func _Cfunc_GoString(p *_Ctype_char) string {
-	return _cgo_runtime_gostring(p)
+    return _cgo_runtime_gostring(p)
 }
 
 //go:cgo_export_dynamic Concat
@@ -823,15 +823,15 @@ func _Cfunc_GoString(p *_Ctype_char) string {
 //go:nosplit
 //go:norace
 func _cgoexp_5154f501eb16_Concat(a unsafe.Pointer, n int32, ctxt uintptr) {
-	fn := _cgoexpwrap_5154f501eb16_Concat
-	_cgo_runtime_cgocallback(**(**unsafe.Pointer)(unsafe.Pointer(&fn)), a, uintptr(n), ctxt);
+    fn := _cgoexpwrap_5154f501eb16_Concat
+    _cgo_runtime_cgocallback(**(**unsafe.Pointer)(unsafe.Pointer(&fn)), a, uintptr(n), ctxt);
 }
 
 func _cgoexpwrap_5154f501eb16_Concat(p0 *_Ctype_char, p1 *_Ctype_char) (r0 *_Ctype_char) {
-	defer func() {
-		_cgoCheckResult(r0)
-	}()
-	return Concat(p0, p1)
+    defer func() {
+        _cgoCheckResult(r0)
+    }()
+    return Concat(p0, p1)
 }
 
 //go:cgo_import_static _cgo_5154f501eb16_Cfunc__Cmalloc
@@ -844,11 +844,11 @@ func runtime_throw(string)
 
 //go:cgo_unsafe_args
 func _cgo_cmalloc(p0 uint64) (r1 unsafe.Pointer) {
-	_cgo_runtime_cgocall(_cgo_5154f501eb16_Cfunc__Cmalloc, uintptr(unsafe.Pointer(&p0)))
-	if r1 == nil {
-		runtime_throw("runtime: C malloc failed")
-	}
-	return
+    _cgo_runtime_cgocall(_cgo_5154f501eb16_Cfunc__Cmalloc, uintptr(unsafe.Pointer(&p0)))
+    if r1 == nil {
+        runtime_throw("runtime: C malloc failed")
+    }
+    return
 }
 ```
 
@@ -877,7 +877,7 @@ import _ "unsafe"
 
 //export Concat
 func Concat(a, b * /*line :9:19*/_Ctype_char /*line :9:25*/) * /*line :9:28*/_Ctype_char /*line :9:34*/ {
-	return ( /*line :10:9*/_Cfunc_CString /*line :10:17*/)(( /*line :10:19*/_Cfunc_GoString /*line :10:28*/)(a) + ( /*line :10:35*/_Cfunc_GoString /*line :10:44*/)(b))
+    return ( /*line :10:9*/_Cfunc_CString /*line :10:17*/)(( /*line :10:19*/_Cfunc_GoString /*line :10:28*/)(a) + ( /*line :10:35*/_Cfunc_GoString /*line :10:44*/)(b))
 }
 
 func main() {}
