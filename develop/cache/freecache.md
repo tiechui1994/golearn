@@ -16,6 +16,8 @@ freecache是一个近似LRU的算法. LRU是内存管理的一种方式, 即内�
 缓存满了之后, 按照一定的规则顺序对存储的数据进行置换.
 
 
+![image](/images/develop_freecache.png)
+
 数据结构:
 
 ```cgo

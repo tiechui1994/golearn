@@ -22,6 +22,9 @@ wrapEntry: timestamp(8B) + hash(8B) + keysize(2B) + key + value
 bytesQueue: `varint(header) + wrapEntry` 
 
 
+![image](/images/develop_bigcache.png)
+
+
 数据结构:
 
 ```cgo
