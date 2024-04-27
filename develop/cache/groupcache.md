@@ -2,97 +2,6 @@
 
 golang 当中比较缓存分别是 freecache, bigcache, groupcache. 以下主要针对这三个cache进行源码分析.
 
-## lru 的实现
-
-`List + map[interface{}]Element`.
-
-使用 `map[interface{}]Element` 存储缓存的所有kv元素, 使用 List 来调整访问的顺序.
-
-列表最前面的元素是最近访问的, 最后面的元素的不经常访问的元素. 淘汰元素的时候, 从最尾端开始.(lru算法的内容)
-
-K-V 结构:
-
-```cgo
-type Key interface{}
-
-// 在 value 当中包含了 key.
-type entry struct{
-    key Key
-    value interface{}
-}
-```
-
-- 添加元素
-
-```cgo
-func (c *Cache) Add(key Key, value interface{}) {
-	// 初始化
-	if c.cache == nil {
-		c.cache = make(map[interface{}]*list.Element)
-		c.ll = list.New()
-	}
-	
-	// 查找 key 对应的 value, 如果找到, 则将该元素移动到最前面
-	if ee, ok := c.cache[key]; ok {
-		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
-		return
-	}
-	
-	// 该元素不存在, 则在最前端新添加一个元素
-	ele := c.ll.PushFront(&entry{key, value})
-	c.cache[key] = ele
-	
-	// 元素淘汰处理
-	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
-		c.RemoveOldest()
-	}
-}
-```
-
-- 元素淘汰
-
-```cgo
-// 淘汰元素
-func (c *Cache) RemoveOldest() {
-	if c.cache == nil {
-		return
-	}
-	
-	// 从最尾端开始淘汰, 删除
-	ele := c.ll.Back()
-	if ele != nil {
-		c.removeElement(ele)
-	}
-}
-
-func (c *Cache) removeElement(e *list.Element) {
-	c.ll.Remove(e) // 从链表移除
-	kv := e.Value.(*entry)
-	delete(c.cache, kv.key) // 从缓存当中移除
-	if c.OnEvicted != nil {
-		c.OnEvicted(kv.key, kv.value) // 淘汰回调
-	}
-}
-```
-
-- 获取元素
-
-```cgo
-func (c *Cache) Get(key Key) (value interface{}, ok bool) {
-	if c.cache == nil {
-		return
-	}
-	
-	// 直接访问 cache, 然后将元素移动到最前面
-	if ele, hit := c.cache[key]; hit {
-		c.ll.MoveToFront(ele)
-		return ele.Value.(*entry).value, true
-	}
-	return
-}
-```
-
 
 ## groupcache
 
@@ -327,7 +236,6 @@ func (g *Group) populateCache(key string, value ByteView, cache *cache) {
 	}
 }
 ```
-
 
 ## cache 的实现
 
@@ -650,3 +558,96 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	return nil
 }
 ```
+
+
+## lru 的实现
+
+`List + map[interface{}]Element`.
+
+使用 `map[interface{}]Element` 存储缓存的所有kv元素, 使用 List 来调整访问的顺序.
+
+列表最前面的元素是最近访问的, 最后面的元素的不经常访问的元素. 淘汰元素的时候, 从最尾端开始.(lru算法的内容)
+
+K-V 结构:
+
+```cgo
+type Key interface{}
+
+// 在 value 当中包含了 key.
+type entry struct{
+    key Key
+    value interface{}
+}
+```
+
+- 添加元素
+
+```cgo
+func (c *Cache) Add(key Key, value interface{}) {
+	// 初始化
+	if c.cache == nil {
+		c.cache = make(map[interface{}]*list.Element)
+		c.ll = list.New()
+	}
+	
+	// 查找 key 对应的 value, 如果找到, 则将该元素移动到最前面
+	if ee, ok := c.cache[key]; ok {
+		c.ll.MoveToFront(ee)
+		ee.Value.(*entry).value = value
+		return
+	}
+	
+	// 该元素不存在, 则在最前端新添加一个元素
+	ele := c.ll.PushFront(&entry{key, value})
+	c.cache[key] = ele
+	
+	// 元素淘汰处理
+	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
+		c.RemoveOldest()
+	}
+}
+```
+
+- 元素淘汰
+
+```cgo
+// 淘汰元素
+func (c *Cache) RemoveOldest() {
+	if c.cache == nil {
+		return
+	}
+	
+	// 从最尾端开始淘汰, 删除
+	ele := c.ll.Back()
+	if ele != nil {
+		c.removeElement(ele)
+	}
+}
+
+func (c *Cache) removeElement(e *list.Element) {
+	c.ll.Remove(e) // 从链表移除
+	kv := e.Value.(*entry)
+	delete(c.cache, kv.key) // 从缓存当中移除
+	if c.OnEvicted != nil {
+		c.OnEvicted(kv.key, kv.value) // 淘汰回调
+	}
+}
+```
+
+- 获取元素
+
+```cgo
+func (c *Cache) Get(key Key) (value interface{}, ok bool) {
+	if c.cache == nil {
+		return
+	}
+	
+	// 直接访问 cache, 然后将元素移动到最前面
+	if ele, hit := c.cache[key]; hit {
+		c.ll.MoveToFront(ele)
+		return ele.Value.(*entry).value, true
+	}
+	return
+}
+```
+

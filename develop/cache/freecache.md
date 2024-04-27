@@ -22,19 +22,36 @@ freecache是一个近似LRU的算法. LRU是内存管理的一种方式, 即内�
 segmentCount = 256
 
 type Cache struct {
-	locks    [segmentCount]sync.Mutex
-	segments [segmentCount]segment
+    locks    [segmentCount]sync.Mutex
+    segments [segmentCount]segment
+}
+
+type segment struct {
+    rb            RingBuf // ring buffer 
+    segId         int
+    _             uint32
+    missCount     int64
+    hitCount      int64
+    entryCount    int64      // 
+    totalCount    int64      // number of entries in ring buffer, including deleted entries.
+    totalTime     int64      // 用于计算最近最少使用的条目. 总的过期时长
+    timer         Timer      // Timer giving current time
+    ...
+    vacuumLen     int64      // up to vacuumLen, new data can be written without overwriting old data.
+    slotLens      [256]int32 // 单个 slot 实际存储 entryPtr 个数
+    slotCap       int32      // 单个 slot 可以存储最大的 entryPtr 数量(容量)
+    slotsData     []entryPtr // shared by all 256 slots
 }
 
 // 位置信息
 type entryPtr struct {
-	offset   int64  
-	hash16   uint16 
-	keyLen   uint16 
-	reserved uint32 // 内存对齐
+    offset   int64  
+    hash16   uint16 
+    keyLen   uint16 
+    _        uint32 
 }
 
-// 存储信息头
+// entry header. 存储的 entry = entry header + entry
 type entryHdr struct {
     accessTime uint32 // 4B, 访问时间
     expireAt   uint32 // 4B, 到期时间
@@ -43,8 +60,8 @@ type entryHdr struct {
     valLen     uint32 // 4B, val长度
     valCap     uint32 // 4B, val容量
     deleted    bool   // 1B, 删除标记
-    slotId     uint8  // 1B, 卡槽id
-    reserved   uint16 // 2B, 内存对齐
+    slotId     uint8  // 1B, 卡槽 id, 获取 entryPtr (值是 0-255)
+    _          uint16 // 2B, 内存对齐
 }
 ```
 
@@ -54,8 +71,8 @@ Cache 直接使用了 256 个 segment. 每一个 segment 都拥有一把排他�
 
 每一个 segment 拥有一个 ring buf, 用于存储底层的数据.
 
-每一个 segment 又会产生 256 * N 份卡槽, N是卡槽的容量`[备份数]`, 初始化的时候值为1, 这些卡槽用于存储 "数据位置", 
-数据格式16B: `offset(8) + hash16(2) + keyLen(2)+ reserved(4)`. 这里数据的顺序解决了内存偏移量的问题, 可以使
+每一个 segment 又会产生 256 * N 份卡槽, N是卡槽的容量`[备份数]`, 初始化的时候值为1, 这些卡槽用于存储 "数据 pointer", 
+数据格式16B: `offset(8) + hash16(2) + keyLen(2)+ _(4)`. 这里数据的顺序解决了内存偏移量的问题, 可以使
 用 unsafe 包进行快速转换.
 
 hash64的用途:
@@ -102,9 +119,8 @@ type entryHdr struct {
 	valCap     uint32 // 4B, val容量
 	deleted    bool   // 1B, 删除标记
 	slotId     uint8  // 1B, 卡槽id
-	reserved   uint16 // 2B
+	_          uint16 // 2B
 }
-
 
 func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (err error) {
     // key 的长度有限制, 最多不超过 64K
@@ -137,26 +153,26 @@ func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (e
 	var hdrBuf [ENTRY_HDR_SIZE]byte
 	hdr := (*entryHdr)(unsafe.Pointer(&hdrBuf[0]))
 
-    // 卡槽的开始位置 = "slotId * 卡槽容量" 
-    // slotLens 存储 slot 的长度
-    // 卡槽的结束位置 = 卡槽开始位置 + min(当前 slotId 的长度, 卡槽的容量)
-	slot := seg.getSlot(slotId) // 获取卡槽
+    // 卡槽的开始位置 = "slotId * slot备份数量" 
+    // 卡槽的结束位置 = 卡槽开始位置 + min(当前 slotId 的长度, slot备份数量)
+	slot := seg.getSlot(slotId) // 获取卡槽, []entryPtr
 	
-	// 获取 solt 的位置. idx 是 slot 在 slot 组当中的位置
+	// match 表示查询到 key 
+    // idx 查询到相应可以存储的位置
 	idx, match := seg.lookup(slot, hash16, key) 
 	if match {
-	    // hash 命中
 		matchedPtr := &slot[idx]
-		seg.rb.ReadAt(hdrBuf[:], matchedPtr.offset)
-		hdr.slotId = slotId
-		hdr.hash16 = hash16
-		hdr.keyLen = uint16(len(key)) // 要存储的key的大小
-		originAccessTime := hdr.accessTime
-		hdr.accessTime = now
-		hdr.expireAt = expireAt
-		hdr.valLen = uint32(len(value)) // 要存储的value的长度
+		seg.rb.ReadAt(hdrBuf[:], matchedPtr.offset) // 读取 matchedPtr 当中的数据, 这个会导致 hdr 同步修改
 		
-		// 可存入, 直接存入并返回
+        originAccessTime := hdr.accessTime
+	    hdr.accessTime = now
+		hdr.expireAt = expireAt
+        hdr.keyLen = uint16(len(key)) // 要存储的key的大小
+		hdr.hash16 = hash16
+		hdr.valLen = uint32(len(value)) // 要存储的value的长度
+        hdr.slotId = slotId
+		
+		// value 没有越界, 直接存入并返回
 		if hdr.valCap >= hdr.valLen {
 			atomic.AddInt64(&seg.totalTime, int64(hdr.accessTime)-int64(originAccessTime))
 			seg.rb.WriteAt(hdrBuf[:], matchedPtr.offset) // 覆盖header
@@ -165,7 +181,7 @@ func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (e
 			return
 		}
 		
-		// 删除之前的 slot
+		// value 越界, 进行 slot 长度扩容
 		seg.delEntryPtr(slotId, slot, idx)
 		match = false
 		// 针对 hdr.valCap 进行扩容, 直到其值大于等于 hdr.valLen
@@ -188,7 +204,7 @@ func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (e
 		}
 	}
     
-    // 注意: hdr.valCap, 不是 hdr.valLen
+    // 注意: hdr.valCap, 预先分配的大小
 	entryLen := ENTRY_HDR_SIZE + int64(len(key)) + int64(hdr.valCap)
 	
 	// 清除操作, 保证空间足够 entryLen
@@ -198,7 +214,6 @@ func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (e
 		// otherwise there would be index out of bound error.
 		slot = seg.getSlot(slotId)
 		idx, match = seg.lookup(slot, hash16, key)
-		// assert(match == false)
 	}
 	
 	// 获取 ring buf 的 offset 位置
@@ -220,10 +235,21 @@ func (seg *segment) set(key, value []byte, hashVal uint64, expireSeconds int) (e
 	seg.vacuumLen -= entryLen
 	return
 }
-```
 
+// 插入 entryPtr
+func (seg *segment) insertEntryPtr(slotId uint8, hash16 uint16, offset int64, idx int, keyLen uint16) {
+	if seg.slotLens[slotId] == seg.slotCap {
+		seg.expand() // 等量扩容操作, 将 slotsData 扩展成现在的 2 倍, 同时进行
+	}
+	seg.slotLens[slotId]++
+	atomic.AddInt64(&seg.entryCount, 1)
+	slot := seg.getSlot(slotId)
+	copy(slot[idx+1:], slot[idx:])
+	slot[idx].offset = offset
+	slot[idx].hash16 = hash16
+	slot[idx].keyLen = keyLen
+}
 
-```cgo
 // 获取 slot 的位置
 func (seg *segment) lookup(slot []entryPtr, hash16 uint16, key []byte) (idx int, match bool) {
 	idx = entryPtrIdx(slot, hash16)
@@ -257,13 +283,8 @@ func entryPtrIdx(slot []entryPtr, hash16 uint16) (idx int) {
 	}
 	return
 }
-```
 
-
-> segment 清除操作
-
-```cgo
-// 不断向前遍历
+//  seg 清除操作, 不断向前遍历
 func (seg *segment) evacuate(entryLen int64, slotId uint8, now uint32) (slotModified bool) {
 	var oldHdrBuf [ENTRY_HDR_SIZE]byte
 	consecutiveEvacuate := 0 // 回收的次数

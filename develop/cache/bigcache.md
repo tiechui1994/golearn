@@ -17,11 +17,11 @@ bigcache 会忽略旧值 key (将旧的 hash 重置为0), 然后把新的值存�
 
 存储: 
 
-header = timestamp(8B) + hash(8B) + keysize(2B) + key + value
+wrapEntry: timestamp(8B) + hash(8B) + keysize(2B) + key + value
 
-真正存储的内容是 `varint(header) + header` 
+bytesQueue: `varint(header) + wrapEntry` 
 
-    
+
 数据结构:
 
 ```cgo
@@ -34,6 +34,31 @@ type BigCache struct {
 	shardMask    uint64 // shred mask
 	maxShardSize uint32 // shred的内存大小, 0表示内存没有限制的, 默认值是0
 }
+
+type cacheShard struct {
+	hashmap     map[uint64]uint64 // key: hash, value: entry pos in bytes
+	entries     queue.BytesQueue
+	lock        sync.RWMutex
+	entryBuffer []byte            // buffer 缓存
+	onRemove    onRemoveCallback
+
+	isVerbose    bool
+	statsEnabled bool
+	logger       Logger
+	clock        clock
+	lifeWindow   uint64
+
+	hashmapStats map[uint64]uint32 // 统计信息
+	stats        Stats
+	cleanEnabled bool
+}
+
+// 关于 entry 存储内容:
+// timestap: 8
+// hash:     8
+// keyLen:   2
+// key:      N
+// value:    M
 ```
 
 1. 首先 shards 的个数是 2 的指数级别. 
@@ -68,13 +93,12 @@ func (c *BigCache) Set(key string, entry []byte) error {
 func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
 	currentTimestamp := uint64(s.clock.epoch()) // 当前的时间, uint64
     
-    // 全程加锁处理
 	s.lock.Lock()
 
 	// 已经存在的hash值, 重置, 非删除
 	if previousIndex := s.hashmap[hashedKey]; previousIndex != 0 {
 		if previousEntry, err := s.entries.Get(int(previousIndex)); err == nil {
-		    // 重置, 就是将 timestamp 后面的 hashkey 设置为 0 [底层]
+		    // 重置, 将 hashkey 设置为 0 [底层]
 			resetKeyFromEntry(previousEntry)
 		}
 	}
@@ -84,12 +108,13 @@ func (s *cacheShard) set(key string, hashedKey uint64, entry []byte) error {
 		s.onEvict(oldestEntry, currentTimestamp, s.removeOldestEntry)
 	}
 
-	// 进行包装 timestamp (uint64), hashkey (uint64), key, entry
+    // 业务层存储:
     // header + key + value
     // 其中 header 的内容是 timestamp(8) + hashkey(8) + keysize(2)
     // 使用了 binary.LittleEndian 的方式写入内容[节省内存空间]
-    // 真正存储的值方式
-    // varint[可变长度的data大小] + data [包装后的内容, 即 header(18) + key + value]
+    // 
+    // bytesqueue 存储:
+    // varint[可变长度的data大小] + data
     // varint 一是为了节省空间, 二是为了读取内容的时候能够获取到全部内容
 	w := wrapEntry(currentTimestamp, hashedKey, key, entry, &s.entryBuffer)
 
@@ -172,17 +197,17 @@ func (c *BigCache) Get(key string) ([]byte, error) {
 
 ```cgo
 func (s *cacheShard) get(key string, hashedKey uint64) ([]byte, error) {
-	s.lock.RLock() // 可读锁的基础上完成操作
+	s.lock.RLock()
 	
-	// keyhash -> 存储的index
-	// 存储的 index 直接能读取到存储的内容, 即包装的内容
+	// 1. keyhash -> entry pos
+    // 2. get warp entry
 	wrappedEntry, err := s.getWrappedEntry(hashedKey)
 	if err != nil {
 		s.lock.RUnlock()
 		return nil, err
 	}
 
-	// 读取包装内容当中的hashkey的值, hash冲突导致获取的元素非预期的元素
+    // 3. unpack entry, read key by struct
 	if entryKey := readKeyFromEntry(wrappedEntry); key != entryKey {
 		s.lock.RUnlock()
 		s.collision()
@@ -192,10 +217,10 @@ func (s *cacheShard) get(key string, hashedKey uint64) ([]byte, error) {
 		return nil, ErrEntryNotFound
 	}
 	
-	// 读取具体的内容
+	// 4. unpack entry, read entry by struct
 	entry := readEntry(wrappedEntry)
 	s.lock.RUnlock()
-	s.hit(hashedKey) // 命中
+	s.hit(hashedKey) // statics
 
 	return entry, nil
 }
