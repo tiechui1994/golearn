@@ -54,14 +54,14 @@ io.ReadAtLeast(r Reader, buf []byte, min int) // 读取至少 mim 个字节的�
 
 ```cgo
 type pipe struct {
-	wrMu sync.Mutex // 序列化写入操作
-	wrCh chan []byte // 管道数据
-	rdCh chan int // 读取管道
+    wrMu sync.Mutex // 序列化写入操作
+    wrCh chan []byte // 管道数据
+    rdCh chan int // 读取管道
 
-	once sync.Once // 保护 done, 只能调用一次
-	done chan struct{}
-	rerr atomicError 
-	werr atomicError
+    once sync.Once // 保护 done, 只能调用一次
+    done chan struct{}
+    rerr atomicError 
+    werr atomicError
 }
 ```
 
@@ -69,25 +69,25 @@ Write: 序列化向`chan wrCh`当中写入内容. 使用`sync.Mutex`加锁是保
 
 ```cgo
 func (p *pipe) Write(b []byte) (n int, err error) {
-	select {
-	case <-p.done:
-		return 0, p.writeCloseError()
-	default:
-		p.wrMu.Lock()
-		defer p.wrMu.Unlock()
-	}
+    select {
+    case <-p.done:
+        return 0, p.writeCloseError()
+    default:
+        p.wrMu.Lock()
+        defer p.wrMu.Unlock()
+    }
 
-	for once := true; once || len(b) > 0; once = false {
-		select {
-		case p.wrCh <- b:
-			nw := <-p.rdCh
-			b = b[nw:]
-			n += nw
-		case <-p.done:
-			return n, p.writeCloseError()
-		}
-	}
-	return n, nil
+    for once := true; once || len(b) > 0; once = false {
+        select {
+        case p.wrCh <- b:
+            nw := <-p.rdCh
+            b = b[nw:]
+            n += nw
+        case <-p.done:
+            return n, p.writeCloseError()
+        }
+    }
+    return n, nil
 }
 ```
 
@@ -96,20 +96,20 @@ Read: 从管道当中读取.
 
 ```cgo
 func (p *pipe) Read(b []byte) (n int, err error) {
-	select {
-	case <-p.done:
-		return 0, p.readCloseError()
-	default:
-	}
+    select {
+    case <-p.done:
+        return 0, p.readCloseError()
+    default:
+    }
 
-	select {
-	case bw := <-p.wrCh:
-		nr := copy(b, bw)
-		p.rdCh <- nr
-		return nr, nil
-	case <-p.done:
-		return 0, p.readCloseError()
-	}
+    select {
+    case bw := <-p.wrCh:
+        nr := copy(b, bw)
+        p.rdCh <- nr
+        return nr, nil
+    case <-p.done:
+        return 0, p.readCloseError()
+    }
 }
 ```
 
@@ -191,11 +191,11 @@ io 包的两个接口:
 
 ```cgo
 type ReaderFrom interface {
-	ReadFrom(r Reader) (n int64, err error)
+    ReadFrom(r Reader) (n int64, err error)
 }
 
 type WriterTo interface {
-	WriteTo(w Writer) (n int64, err error)
+    WriteTo(w Writer) (n int64, err error)
 }
 ```
 

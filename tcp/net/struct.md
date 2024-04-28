@@ -7,8 +7,8 @@
 
 ```cgo
 type TCPListener struct {
-	fd *netFD
-	lc ListenConfig
+    fd *netFD
+    lc ListenConfig
 }
 ```
 
@@ -16,11 +16,11 @@ type TCPListener struct {
 
 ```cgo
 type TCPConn struct {
-	conn
+    conn
 }
 
 type conn struct {
-	fd *netFD
+    fd *netFD
 }
 ```
 
@@ -90,27 +90,27 @@ type pollDesc struct {
 // pollDesc 网络poller描述符
 //go:notinheap
 type pollDesc struct {
-	link *pollDesc // in pollcache, protected by pollcache.lock
+    link *pollDesc // in pollcache, protected by pollcache.lock
 	
-	// lock 可以保护 pollOpen, polleSetDeadline, pollUnblock 和 durationimpl 操作. 
-	// 这些操作完全涵盖了seq, rt 和 wt 变量. 
+    // lock 可以保护 pollOpen, polleSetDeadline, pollUnblock 和 durationimpl 操作. 
+    // 这些操作完全涵盖了seq, rt 和 wt 变量. 
     // fd 在 PollDesc 的整个生命周期中都是不变的.
     // pollReset, pollWait, pollWaitCanceled 和 runtime·netpollready(IO就绪通知) 不带锁继续进行. 
     // 因此, closing, everr, rg, rd, wg和wd所有操作均以无锁方式进行.
     // NOTE: 以下代码使用 uintptr 来存储 *g (rg/wg), 当GC开始移动对象时, 该数据会爆炸.
-	lock    mutex // protects the following fields
-	fd      uintptr
-	closing bool
-	everr   bool    // marks event scanning error happened
-	user    uint32  // user settable cookie
-	rseq    uintptr // protects from stale read timers
-	rg      uintptr // pdReady, pdWait, G waiting for read or nil
-	rt      timer   // read deadline timer (set if rt.f != nil)
-	rd      int64   // read deadline
-	wseq    uintptr // protects from stale write timers
-	wg      uintptr // pdReady, pdWait, G waiting for write or nil
-	wt      timer   // write deadline timer
-	wd      int64   // write deadline
+    lock    mutex // protects the following fields
+    fd      uintptr
+    closing bool
+    everr   bool    // marks event scanning error happened
+    user    uint32  // user settable cookie
+    rseq    uintptr // protects from stale read timers
+    rg      uintptr // pdReady, pdWait, G waiting for read or nil
+    rt      timer   // read deadline timer (set if rt.f != nil)
+    rd      int64   // read deadline
+    wseq    uintptr // protects from stale write timers
+    wg      uintptr // pdReady, pdWait, G waiting for write or nil
+    wt      timer   // write deadline timer
+    wd      int64   // write deadline
 }
 ```
 

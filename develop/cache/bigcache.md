@@ -19,7 +19,12 @@ bigcache 会忽略旧值 key (将旧的 hash 重置为0), 然后把新的值存�
 
 wrapEntry: timestamp(8B) + hash(8B) + keysize(2B) + key + value
 
-bytesQueue: `varint(header) + wrapEntry` 
+bytesQueue: `varint(header) + wrapEntry`
+
+> byteQueue: 一个 FIFO 的队列, 通过 head, tail, marginRight 三个变量控制 []byte 的使用情况. head 表示当前最早插入节点的位置
+> tail 最后插入的位置. marginRight 存储在 []byte 的最左端的位置. 
+> 当插入位置一直是在 tail 后面, 那么 tail 与 marginRight 值是相等的
+> 当插入位置首次在 head 前面时, 此时 tail 与 marginRight 不一致. tail 重置
 
 
 ![image](/images/develop_bigcache.png)
