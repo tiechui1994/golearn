@@ -1570,7 +1570,7 @@ int main() {
 ```
 
 // makefile
-```makefile
+```
 GO = $(wildcard *.go)
 CPLUS = $(wildcard *.cpp)
 C = $(wildcard *.c)

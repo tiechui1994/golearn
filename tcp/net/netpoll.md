@@ -572,6 +572,33 @@ conn.Read() => netFD.Read() => FD.Read() => syscall.Read()
 其中 FD.Read() 与 FD.Accept() 在实现上是类似的.
 
 ```cgo
+type TCPConn struct {
+	conn
+}
+
+func (c *conn) Read(b []byte) (int, error) {
+	if !c.ok() {
+		return 0, syscall.EINVAL
+	}
+	n, err := c.fd.Read(b)
+	if err != nil && err != io.EOF {
+		err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
+	}
+	return n, err
+}
+
+            ||
+            \/
+
+func (fd *netFD) Read(p []byte) (n int, err error) {
+	n, err = fd.pfd.Read(p)
+	runtime.KeepAlive(fd)
+	return n, wrapSyscallError(readSyscallName, err)
+}
+    
+            ||
+            \/
+
 func (fd *FD) Read(p []byte) (int, error) {
     if err := fd.readLock(); err != nil {
         return 0, err
@@ -593,10 +620,16 @@ func (fd *FD) Read(p []byte) (int, error) {
     }
     for {
         // ignoringEINTR, 执行传入的函数, 如果出现错误 EINTR, 则一直执行, 直至非 EINTR 错误才算完成.
+        // 1. 先尝试系统调用 read
         n, err := ignoringEINTR(func() (int, error) { return syscall.Read(fd.Sysfd, p) })
         if err != nil {
             n = 0
+            // 2. 出现 EINTR, wait 'r' 事件
             if err == syscall.EAGAIN && fd.pd.pollable() {
+                // pd.wait('r', isFile) => runtime_pollWait => poll_runtime_pollWait => netpollblock => gopark
+                // 该过程的 g 的调度只有两种方式
+                // 第一种是 netpollgoready 唤醒. poll_runtime_pollSetDeadline(SetDeadline), poll_runtime_pollUnblock(Close)
+                // 第二种是 netpoll 调用 netpollready 返回给 findrunnable, sysmon 等
                 if err = fd.pd.waitRead(fd.isFile); err == nil {
                     continue
                 }
