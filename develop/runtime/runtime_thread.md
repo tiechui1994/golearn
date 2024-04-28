@@ -86,7 +86,7 @@ func newm(fn func(), _p_ *p, id int64) {
     // gp.m.lockedExt, 当前线程是否锁定.
     if gp := getg(); gp != nil && gp.m != nil && (gp.m.lockedExt != 0 || gp.m.incgo) && GOOS != "plan9" {
         // 当前处于锁定的 m 或 可能由C启动的线程上. 此线程的内核状态可能很奇怪(用户可能已为此目的将其锁定).
-        // 我们不想将其克隆到另一个线程中. 而是要求一个已知良好的线程为我们创建线程.	
+        // 我们不想将其克隆到另一个线程中. 而是要求一个已知良好的线程为我们创建线程.    
         lock(&newmHandoff.lock)
         if newmHandoff.haveTemplateThread == 0 {
             throw("on a locked thread with no template thread")
@@ -224,62 +224,62 @@ systemstack() 函数: 切换到 g0 栈上, 执行函数 fn
 ```cgo
 // func systemstack(fn func())
 TEXT runtime·systemstack(SB), NOSPLIT, $0-8
-    MOVQ	fn+0(FP), DI	// DI = fn
+    MOVQ    fn+0(FP), DI    // DI = fn
     get_tls(CX)
-    MOVQ	g(CX), AX	// AX = g
-    MOVQ	g_m(AX), BX	// BX = g.m, 当前工作线程 m
+    MOVQ    g(CX), AX    // AX = g
+    MOVQ    g_m(AX), BX    // BX = g.m, 当前工作线程 m
     
-    CMPQ	AX, m_gsignal(BX) // g == m.gsignal
-    JEQ	noswitch // 相等跳转到 noswitch
+    CMPQ    AX, m_gsignal(BX) // g == m.gsignal
+    JEQ    noswitch // 相等跳转到 noswitch
     
-    MOVQ	m_g0(BX), DX // DX = m.g0
-    CMPQ	AX, DX // g == m.g0
-    JEQ	noswitch // 相等则跳转 noswitch, 当前在 g0 栈上
+    MOVQ    m_g0(BX), DX // DX = m.g0
+    CMPQ    AX, DX // g == m.g0
+    JEQ    noswitch // 相等则跳转 noswitch, 当前在 g0 栈上
     
-    CMPQ	AX, m_curg(BX) // g == m.curg
-    JNE	bad // 不相等, 程序异常
+    CMPQ    AX, m_curg(BX) // g == m.curg
+    JNE    bad // 不相等, 程序异常
     
     // stack 切换, 从 curg 切换到 g0
     // 将 curg 上下文保存到 sched 当中
-    MOVQ	$runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
-    MOVQ	SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
-    MOVQ	SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
-    MOVQ	AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
-    MOVQ	BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
+    MOVQ    $runtime·systemstack_switch(SB), SI // SI=runtime·systemstack_switch, 空函数地址
+    MOVQ    SI, (g_sched+gobuf_pc)(AX) // g.sched.pc=SI
+    MOVQ    SP, (g_sched+gobuf_sp)(AX) // g.sched.sp=SP
+    MOVQ    AX, (g_sched+gobuf_g)(AX)  // g.sched.g=g
+    MOVQ    BP, (g_sched+gobuf_bp)(AX) // g.sched.bp=BP
     
-    MOVQ	DX, g(CX) // 切换 tls 到 g0
-    MOVQ	(g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
+    MOVQ    DX, g(CX) // 切换 tls 到 g0
+    MOVQ    (g_sched+gobuf_sp)(DX), BX // BX=g0.sched.sp
     
     // 栈调整, 伪装成 mstart() 调用函数 systemstack(), 目的是停止追踪
-    SUBQ	$8, BX
-    MOVQ	$runtime·mstart(SB), DX // DX=runtime·mstart
-    MOVQ	DX, 0(BX) // 将 runtime·mstart 函数地址入栈
-    MOVQ	BX, SP // 调整当前的 SP 
+    SUBQ    $8, BX
+    MOVQ    $runtime·mstart(SB), DX // DX=runtime·mstart
+    MOVQ    DX, 0(BX) // 将 runtime·mstart 函数地址入栈
+    MOVQ    BX, SP // 调整当前的 SP 
     
     // 调用 target 函数
-    MOVQ	DI, DX   // DX=fn 
-    MOVQ	0(DI), DI // 判断 fn 非空
-    CALL	DI // 函数调用, 没有参数和返回值
+    MOVQ    DI, DX   // DX=fn 
+    MOVQ    0(DI), DI // 判断 fn 非空
+    CALL    DI // 函数调用, 没有参数和返回值
     
     // 函数调用完成, 切换到 curg 栈上
     get_tls(CX)
-    MOVQ	g(CX), AX   
-    MOVQ	g_m(AX), BX // BX=m
-    MOVQ	m_curg(BX), AX // AX=m.curg
-    MOVQ	AX, g(CX) // 设置本地保存 m.curg 
-    MOVQ	(g_sched+gobuf_sp)(AX), SP // SP = m.curg.sched.sp
-    MOVQ	$0, (g_sched+gobuf_sp)(AX) // m.curg.sched.sp = 0
+    MOVQ    g(CX), AX   
+    MOVQ    g_m(AX), BX // BX=m
+    MOVQ    m_curg(BX), AX // AX=m.curg
+    MOVQ    AX, g(CX) // 设置本地保存 m.curg 
+    MOVQ    (g_sched+gobuf_sp)(AX), SP // SP = m.curg.sched.sp
+    MOVQ    $0, (g_sched+gobuf_sp)(AX) // m.curg.sched.sp = 0
     RET
 
 noswitch:
     // 当前已经在 g0 栈上了, 直接跳跃
-    MOVQ	DI, DX
-    MOVQ	0(DI), DI
-    JMP	DI
+    MOVQ    DI, DX
+    MOVQ    0(DI), DI
+    JMP    DI
 
 bad:
     // Bad: g is not gsignal, not g0, not curg. What is it?
-    MOVQ	$runtime·badsystemstack(SB), AX
-    CALL	AX
-    INT	$3
+    MOVQ    $runtime·badsystemstack(SB), AX
+    CALL    AX
+    INT    $3
 ```

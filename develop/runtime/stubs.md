@@ -113,20 +113,20 @@ acquirem() 和 releasem() 这一对函数, 可以看做锁的获取和释放. �
 
 //go:nosplit
 func acquirem() *m {
-	_g_ := getg()
-	_g_.m.locks++
-	return _g_.m
+    _g_ := getg()
+    _g_.m.locks++
+    return _g_.m
 }
 
 //go:nosplit
 func releasem(mp *m) {
-	_g_ := getg()
-	mp.locks--
-	if mp.locks == 0 && _g_.preempt {
-		// restore the preemption request in case we've cleared it in newstack
-		// 设置抢占标记 stackguard0, 这样在进入下一次执行前需要检查 stackguard0 的值, 从而进行抢占.
-		_g_.stackguard0 = stackPreempt
-	}
+    _g_ := getg()
+    mp.locks--
+    if mp.locks == 0 && _g_.preempt {
+        // restore the preemption request in case we've cleared it in newstack
+        // 设置抢占标记 stackguard0, 这样在进入下一次执行前需要检查 stackguard0 的值, 从而进行抢占.
+        _g_.stackguard0 = stackPreempt
+    }
 }
 ```
 
@@ -139,56 +139,56 @@ releasep(), 当前 m 与 p 进行解绑, 同时将 p 的状态由 _Prunning -> _
 
 ```cgo
 func acquirep(_p_ *p) {
-	// Do the part that isn't allowed to have write barriers.
-	wirep(_p_)
+    // Do the part that isn't allowed to have write barriers.
+    wirep(_p_)
 
-	// Have p; write barriers now allowed.
+    // Have p; write barriers now allowed.
 
-	// Perform deferred mcache flush before this P can allocate
-	// from a potentially stale mcache.
-	_p_.mcache.prepareForSweep()
+    // Perform deferred mcache flush before this P can allocate
+    // from a potentially stale mcache.
+    _p_.mcache.prepareForSweep()
 
-	if trace.enabled {
-		traceProcStart()
-	}
+    if trace.enabled {
+        traceProcStart()
+    }
 }
 
 func wirep(_p_ *p) {
-	_g_ := getg()
+    _g_ := getg()
 
-	if _g_.m.p != 0 {
-		throw("wirep: already in go")
-	}
-	if _p_.m != 0 || _p_.status != _Pidle {
-		id := int64(0)
-		if _p_.m != 0 {
-			id = _p_.m.ptr().id
-		}
-		print("wirep: p->m=", _p_.m, "(", id, ") p->status=", _p_.status, "\n")
-		throw("wirep: invalid p state")
-	}
-	_g_.m.p.set(_p_)
-	_p_.m.set(_g_.m)
-	_p_.status = _Prunning
+    if _g_.m.p != 0 {
+        throw("wirep: already in go")
+    }
+    if _p_.m != 0 || _p_.status != _Pidle {
+        id := int64(0)
+        if _p_.m != 0 {
+            id = _p_.m.ptr().id
+        }
+        print("wirep: p->m=", _p_.m, "(", id, ") p->status=", _p_.status, "\n")
+        throw("wirep: invalid p state")
+    }
+    _g_.m.p.set(_p_)
+    _p_.m.set(_g_.m)
+    _p_.status = _Prunning
 }
 
 func releasep() *p {
-	_g_ := getg()
+    _g_ := getg()
 
-	if _g_.m.p == 0 {
-		throw("releasep: invalid arg")
-	}
-	_p_ := _g_.m.p.ptr()
-	if _p_.m.ptr() != _g_.m || _p_.status != _Prunning {
-		print("releasep: m=", _g_.m, " m->p=", _g_.m.p.ptr(), " p->m=", hex(_p_.m), " p->status=", _p_.status, "\n")
-		throw("releasep: invalid p state")
-	}
-	if trace.enabled {
-		traceProcStop(_g_.m.p.ptr())
-	}
-	_g_.m.p = 0
-	_p_.m = 0
-	_p_.status = _Pidle
-	return _p_
+    if _g_.m.p == 0 {
+        throw("releasep: invalid arg")
+    }
+    _p_ := _g_.m.p.ptr()
+    if _p_.m.ptr() != _g_.m || _p_.status != _Prunning {
+        print("releasep: m=", _g_.m, " m->p=", _g_.m.p.ptr(), " p->m=", hex(_p_.m), " p->status=", _p_.status, "\n")
+        throw("releasep: invalid p state")
+    }
+    if trace.enabled {
+        traceProcStop(_g_.m.p.ptr())
+    }
+    _g_.m.p = 0
+    _p_.m = 0
+    _p_.status = _Pidle
+    return _p_
 }
 ```

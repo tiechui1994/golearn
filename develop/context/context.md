@@ -294,20 +294,20 @@ func removeChild(parent Context, child canceler) {
 ```
 // 重写 Done 与 Err
 func (c *cancelCtx) Done() <-chan struct{} {
-	c.mu.Lock()
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
-	d := c.done
-	c.mu.Unlock()
-	return d
+    c.mu.Lock()
+    if c.done == nil {
+        c.done = make(chan struct{})
+    }
+    d := c.done
+    c.mu.Unlock()
+    return d
 }
 
 func (c *cancelCtx) Err() error {
-	c.mu.Lock()
-	err := c.err
-	c.mu.Unlock()
-	return err
+    c.mu.Lock()
+    err := c.err
+    c.mu.Unlock()
+    return err
 }
 ```
 
@@ -370,7 +370,7 @@ func WithDeadline(parent Context, d time.Time) (Context, CancelFunc) {
 }
 
 func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
-	return WithDeadline(parent, time.Now().Add(timeout))
+    return WithDeadline(parent, time.Now().Add(timeout))
 }
 ```
 

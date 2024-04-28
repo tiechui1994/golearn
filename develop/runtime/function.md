@@ -33,24 +33,24 @@ func Println() {}
 package main
 
 type Value struct {
-	X uint64
-	Y uint64
+    X uint64
+    Y uint64
 }
 
 func (v Value) Vinc(inc uint64) {
-	v.X += inc
-	v.Y += inc
+    v.X += inc
+    v.Y += inc
 }
 
 func (v *Value) Pinc(inc uint64) {
-	v.X += inc
-	v.Y += inc
+    v.X += inc
+    v.Y += inc
 }
 
 func main() {
-	val := Value{X: 2, Y: 5}
-	val.Vinc(10)
-	val.Pinc(20)
+    val := Value{X: 2, Y: 5}
+    val.Vinc(10)
+    val.Pinc(20)
 }
 ```
 
@@ -186,12 +186,12 @@ MOVQ AX, BX // BX = AX, 将 AX 中存储的内存拷贝给 BX
 package main
 
 func main() {
-	f := func(x uint64) uint64 {
-		x += x
-		return x
-	}
+    f := func(x uint64) uint64 {
+        x += x
+        return x
+    }
 	
-	f(200)
+    f(200)
 }
 ```
 
@@ -229,17 +229,17 @@ func main() {
 package main
 
 func main() {
-	f := func() func() uint64 {
-		x := uint64(100)
-		return func() uint64 {
-			x += 100
-			return x
-		}
-	}()
+    f := func() func() uint64 {
+        x := uint64(100)
+        return func() uint64 {
+            x += 100
+            return x
+        }
+    }()
 
-	f()
-	f()
-	f()
+    f()
+    f()
+    f()
 }
 ```
 

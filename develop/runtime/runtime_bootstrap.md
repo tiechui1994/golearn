@@ -28,8 +28,8 @@ goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 C
 
 ```cgo
 #ifdef GOARCH_amd64
-#define	get_tls(r)	MOVQ TLS, r    // 获取 TLS 的位置
-#define	g(r)	0(r)(TLS*1)        // 获取 TLS 当中存储 g 的位置 
+#define    get_tls(r)    MOVQ TLS, r    // 获取 TLS 的位置
+#define    g(r)    0(r)(TLS*1)        // 获取 TLS 当中存储 g 的位置 
 #endif
 ```
 
@@ -46,91 +46,91 @@ goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 C
 
 ```asm
 TEXT _rt0_amd64_linux(SB),NOSPLIT,$-8
-	JMP	_rt0_amd64(SB)
+    JMP    _rt0_amd64(SB)
 ```
 
 // runtime/asm_amd64.s
 
 ```asm
 TEXT _rt0_amd64(SB),NOSPLIT,$-8
-	MOVQ	0(SP), DI	// argc
-	LEAQ	8(SP), SI	// argv
-	JMP	runtime·rt0_go(SB)
+    MOVQ    0(SP), DI    // argc
+    LEAQ    8(SP), SI    // argv
+    JMP    runtime·rt0_go(SB)
 
 TEXT runtime·rt0_go(SB),NOSPLIT,$0
-    MOVQ	DI, AX		 // argc
-    MOVQ	SI, BX		 // argv
+    MOVQ    DI, AX         // argc
+    MOVQ    SI, BX         // argv
     
     // 调整SP
-    SUBQ	$(4*8+7), SP // 预留39字节空间, 2args, 2auto
-    ANDQ	$~15, SP     // 调整栈顶寄存器按16字节对齐
-    MOVQ	AX, 16(SP)   // 保存 argc
-    MOVQ	BX, 24(SP)   // 保存 argv
+    SUBQ    $(4*8+7), SP // 预留39字节空间, 2args, 2auto
+    ANDQ    $~15, SP     // 调整栈顶寄存器按16字节对齐
+    MOVQ    AX, 16(SP)   // 保存 argc
+    MOVQ    BX, 24(SP)   // 保存 argv
     
     // 给 g0 预留栈空间, 大约是64k
-    MOVQ	$runtime·g0(SB), DI  // 将 g0 的地址存入 DI 
-    LEAQ	(-64*1024+104)(SP), BX // 预分配大约64k的栈
-    MOVQ	BX, g_stackguard0(DI) // g0.stackguard0=SP-64*1024+104
-    MOVQ	BX, g_stackguard1(DI) // g0.stackguard1=SP-64*1024+104
-    MOVQ	BX, (g_stack+stack_lo)(DI) // g0.stack.lo=SP-64*1024+104
-    MOVQ	SP, (g_stack+stack_hi)(DI) // g0.stack.hi=SP
+    MOVQ    $runtime·g0(SB), DI  // 将 g0 的地址存入 DI 
+    LEAQ    (-64*1024+104)(SP), BX // 预分配大约64k的栈
+    MOVQ    BX, g_stackguard0(DI) // g0.stackguard0=SP-64*1024+104
+    MOVQ    BX, g_stackguard1(DI) // g0.stackguard1=SP-64*1024+104
+    MOVQ    BX, (g_stack+stack_lo)(DI) // g0.stack.lo=SP-64*1024+104
+    MOVQ    SP, (g_stack+stack_hi)(DI) // g0.stack.hi=SP
     
     // 省略了 CPU 检查代码
     ....
     
     // 调整 TLS (本质上是 fs 段) 指向的地址, 为后续测试做准备
-    LEAQ	runtime·m0+m_tls(SB), DI // DI=&m0.tls
-    CALL	runtime·settls(SB)       // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
+    LEAQ    runtime·m0+m_tls(SB), DI // DI=&m0.tls
+    CALL    runtime·settls(SB)       // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
                                      // 之后, 可以通过 fs 段寄存器获取 m.tls
     
     // tls 测试(设置能力)
     // 获取 fs 段基址并放入到 BX, 其实就是 m0.tls[0] 的地址(原因后面会讲到).
     // get_tls 是代码由编译器生成
     get_tls(BX) 
-    MOVQ	$0x123, g(BX)            // 将 0x123 拷贝到 fs基址-8 的位置, 即: m0.tls[0]=0x123 
-    MOVQ	runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
-    CMPQ	AX, $0x123
+    MOVQ    $0x123, g(BX)            // 将 0x123 拷贝到 fs基址-8 的位置, 即: m0.tls[0]=0x123 
+    MOVQ    runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
+    CMPQ    AX, $0x123
     JEQ 2(PC) // 相等,则跳过2条指令(包含本身这条)
-    CALL	runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
+    CALL    runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
 ok:
     // set the per-goroutine and per-mach "registers"
     get_tls(BX) 
-    LEAQ	runtime·g0(SB), CX // CX=&g0
-    MOVQ	CX, g(BX)          // 把 runtime.g0 的地址保存到 TLS
-    LEAQ	runtime·m0(SB), AX // AX=&m0
+    LEAQ    runtime·g0(SB), CX // CX=&g0
+    MOVQ    CX, g(BX)          // 把 runtime.g0 的地址保存到 TLS
+    LEAQ    runtime·m0(SB), AX // AX=&m0
     
     // m0 与 g0 进行关联
-    MOVQ	CX, m_g0(AX) // m0.g0=&g0 
-    MOVQ	AX, g_m(CX)  // g0.m=&m0
+    MOVQ    CX, m_g0(AX) // m0.g0=&g0 
+    MOVQ    AX, g_m(CX)  // g0.m=&m0
     
     // 至此, m0与g0绑定在一起, 之后通过 getg 可获取到 g0, 通过 g0 又获取到 m0.
     // 这样就实现了 m0, g0 与主线程直接的关联.
-    CLD		// convention is D is always left cleared
-    CALL	runtime·check(SB)
+    CLD        // convention is D is always left cleared
+    CALL    runtime·check(SB)
     
-    MOVL	16(SP), AX		// copy argc
-    MOVL	AX, 0(SP)
-    MOVQ	24(SP), AX		// copy argv
-    MOVQ	AX, 8(SP) 
-    CALL	runtime·args(SB)   // 解析命令行
+    MOVL    16(SP), AX        // copy argc
+    MOVL    AX, 0(SP)
+    MOVQ    24(SP), AX        // copy argv
+    MOVQ    AX, 8(SP) 
+    CALL    runtime·args(SB)   // 解析命令行
     
     // 初始化系统核心数, osinit 唯一功能就是获取CPU核数并放到变量 ncpu 中
-    CALL	runtime·osinit(SB) 
+    CALL    runtime·osinit(SB) 
     // 调度器初始化
-    CALL	runtime·schedinit(SB) 
+    CALL    runtime·schedinit(SB) 
     
     // 创建一个 main goroutine 来启动程序
-    MOVQ	$runtime·mainPC(SB), AX	// goroutine 函数入口. AX=&funcval{runtime.main}
-    PUSHQ	AX // 第二个参数, 新的 goroutine 需要执行的函数. 
-    PUSHQ	$0 // 第一个参数, runtime.main 函数需要的参数大小. 这里是0
-    CALL	runtime·newproc(SB) // runtime/proc.go 
-    POPQ	AX
-    POPQ	AX
+    MOVQ    $runtime·mainPC(SB), AX    // goroutine 函数入口. AX=&funcval{runtime.main}
+    PUSHQ    AX // 第二个参数, 新的 goroutine 需要执行的函数. 
+    PUSHQ    $0 // 第一个参数, runtime.main 函数需要的参数大小. 这里是0
+    CALL    runtime·newproc(SB) // runtime/proc.go 
+    POPQ    AX
+    POPQ    AX
     
     // 主线程启动, 进入调度循环, 运行刚刚创建的 main goroutine
-    CALL	runtime·mstart(SB) // asm_amd64.s
+    CALL    runtime·mstart(SB) // asm_amd64.s
     
-    CALL	runtime·abort(SB)	// mstart启动之后永远不会返回, 万一返回了, 需要 crash
+    CALL    runtime·abort(SB)    // mstart启动之后永远不会返回, 万一返回了, 需要 crash
     RET
 ```
 
@@ -160,30 +160,30 @@ G0 是什么? 在 Go 当中 G 分为三种, 第一种是用户创建任务的叫
 
 ```
     // 初始化 m0 的 tls
-    LEAQ	runtime·m0+m_tls(SB), DI // 获取 m0.tls 的地址, 存放到 DI 当中
-    CALL	runtime·settls(SB) // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
+    LEAQ    runtime·m0+m_tls(SB), DI // 获取 m0.tls 的地址, 存放到 DI 当中
+    CALL    runtime·settls(SB) // 调用 settls 设置线程的TLS, settls 的参数在DI当中.
                                // 之后, 可以通过 fs 段寄存器获取 m.tls
     
     // 测试 tls
     // 获取 fs 段基址并放入到 BX, 其实就是 m0.tls[1] 的地址(原因后面会讲到).
     // get_tls 是代码由编译器生成
     get_tls(BX) 
-    MOVQ	$0x123, g(BX) // 将 0x123 拷贝到 fs基址-8 的位置, 即: m0.tls[0]=0x123 
-    MOVQ	runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
-    CMPQ	AX, $0x123
+    MOVQ    $0x123, g(BX) // 将 0x123 拷贝到 fs基址-8 的位置, 即: m0.tls[0]=0x123 
+    MOVQ    runtime·m0+m_tls(SB), AX // AX=m0.tls[0]
+    CMPQ    AX, $0x123
     JEQ 2(PC) // 相等,则跳过2条指令(包含本身这条)
-    CALL	runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
+    CALL    runtime·abort(SB) // 线程本地存储功能不正常, 退出程序
 ok:
     // set the per-goroutine and per-mach "registers"
     // 获取 fs 段基址到 BX
     get_tls(BX) 
-    LEAQ	runtime·g0(SB), CX // CX=&g0
-    MOVQ	CX, g(BX)  // 把g0的地址保存到线程本地存储, 即 m0.tls[0]=&g0
-    LEAQ	runtime·m0(SB), AX // AX=&m0
+    LEAQ    runtime·g0(SB), CX // CX=&g0
+    MOVQ    CX, g(BX)  // 把g0的地址保存到线程本地存储, 即 m0.tls[0]=&g0
+    LEAQ    runtime·m0(SB), AX // AX=&m0
     
     // m0 与 g0 进行关联
-    MOVQ	CX, m_g0(AX) // m0.g0=&g0 
-    MOVQ	AX, g_m(CX) // g0.m=&m0
+    MOVQ    CX, m_g0(AX) // m0.g0=&g0 
+    MOVQ    AX, g_m(CX) // g0.m=&m0
 ```
 
 m0 是全局变量, m0 需要绑定到工作线程, 才能进行调度执行.
@@ -192,15 +192,15 @@ m0 是全局变量, m0 需要绑定到工作线程, 才能进行调度执行.
 
 ```
 TEXT runtime·settls(SB),NOSPLIT,$32
-	ADDQ	$8, DI	            // TLS 存储的位置是 fs 基地址 - 8
-	MOVQ	DI, SI              // 系统调用第二个参数, fs 基地址
-	MOVQ	$0x1002, DI	        // 系统调用第一个参数, ARCH_SET_FS, 表示设置FS的基址
-	MOVQ	$SYS_arch_prctl, AX // 系统调用号
-	SYSCALL
-	CMPQ	AX, $0xfffffffffffff001 // AX 与 -1 进行比较
-	JLS	2(PC)
-	MOVL	$0xf1, 0xf1  // crash
-	RET
+    ADDQ    $8, DI                // TLS 存储的位置是 fs 基地址 - 8
+    MOVQ    DI, SI              // 系统调用第二个参数, fs 基地址
+    MOVQ    $0x1002, DI            // 系统调用第一个参数, ARCH_SET_FS, 表示设置FS的基址
+    MOVQ    $SYS_arch_prctl, AX // 系统调用号
+    SYSCALL
+    CMPQ    AX, $0xfffffffffffff001 // AX 与 -1 进行比较
+    JLS    2(PC)
+    MOVL    $0xf1, 0xf1  // crash
+    RET
 ```
 
 前面说道了 DI 里面存放的是 m0.tls 的地址.
@@ -290,7 +290,7 @@ func schedinit() {
         throw("unknown runnable goroutine during bootstrap")
     }
     
-    ...	
+    ...    
 }
 ```
 
@@ -518,12 +518,12 @@ goroutine 用于执行 runtime.main() 函数.
 ```cgo
 // 创建 main goroutine, 也是系统的第一个 goroutine 
 // create a new goroutine to start program
-MOVQ	$runtime·mainPC(SB), AX // mainPC 是 runtime.main 
-PUSHQ	AX // AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
-PUSHQ	$0 // newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
-CALL	runtime·newproc(SB) // 创建 main goutine
-POPQ	AX
-POPQ	AX
+MOVQ    $runtime·mainPC(SB), AX // mainPC 是 runtime.main 
+PUSHQ    AX // AX=&funcval{runtime.main}, newproc 的第二个参数(新的goroutine需要执行的函数)
+PUSHQ    $0 // newproc 的第一个参数, 该参数表示 runtime.main 函数需要的参数大小, 因为没有参数, 所以这里是0
+CALL    runtime·newproc(SB) // 创建 main goutine
+POPQ    AX
+POPQ    AX
 
 // 主线程进入调度循环，运行刚刚创建的goroutine
 CALL  runtime·mstart(SB)  
@@ -1120,36 +1120,36 @@ CPU寄存器以及函数栈帧的切换.
 // func gogo(buf *gobuf)
 // 从 gobuf 当中恢复 state, longjmp
 TEXT runtime·gogo(SB), NOSPLIT, $16-8
-    MOVQ	buf+0(FP), BX   // buf=&gp.sched
-    MOVQ	gobuf_g(BX), DX // DX=gp.sched.g
+    MOVQ    buf+0(FP), BX   // buf=&gp.sched
+    MOVQ    gobuf_g(BX), DX // DX=gp.sched.g
     
     # 检查 gp.sched.g 不为 nil 
-    MOVQ	0(DX), CX	// make sure g != nil
+    MOVQ    0(DX), CX    // make sure g != nil
     
     get_tls(CX)
     
     // 将运行的 g 的指针存放到本地存储, 这样后面可以直接通过线程本地存储获取到当前正在执行的
     // goroutine 的 g 对象, 从而找到与之关联的 m 和 p
-    MOVQ	DX, g(CX) 
+    MOVQ    DX, g(CX) 
     
     # CPU 的 SP 寄存器设置为 sched.sp, 栈切换
-    MOVQ	gobuf_sp(BX), SP // restore SP
+    MOVQ    gobuf_sp(BX), SP // restore SP
     
     # CPU其他寄存器
-    MOVQ	gobuf_ret(BX), AX
-    MOVQ	gobuf_ctxt(BX), DX
-    MOVQ	gobuf_bp(BX), BP
+    MOVQ    gobuf_ret(BX), AX
+    MOVQ    gobuf_ctxt(BX), DX
+    MOVQ    gobuf_bp(BX), BP
     
     # 清空 sched 的值
-    MOVQ	$0, gobuf_sp(BX)	// clear to help garbage collector
-    MOVQ	$0, gobuf_ret(BX)
-    MOVQ	$0, gobuf_ctxt(BX)
-    MOVQ	$0, gobuf_bp(BX)
+    MOVQ    $0, gobuf_sp(BX)    // clear to help garbage collector
+    MOVQ    $0, gobuf_ret(BX)
+    MOVQ    $0, gobuf_ctxt(BX)
+    MOVQ    $0, gobuf_bp(BX)
     
     # sched.pc 的值( goroutine函数执行的入口地址 )放入 BX 寄存器,
     # JMP 把 BX 寄存器的值放入到 CPU 的 IP 寄存器, 于是, CPU 就跳转到该地址继续执行指令  
-    MOVQ	gobuf_pc(BX), BX
-    JMP	BX
+    MOVQ    gobuf_pc(BX), BX
+    JMP    BX
 ```
 
 gogo 主要做的事情:

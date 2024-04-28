@@ -114,7 +114,7 @@ func (m *Map) Store(key, value interface{}) {
         return
     }
     
-    m.mu.Lock()	
+    m.mu.Lock()    
     read, _ = m.read.Load().(readOnly)
     if e, ok := read.m[key]; ok {
         // read 当中存在 key
@@ -167,13 +167,13 @@ func (e *entry) tryStore(i *interface{}) bool {
 func (e *entry) unexpungeLocked() (wasExpunged bool) {
     // 如果 e.p == expunged, 则将其设置为 nil, 返回 true;
     // 否则保持 e.p 值不变, 返回false
-	return atomic.CompareAndSwapPointer(&e.p, expunged, nil)
+    return atomic.CompareAndSwapPointer(&e.p, expunged, nil)
 }
 
 
 // 加锁状况下存储 entry, 该 entry 必须未被标记删除的
 func (e *entry) storeLocked(i *interface{}) {
-	atomic.StorePointer(&e.p, unsafe.Pointer(i))
+    atomic.StorePointer(&e.p, unsafe.Pointer(i))
 }
 
 // 加锁状况下, 从 read 当中迁移数据到 dirty

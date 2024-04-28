@@ -153,43 +153,43 @@ func (m *Mutex) lockSlow() {
 ```cgo
 func (m *Mutex) Unlock() {
     // 正常模式, 只需要将 Locked 设置为 0
-	new := atomic.AddInt32(&m.state, -mutexLocked)
-	if new != 0 {
+    new := atomic.AddInt32(&m.state, -mutexLocked)
+    if new != 0 {
         // 当有的 waiter > 1, 需要唤醒等待者
-		m.unlockSlow(new)
-	}
+        m.unlockSlow(new)
+    }
 }
 
 func (m *Mutex) unlockSlow(new int32) {
-	if (new+mutexLocked)&mutexLocked == 0 {
-		throw("sync: unlock of unlocked mutex")
-	}
+    if (new+mutexLocked)&mutexLocked == 0 {
+        throw("sync: unlock of unlocked mutex")
+    }
 	
-	if new&mutexStarving == 0 {
-	    // 正常状态下. 
-		old := new
-		for {
-			// 如果等待的人数为0, 或有一个 goroutine 已经被唤醒, 或有一个 goroutine 抢占到了锁.
-			// 在上述任意一种情况下, 不需要唤醒任何人.
-			// 在饥饿模式下, 锁的所有权直接从解锁的 goroutine 移交给下一个等待的 goroutine.
-			// 由于当前是正常模式, 因此解锁之后, 并不能直接移交 goroutine
-			if old>>mutexWaiterShift == 0 || old&(mutexLocked|mutexWoken|mutexStarving) != 0 {
-				return
-			}
-			// 唤醒某个等待的 goroutine.
-			new = (old - 1<<mutexWaiterShift) | mutexWoken // 因为是唤醒, 因此必须设置 mutexWoken
-			if atomic.CompareAndSwapInt32(&m.state, old, new) {
-				runtime_Semrelease(&m.sema, false, 1) // 第二参数表示能否直接移交锁的所有权.
-				return
-			}
-			old = m.state
-		}
-	} else {
-	    // 饥饿状态下, 直接将锁移交给下一个 waiter, 并让出自身的时间片, 以便下一个 waiter 可以立即开始运行.
-	    // 注: mutexLocked 并没有设置, waiter 被唤醒后自己设置. 但是如果设置了 mutexStarving,
-	    // mutex 仍然被认为是锁定的, 因此新到达的 goroutine 不会获取它.
-		runtime_Semrelease(&m.sema, true, 1)
-	}
+    if new&mutexStarving == 0 {
+        // 正常状态下. 
+        old := new
+        for {
+            // 如果等待的人数为0, 或有一个 goroutine 已经被唤醒, 或有一个 goroutine 抢占到了锁.
+            // 在上述任意一种情况下, 不需要唤醒任何人.
+            // 在饥饿模式下, 锁的所有权直接从解锁的 goroutine 移交给下一个等待的 goroutine.
+            // 由于当前是正常模式, 因此解锁之后, 并不能直接移交 goroutine
+            if old>>mutexWaiterShift == 0 || old&(mutexLocked|mutexWoken|mutexStarving) != 0 {
+                return
+            }
+            // 唤醒某个等待的 goroutine.
+            new = (old - 1<<mutexWaiterShift) | mutexWoken // 因为是唤醒, 因此必须设置 mutexWoken
+            if atomic.CompareAndSwapInt32(&m.state, old, new) {
+                runtime_Semrelease(&m.sema, false, 1) // 第二参数表示能否直接移交锁的所有权.
+                return
+            }
+            old = m.state
+        }
+    } else {
+        // 饥饿状态下, 直接将锁移交给下一个 waiter, 并让出自身的时间片, 以便下一个 waiter 可以立即开始运行.
+        // 注: mutexLocked 并没有设置, waiter 被唤醒后自己设置. 但是如果设置了 mutexStarving,
+        // mutex 仍然被认为是锁定的, 因此新到达的 goroutine 不会获取它.
+        runtime_Semrelease(&m.sema, true, 1)
+    }
 }
 ```
 

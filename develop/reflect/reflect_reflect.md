@@ -39,27 +39,27 @@ type itab struct {
     fun    [1]unitptr     // method table
 }
 type interfacetype struct {
-	typ     _type
-	pkgpath name
-	mhdr    []imethod
+    typ     _type
+    pkgpath name
+    mhdr    []imethod
 }
 
 
 type _type struct {
-	size       uintptr
-	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
-	hash       uint32
-	tflag      tflag
-	align      uint8
-	fieldalign uint8
-	kind       uint8
-	alg        *typeAlg
-	// gcdata存储垃圾回收器的GC类型数据.
+    size       uintptr
+    ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+    hash       uint32
+    tflag      tflag
+    align      uint8
+    fieldalign uint8
+    kind       uint8
+    alg        *typeAlg
+    // gcdata存储垃圾回收器的GC类型数据.
     // 如果 KindGCProg 位设置为 kind, 则gcdata是GC程序. 否则为 ptrmask 位图. 
     // 有关详细信息, 请参见 mbitmap.go.
-	gcdata    *byte
-	str       nameOff
-	ptrToThis typeOff
+    gcdata    *byte
+    str       nameOff
+    ptrToThis typeOff
 }
 ```
 
@@ -186,8 +186,8 @@ empty = w
 
 ```cgo
 func TypeOf(i interface{}) Type {
-	eface := *(*emptyInterface)(unsafe.Pointer(&i))
-	return toType(eface.typ)
+    eface := *(*emptyInterface)(unsafe.Pointer(&i))
+    return toType(eface.typ)
 }
 ```
 
@@ -197,36 +197,36 @@ func TypeOf(i interface{}) Type {
 ```cgo
 // eface
 type emptyInterface struct {
-	typ  *rtype
-	word unsafe.Pointer
+    typ  *rtype
+    word unsafe.Pointer
 }
 
 // iface: src/runtime/iface.go
 type nonEmptyInterface struct {
-	itab *struct {
-		ityp *rtype // static interface type
-		typ  *rtype // dynamic concrete type
-		hash uint32 // copy of typ.hash
-		_    [4]byte
-		fun  [100000]unsafe.Pointer // method table
-	}
-	word unsafe.Pointer
+    itab *struct {
+        ityp *rtype // static interface type
+        typ  *rtype // dynamic concrete type
+        hash uint32 // copy of typ.hash
+        _    [4]byte
+        fun  [100000]unsafe.Pointer // method table
+    }
+    word unsafe.Pointer
 }
 
 // 注: 这里的 rtype go1.14 版本之后类型. 与之前的版本略有不同.
 type rtype struct {
-	size       uintptr // 类型占用内存大小
-	ptrdata    uintptr // 包含所有指针的内存前缀大小
-	hash       uint32  // 类型 hash
-	tflag      tflag   // 额外标记位, 主要用于反射的额外数据. 目前主要使用了低4位
-	align      uint8   // 对其字节信息
-	fieldAlign uint8   // 当前结构体字段的对齐字节数
-	kind       uint8   // 类型枚举值(针对go中的类型不超过32种, 但是它还有其他标志位)
-	// comparing objects of this type (ptr to object A, ptr to object B) -> ==?
-	equal     func(unsafe.Pointer, unsafe.Pointer) bool
-	gcdata    *byte   // GC类型的数据
-	str       nameOff // 类型名称字符串在二进制文件段中的偏移量
-	ptrToThis typeOff // 类型元信息指针在二进制文件段中的偏移量
+    size       uintptr // 类型占用内存大小
+    ptrdata    uintptr // 包含所有指针的内存前缀大小
+    hash       uint32  // 类型 hash
+    tflag      tflag   // 额外标记位, 主要用于反射的额外数据. 目前主要使用了低4位
+    align      uint8   // 对其字节信息
+    fieldAlign uint8   // 当前结构体字段的对齐字节数
+    kind       uint8   // 类型枚举值(针对go中的类型不超过32种, 但是它还有其他标志位)
+    // comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+    equal     func(unsafe.Pointer, unsafe.Pointer) bool
+    gcdata    *byte   // GC类型的数据
+    str       nameOff // 类型名称字符串在二进制文件段中的偏移量
+    ptrToThis typeOff // 类型元信息指针在二进制文件段中的偏移量
 }
 ```
 
@@ -235,16 +235,16 @@ rtype 实现了 `Type` 接口. 所有的类型都会包含 `rtype` 这个字段,
 
 ```
 type arrayType struct {
-	rtype
-	elem  *rtype // array element type
-	slice *rtype // slice type
-	len   uintptr
+    rtype
+    elem  *rtype // array element type
+    slice *rtype // slice type
+    len   uintptr
 }
 
 type chanType struct {
-	rtype
-	elem *rtype  // channel element type
-	dir  uintptr // channel direction (ChanDir)
+    rtype
+    elem *rtype  // channel element type
+    dir  uintptr // channel direction (ChanDir)
 }
 ```
 
@@ -255,27 +255,27 @@ type chanType struct {
 
 ```cgo
 func ValueOf(i interface{}) Value {
-	if i == nil {
-		return Value{}
-	}
-	// 使变量 i 逃逸到堆内存上.
-	escapes(i)
-	return unpackEface(i)
+    if i == nil {
+        return Value{}
+    }
+    // 使变量 i 逃逸到堆内存上.
+    escapes(i)
+    return unpackEface(i)
 }
 
 func unpackEface(i interface{}) Value {
     // 这里的逻辑和 TypeOf() 类似
-	e := (*emptyInterface)(unsafe.Pointer(&i))
-	// NOTE: don't read e.word until we know whether it is really a pointer or not.
-	t := e.typ
-	if t == nil {
-		return Value{}
-	}
-	f := flag(t.Kind()) // 不超过32种
-	if ifaceIndir(t) {
-		f |= flagIndir // 这里的指针位的转移
-	}
-	return Value{t, e.word, f}
+    e := (*emptyInterface)(unsafe.Pointer(&i))
+    // NOTE: don't read e.word until we know whether it is really a pointer or not.
+    t := e.typ
+    if t == nil {
+        return Value{}
+    }
+    f := flag(t.Kind()) // 不超过32种
+    if ifaceIndir(t) {
+        f |= flagIndir // 这里的指针位的转移
+    }
+    return Value{t, e.word, f}
 }
 ```
 
@@ -283,24 +283,24 @@ func unpackEface(i interface{}) Value {
 
 ```cgo
 type Value struct {
-	// typ: 值的类型.
-	typ *rtype
+    // typ: 值的类型.
+    typ *rtype
 
-	// 指向值的指针, 如果设置了 flagIndir, 则是指向数据的指针.
-	// 只有当设置了 flagIndir 或 typ.pointers() 为 true 时有效.
-	ptr unsafe.Pointer
+    // 指向值的指针, 如果设置了 flagIndir, 则是指向数据的指针.
+    // 只有当设置了 flagIndir 或 typ.pointers() 为 true 时有效.
+    ptr unsafe.Pointer
 
-	// flag 保存有关该值的元数据. 最低位是标志位:
-	//	- flagStickyRO: 通过未导出的 "未嵌套字段" 获取, 因此为只读. 1<<5
-	//	- flagEmbedRO:  通过未导出的 "嵌套字段" 获取, 因此为只读. 1<<6
-	//	- flagIndir:    v 保存指向数据的指针. 1<<7
-	//	- flagAddr:     v.CanAddr 为 true (表示 flagIndir). 1<<8
-	//	- flagMethod:   v 是方法值. 1<<9
+    // flag 保存有关该值的元数据. 最低位是标志位:
+    //    - flagStickyRO: 通过未导出的 "未嵌套字段" 获取, 因此为只读. 1<<5
+    //    - flagEmbedRO:  通过未导出的 "嵌套字段" 获取, 因此为只读. 1<<6
+    //    - flagIndir:    v 保存指向数据的指针. 1<<7
+    //    - flagAddr:     v.CanAddr 为 true (表示 flagIndir). 1<<8
+    //    - flagMethod:   v 是方法值. 1<<9
     // 接下来的 5 个 bits 是 Kind 的值. 这里需要注意的是, rtype.kind 的第6位(1<<5)表示当前值是否是指针, 在进行
     // ValueOf() 过程中, 将其 flag 设置为 flagIndir
     // 如果 flag.kind() != Func, 代码可以假定 flagMethod 没有设置.
     // 如果 ifaceIndir(typ), 代码可以假定设置了 flagIndir.
-	flag // uintptr
+    flag // uintptr
 }
 ```
 

@@ -112,12 +112,12 @@ TEXT runtime·futex(SB),NOSPLIT,$0
 
 ```
 type mutex struct {
-	// Empty struct if lock ranking is disabled, otherwise includes the lock rank
-	lockRankStruct
-	// Futex-based impl treats it as uint32 key,
-	// while sema-based impl as M* waitm.
-	// Used to be a union, but unions break precise GC.
-	key uintptr
+    // Empty struct if lock ranking is disabled, otherwise includes the lock rank
+    lockRankStruct
+    // Futex-based impl treats it as uint32 key,
+    // while sema-based impl as M* waitm.
+    // Used to be a union, but unions break precise GC.
+    key uintptr
 }
 ```
 
@@ -128,11 +128,11 @@ lock 实现:
 
 ```
 func lock(l *mutex) {
-	lockWithRank(l, getLockRank(l))
+    lockWithRank(l, getLockRank(l))
 }
 
 func lockWithRank(l *mutex, rank lockRank) {
-	lock2(l)
+    lock2(l)
 }
 
 func lock2(l *mutex) {
@@ -157,48 +157,48 @@ func lock2(l *mutex) {
     wait := v
 
     // 多核情况下尝试自旋4次, 单个就不用自旋了
-	spin := 0
-	if ncpu > 1 {
-		spin = active_spin
-	}
-	for {
+    spin := 0
+    if ncpu > 1 {
+        spin = active_spin
+    }
+    for {
         // 自旋, 尝试获取锁
-		for i := 0; i < spin; i++ {
+        for i := 0; i < spin; i++ {
             // 注意, 前面已经将 l.key 设置为 mutex_locked, 这里的 l.key == mutex_unlocked, 
             // 说明其他持有锁的线程进行了释放. 
-			for l.key == mutex_unlocked {
+            for l.key == mutex_unlocked {
                 // CAS 抢锁成功直接返回
-				if atomic.Cas(key32(&l.key), mutex_unlocked, wait) {
-					return
-				}
-			}
+                if atomic.Cas(key32(&l.key), mutex_unlocked, wait) {
+                    return
+                }
+            }
             // CPU 自旋, 执行 active_spin_cnt=30 次 PAUSE 指令
-			procyield(active_spin_cnt)
-		}
+            procyield(active_spin_cnt)
+        }
         
         // passive_spin=1, 再尝试抢一次锁
-		for i := 0; i < passive_spin; i++ {
-			for l.key == mutex_unlocked {
-				if atomic.Cas(key32(&l.key), mutex_unlocked, wait) {
-					return
-				}
-			}
-			osyield() // 系统调用 sched_yield, 让出 cpu
-		}
+        for i := 0; i < passive_spin; i++ {
+            for l.key == mutex_unlocked {
+                if atomic.Cas(key32(&l.key), mutex_unlocked, wait) {
+                    return
+                }
+            }
+            osyield() // 系统调用 sched_yield, 让出 cpu
+        }
         
         // 设置 l.key 为 mutex_sleeping
-		v = atomic.Xchg(key32(&l.key), mutex_sleeping)
-		if v == mutex_unlocked {
+        v = atomic.Xchg(key32(&l.key), mutex_sleeping)
+        if v == mutex_unlocked {
             // 注意, 这里是从 mutex_unlocked => mutex_sleeping 也认为加锁成功, 直接返回.
             // 这里没有走 futexsleep 阻塞当中的线程, 造成的影响是解锁时执行 fmutexwake 没有唤醒的线程.
-			return
-		}
+            return
+        }
         
         // 设置 wait 的状态为 mutex_sleeping
-		wait = mutex_sleeping
+        wait = mutex_sleeping
         // 如果 l.key == mutext_sleeping 就进行休眠, 直到被唤醒或l.key的值发生变更.
-		futexsleep(key32(&l.key), mutex_sleeping, -1)
-	}
+        futexsleep(key32(&l.key), mutex_sleeping, -1)
+    }
 }
 ```
 

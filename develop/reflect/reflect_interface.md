@@ -149,80 +149,80 @@ func main() {
 ```cgo
 // 不带方法, 就是 interface{}
 type eface struct {
-	_type *_type
-	data  unsafe.Pointer
+    _type *_type
+    data  unsafe.Pointer
 }
 
 // 带方法
 type iface struct {
-	tab  *itab
-	data unsafe.Pointer
+    tab  *itab
+    data unsafe.Pointer
 }
 type itab struct {
-	inter *interfacetype // 接口的静态类型
-	_type *_type         // 值类型(动态混合类型)
-	hash  uint32         // 值类型 _type 当中的 hash 的拷贝
-	_     [4]byte
-	fun   [1]uintptr
+    inter *interfacetype // 接口的静态类型
+    _type *_type         // 值类型(动态混合类型)
+    hash  uint32         // 值类型 _type 当中的 hash 的拷贝
+    _     [4]byte
+    fun   [1]uintptr
 }
 type interfacetype struct {
-	typ     _type
-	pkgpath name      // 汇编当中对应为: type..importpath."".+0
-	mhdr    []imethod // 比较复杂
+    typ     _type
+    pkgpath name      // 汇编当中对应为: type..importpath."".+0
+    mhdr    []imethod // 比较复杂
 }
 type name struct {
-	bytes *byte
+    bytes *byte
 }
 type imethod struct {
-	name int32
-	ityp int32
+    name int32
+    ityp int32
 }
 
 
 
 // go1.13 之前的版本
 type _type struct {
-	size       uintptr
-	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
-	hash       uint32
-	tflag      uint8
-	align      uint8
-	fieldAlign uint8
-	kind       uint8
-	alg        *typeAlg // 包含了 hash 和 hash 两个方法.
-	gcdata     *byte
-	str        int32 // nameOff
-    	ptrToThis  int32 // typeOff
+    size       uintptr
+    ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+    hash       uint32
+    tflag      uint8
+    align      uint8
+    fieldAlign uint8
+    kind       uint8
+    alg        *typeAlg // 包含了 hash 和 hash 两个方法.
+    gcdata     *byte
+    str        int32 // nameOff
+        ptrToThis  int32 // typeOff
 }
 type typeAlg struct {
-	// hashing objects of this type (ptr to object, seed) -> hash
-	hash func(unsafe.Pointer, uintptr) uintptr
-	// comparing objects of this type (ptr to object A, ptr to object B) -> ==?
-	equal func(unsafe.Pointer, unsafe.Pointer) bool
+    // hashing objects of this type (ptr to object, seed) -> hash
+    hash func(unsafe.Pointer, uintptr) uintptr
+    // comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+    equal func(unsafe.Pointer, unsafe.Pointer) bool
 }
 
 // go1.14 版本之后
 type _type struct {
-	size       uintptr
-	ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
-	hash       uint32
-	tflag      uint8
-	align      uint8
-	fieldAlign uint8
-	kind       uint8
-	// equal: comparing objects of this type (ptr to object A, ptr to object B) -> ==?
-	// 可能的值: 
-	// runtime.interequal, iface
-	// runtime.nilinterequal, eface
-	// runtime.memequal64, 结构体, 指针,  
-	// runtime.strequal, 专门针对 str 的优化
-	// runtime.interequal, 专门针对 int 的优化
-	equal func(unsafe.Pointer, unsafe.Pointer) bool 
-	// gcdata: 存储垃圾收集器的 GC 类型数据. 如果 KindGCProg 位在 kind 中设置, 则 gcdata 是一个 GC 程序.
-	// 否则它是一个 ptrmask 位图.
-	gcdata     *byte
-	str        int32 // nameOff
-	ptrToThis  int32 // typeOff
+    size       uintptr
+    ptrdata    uintptr // 包含所有指针的内存前缀的大小. 如果为0, 表示的是一个值, 而非指针
+    hash       uint32
+    tflag      uint8
+    align      uint8
+    fieldAlign uint8
+    kind       uint8
+    // equal: comparing objects of this type (ptr to object A, ptr to object B) -> ==?
+    // 可能的值: 
+    // runtime.interequal, iface
+    // runtime.nilinterequal, eface
+    // runtime.memequal64, 结构体, 指针,  
+    // runtime.strequal, 专门针对 str 的优化
+    // runtime.interequal, 专门针对 int 的优化
+    equal func(unsafe.Pointer, unsafe.Pointer) bool 
+    // gcdata: 存储垃圾收集器的 GC 类型数据. 如果 KindGCProg 位在 kind 中设置, 则 gcdata 是一个 GC 程序.
+    // 否则它是一个 ptrmask 位图.
+    gcdata     *byte
+    str        int32 // nameOff
+    ptrToThis  int32 // typeOff
 }
 ```
 
@@ -253,61 +253,61 @@ type _type struct {
 
 ```cgo
 type arraytype struct {
-	typ   _type
-	elem  *_type
-	slice *_type
-	len   uintptr
+    typ   _type
+    elem  *_type
+    slice *_type
+    len   uintptr
 }
 
 type chantype struct {
-	typ  _type
-	elem *_type
-	dir  uintptr
+    typ  _type
+    elem *_type
+    dir  uintptr
 }
 
 type functype struct {
-	typ      _type
-	inCount  uint16
-	outCount uint16 
+    typ      _type
+    inCount  uint16
+    outCount uint16 
 }
 
 // 48+8
 type ptrtype struct {
-	typ   _type
-	elem *_type 
+    typ   _type
+    elem *_type 
 }
 
 // 48+8+24*N
 type structtype struct {
-	typ     _type
-	pkgPath name
-	fields  []structField // sorted by offset
+    typ     _type
+    pkgPath name
+    fields  []structField // sorted by offset
 }
 type structField struct {
-	name        name    // name is always non-empty
-	typ         *_type  // type of field
-	offsetEmbed uintptr // byte offset of field<<1 | isEmbedded
+    name        name    // name is always non-empty
+    typ         *_type  // type of field
+    offsetEmbed uintptr // byte offset of field<<1 | isEmbedded
 }
 
 // 48+40
 type maptype struct {
-	typ     _type
-	key    *_type // map key type
-	elem   *_type // map element (value) type
-	bucket *_type // internal bucket structure
-	// function for hashing keys (ptr to key, seed) -> hash
-	hasher     func(unsafe.Pointer, uintptr) uintptr
-	keysize    uint8  // size of key slot
-	valuesize  uint8  // size of value slot
-	bucketsize uint16 // size of bucket
-	flags      uint32
+    typ     _type
+    key    *_type // map key type
+    elem   *_type // map element (value) type
+    bucket *_type // internal bucket structure
+    // function for hashing keys (ptr to key, seed) -> hash
+    hasher     func(unsafe.Pointer, uintptr) uintptr
+    keysize    uint8  // size of key slot
+    valuesize  uint8  // size of value slot
+    bucketsize uint16 // size of bucket
+    flags      uint32
 }
 
 // 48+8+8*N
 type interfacetype struct {
-	typ     _type     // 类型元信息
-	pkgpath name      // 包路径和描述信息等等
-	mhdr    []imethod // 方法
+    typ     _type     // 类型元信息
+    pkgpath name      // 包路径和描述信息等等
+    mhdr    []imethod // 方法
 }
 ```
 
@@ -449,23 +449,23 @@ func main() {
 
 ```cgo
 type Person interface {
-	grow()
+    grow()
 }
 
 type Student struct {
-	age int
-	name string
+    age int
+    name string
 }
 
 func (p Student) grow() {
-	p.age += 1
-	return
+    p.age += 1
+    return
 }
 
 func main() {
-	var qcrao = Person(Student{age: 18, name:"san"})
+    var qcrao = Person(Student{age: 18, name:"san"})
 
-	fmt.Println(qcrao)
+    fmt.Println(qcrao)
 }
 ```
 
@@ -473,68 +473,68 @@ func main() {
 
 ```
 "".main STEXT size=331 args=0x0 locals=0xa8
-    00000 (main.go:19)	TEXT	"".main(SB), ABIInternal, $168-0
-    00000 (main.go:19)	MOVQ	(TLS), CX
-    00009 (main.go:19)	LEAQ	-40(SP), AX
-    00014 (main.go:19)	CMPQ	AX, 16(CX)
-    00018 (main.go:19)	JLS	321
-    00024 (main.go:19)	SUBQ	$168, SP
-    00031 (main.go:19)	MOVQ	BP, 160(SP)
-    00039 (main.go:19)	LEAQ	160(SP), BP
-    00047 (main.go:20)	XORPS	X0, X0
-    00050 (main.go:20)	MOVUPS	X0, ""..autotmp_1+136(SP)
-    00058 (main.go:20)	MOVQ	$0, ""..autotmp_1+152(SP)
-    00070 (main.go:20)	MOVQ	$18, ""..autotmp_1+136(SP)
-    00082 (main.go:20)	LEAQ	go.string."san"(SB), AX
-    00089 (main.go:20)	MOVQ	AX, ""..autotmp_1+144(SP)
-    00097 (main.go:20)	MOVQ	$3, ""..autotmp_1+152(SP)
-    00109 (main.go:20)	LEAQ	go.itab."".Student,"".Person(SB), AX
-    00116 (main.go:20)	MOVQ	AX, (SP)
-    00120 (main.go:20)	LEAQ	""..autotmp_1+136(SP), AX
-    00128 (main.go:20)	MOVQ	AX, 8(SP)
-    00133 (main.go:20)	CALL	runtime.convT2I(SB)
-    00138 (main.go:20)	MOVQ	24(SP), AX
-    00143 (main.go:20)	MOVQ	16(SP), CX
-    00148 (main.go:20)	MOVQ	CX, "".qcrao+64(SP)
-    00153 (main.go:20)	MOVQ	AX, "".qcrao+72(SP)
-    00158 (main.go:22)	MOVQ	"".qcrao+72(SP), AX
-    00163 (main.go:22)	MOVQ	"".qcrao+64(SP), CX
-    00168 (main.go:22)	MOVQ	CX, ""..autotmp_3+80(SP)
-    00173 (main.go:22)	MOVQ	AX, ""..autotmp_3+88(SP)
-    00178 (main.go:22)	MOVQ	CX, ""..autotmp_4+56(SP)
-    00183 (main.go:22)	CMPQ	""..autotmp_4+56(SP), $0
-    00189 (main.go:22)	JNE	193
-    00191 (main.go:22)	JMP	319
-    00193 (main.go:22)	TESTB	AL, (CX)
-    00195 (main.go:22)	MOVQ	8(CX), AX
-    00199 (main.go:22)	MOVQ	AX, ""..autotmp_4+56(SP)
-    00204 (main.go:22)	JMP	206
-    00206 (main.go:22)	PCDATA	$1, $5
-    00206 (main.go:22)	XORPS	X0, X0
-    00209 (main.go:22)	MOVUPS	X0, ""..autotmp_2+96(SP)
-    00214 (main.go:22)	LEAQ	""..autotmp_2+96(SP), AX
-    00219 (main.go:22)	MOVQ	AX, ""..autotmp_6+48(SP)
-    00224 (main.go:22)	TESTB	AL, (AX)
-    00226 (main.go:22)	MOVQ	""..autotmp_4+56(SP), CX
-    00231 (main.go:22)	MOVQ	""..autotmp_3+88(SP), DX
-    00236 (main.go:22)	MOVQ	CX, ""..autotmp_2+96(SP)
-    00241 (main.go:22)	MOVQ	DX, ""..autotmp_2+104(SP)
-    00246 (main.go:22)	TESTB	AL, (AX)
-    00248 (main.go:22)	JMP	250
-    00250 (main.go:22)	MOVQ	AX, ""..autotmp_5+112(SP)
-    00255 (main.go:22)	MOVQ	$1, ""..autotmp_5+120(SP)
-    00264 (main.go:22)	MOVQ	$1, ""..autotmp_5+128(SP)
-    00276 (main.go:22)	MOVQ	AX, (SP)
-    00280 (main.go:22)	MOVQ	$1, 8(SP)
-    00289 (main.go:22)	MOVQ	$1, 16(SP)
-    00298 (main.go:22)	CALL	fmt.Println(SB)
-    00303 (main.go:23)	MOVQ	160(SP), BP
-    00311 (main.go:23)	ADDQ	$168, SP
-    00318 (main.go:23)	RET
-    00319 (main.go:22)	JMP	206
-    00321 (main.go:22)	NOP
-    00321 (main.go:19)	CALL	runtime.morestack_noctxt(SB)
-    00326 (main.go:19)	JMP	0
+    00000 (main.go:19)    TEXT    "".main(SB), ABIInternal, $168-0
+    00000 (main.go:19)    MOVQ    (TLS), CX
+    00009 (main.go:19)    LEAQ    -40(SP), AX
+    00014 (main.go:19)    CMPQ    AX, 16(CX)
+    00018 (main.go:19)    JLS    321
+    00024 (main.go:19)    SUBQ    $168, SP
+    00031 (main.go:19)    MOVQ    BP, 160(SP)
+    00039 (main.go:19)    LEAQ    160(SP), BP
+    00047 (main.go:20)    XORPS    X0, X0
+    00050 (main.go:20)    MOVUPS    X0, ""..autotmp_1+136(SP)
+    00058 (main.go:20)    MOVQ    $0, ""..autotmp_1+152(SP)
+    00070 (main.go:20)    MOVQ    $18, ""..autotmp_1+136(SP)
+    00082 (main.go:20)    LEAQ    go.string."san"(SB), AX
+    00089 (main.go:20)    MOVQ    AX, ""..autotmp_1+144(SP)
+    00097 (main.go:20)    MOVQ    $3, ""..autotmp_1+152(SP)
+    00109 (main.go:20)    LEAQ    go.itab."".Student,"".Person(SB), AX
+    00116 (main.go:20)    MOVQ    AX, (SP)
+    00120 (main.go:20)    LEAQ    ""..autotmp_1+136(SP), AX
+    00128 (main.go:20)    MOVQ    AX, 8(SP)
+    00133 (main.go:20)    CALL    runtime.convT2I(SB)
+    00138 (main.go:20)    MOVQ    24(SP), AX
+    00143 (main.go:20)    MOVQ    16(SP), CX
+    00148 (main.go:20)    MOVQ    CX, "".qcrao+64(SP)
+    00153 (main.go:20)    MOVQ    AX, "".qcrao+72(SP)
+    00158 (main.go:22)    MOVQ    "".qcrao+72(SP), AX
+    00163 (main.go:22)    MOVQ    "".qcrao+64(SP), CX
+    00168 (main.go:22)    MOVQ    CX, ""..autotmp_3+80(SP)
+    00173 (main.go:22)    MOVQ    AX, ""..autotmp_3+88(SP)
+    00178 (main.go:22)    MOVQ    CX, ""..autotmp_4+56(SP)
+    00183 (main.go:22)    CMPQ    ""..autotmp_4+56(SP), $0
+    00189 (main.go:22)    JNE    193
+    00191 (main.go:22)    JMP    319
+    00193 (main.go:22)    TESTB    AL, (CX)
+    00195 (main.go:22)    MOVQ    8(CX), AX
+    00199 (main.go:22)    MOVQ    AX, ""..autotmp_4+56(SP)
+    00204 (main.go:22)    JMP    206
+    00206 (main.go:22)    PCDATA    $1, $5
+    00206 (main.go:22)    XORPS    X0, X0
+    00209 (main.go:22)    MOVUPS    X0, ""..autotmp_2+96(SP)
+    00214 (main.go:22)    LEAQ    ""..autotmp_2+96(SP), AX
+    00219 (main.go:22)    MOVQ    AX, ""..autotmp_6+48(SP)
+    00224 (main.go:22)    TESTB    AL, (AX)
+    00226 (main.go:22)    MOVQ    ""..autotmp_4+56(SP), CX
+    00231 (main.go:22)    MOVQ    ""..autotmp_3+88(SP), DX
+    00236 (main.go:22)    MOVQ    CX, ""..autotmp_2+96(SP)
+    00241 (main.go:22)    MOVQ    DX, ""..autotmp_2+104(SP)
+    00246 (main.go:22)    TESTB    AL, (AX)
+    00248 (main.go:22)    JMP    250
+    00250 (main.go:22)    MOVQ    AX, ""..autotmp_5+112(SP)
+    00255 (main.go:22)    MOVQ    $1, ""..autotmp_5+120(SP)
+    00264 (main.go:22)    MOVQ    $1, ""..autotmp_5+128(SP)
+    00276 (main.go:22)    MOVQ    AX, (SP)
+    00280 (main.go:22)    MOVQ    $1, 8(SP)
+    00289 (main.go:22)    MOVQ    $1, 16(SP)
+    00298 (main.go:22)    CALL    fmt.Println(SB)
+    00303 (main.go:23)    MOVQ    160(SP), BP
+    00311 (main.go:23)    ADDQ    $168, SP
+    00318 (main.go:23)    RET
+    00319 (main.go:22)    JMP    206
+    00321 (main.go:22)    NOP
+    00321 (main.go:19)    CALL    runtime.morestack_noctxt(SB)
+    00326 (main.go:19)    JMP    0
 ```
 
 最重要核心的代码是 `runtime.convT2I(SB)`, 该函数位于 `src/runtime/iface.go` 当中. `convT2I()` 函数是将一个 
@@ -545,56 +545,56 @@ func main() {
 ```cgo
 // src/runtime/iface.go
 var (
-	uint64Eface interface{} = uint64InterfacePtr(0)
-	stringEface interface{} = stringInterfacePtr("")
-	sliceEface  interface{} = sliceInterfacePtr(nil)
+    uint64Eface interface{} = uint64InterfacePtr(0)
+    stringEface interface{} = stringInterfacePtr("")
+    sliceEface  interface{} = sliceInterfacePtr(nil)
 
-	uint64Type *_type = (*eface)(unsafe.Pointer(&uint64Eface))._type
-	stringType *_type = (*eface)(unsafe.Pointer(&stringEface))._type
-	sliceType  *_type = (*eface)(unsafe.Pointer(&sliceEface))._type
+    uint64Type *_type = (*eface)(unsafe.Pointer(&uint64Eface))._type
+    stringType *_type = (*eface)(unsafe.Pointer(&stringEface))._type
+    sliceType  *_type = (*eface)(unsafe.Pointer(&sliceEface))._type
 )
 
 // type(uint64) -> interface
 func convT64(val uint64) (x unsafe.Pointer) {
-	if val == 0 {
-		x = unsafe.Pointer(&zeroVal[0])
-	} else {
-		x = mallocgc(8, uint64Type, false)
-		*(*uint64)(x) = val
-	}
-	return
+    if val == 0 {
+        x = unsafe.Pointer(&zeroVal[0])
+    } else {
+        x = mallocgc(8, uint64Type, false)
+        *(*uint64)(x) = val
+    }
+    return
 }
 
 // type(uint64) -> interface
 func convTstring(val string) (x unsafe.Pointer) {
-	if val == "" {
-		x = unsafe.Pointer(&zeroVal[0])
-	} else {
-		x = mallocgc(unsafe.Sizeof(val), stringType, true)
-		*(*string)(x) = val
-	}
-	return
+    if val == "" {
+        x = unsafe.Pointer(&zeroVal[0])
+    } else {
+        x = mallocgc(unsafe.Sizeof(val), stringType, true)
+        *(*string)(x) = val
+    }
+    return
 }
 
 // type -> iface 
 func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
-	t := tab._type
+    t := tab._type
 	
-	// 启用了 -race 选项
-	if raceenabled {
-		raceReadObjectPC(t, elem, getcallerpc(), funcPC(convT2I))
-	}
-	// 启用了 -msan 选项
-	if msanenabled {
-		msanread(elem, t.size)
-	}
+    // 启用了 -race 选项
+    if raceenabled {
+        raceReadObjectPC(t, elem, getcallerpc(), funcPC(convT2I))
+    }
+    // 启用了 -msan 选项
+    if msanenabled {
+        msanread(elem, t.size)
+    }
 	
-	// 生成 itab 当中动态类型的内存空间(指针), 并将 elem 的值拷贝相应位置
-	x := mallocgc(t.size, t, true) // convT2I 和 convT2Enoptr 的区别
-	typedmemmove(t, x, elem)
-	i.tab = tab
-	i.data = x
-	return
+    // 生成 itab 当中动态类型的内存空间(指针), 并将 elem 的值拷贝相应位置
+    x := mallocgc(t.size, t, true) // convT2I 和 convT2Enoptr 的区别
+    typedmemmove(t, x, elem)
+    i.tab = tab
+    i.data = x
+    return
 }
 ```
 
@@ -743,18 +743,18 @@ func main() {
 // iface -> iface
 // inter 是接口类型, i 是源 iface, r 是最终转换的 iface
 func convI2I(inter *interfacetype, i iface) (r iface) {
-	tab := i.tab
-	if tab == nil {
-		return
-	}
-	if tab.inter == inter {
-		r.tab = tab
-		r.data = i.data
-		return
-	}
-	r.tab = getitab(inter, tab._type, false)
-	r.data = i.data
-	return
+    tab := i.tab
+    if tab == nil {
+        return
+    }
+    if tab.inter == inter {
+        r.tab = tab
+        r.data = i.data
+        return
+    }
+    r.tab = getitab(inter, tab._type, false)
+    r.data = i.data
+    return
 }
 ```
 
@@ -765,60 +765,60 @@ func convI2I(inter *interfacetype, i iface) (r iface) {
 // inter 接口类型, typ 值类型, canfail表示转换是否可接受失败.
 // 当canfail为false, 在获取不到 itab 状况下会 panic
 func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
-	if len(inter.mhdr) == 0 {
-		throw("internal error - misuse of itab")
-	}
+    if len(inter.mhdr) == 0 {
+        throw("internal error - misuse of itab")
+    }
     
     // 也就是 typ 的最低位是 0 状况下, 直接快速失败. 至于为什么, 不太清楚.
-	// tflagUncommon=1
-	if typ.tflag&tflagUncommon == 0 {
-		if canfail {
-			return nil
-		}
-		name := inter.typ.nameOff(inter.mhdr[0].name)
-		panic(&TypeAssertionError{nil, typ, &inter.typ, name.name()})
-	}
+    // tflagUncommon=1
+    if typ.tflag&tflagUncommon == 0 {
+        if canfail {
+            return nil
+        }
+        name := inter.typ.nameOff(inter.mhdr[0].name)
+        panic(&TypeAssertionError{nil, typ, &inter.typ, name.name()})
+    }
 
-	var m *itab
+    var m *itab
     // 首先, 查看现有表(itabTable, 一个保存了 itab 的全局未导出的变量) 以查看是否可以找到所需的itab.
     // 在这种状况下, 不要使用锁.(常识)
     // 
     // 使用 atomic 确保我们看到该线程完成的所有先前写操作. (下面使用 atomic 的原因解释)
     // 如果未找到所要的 itab, 则只能创建一个, 然后更新itabTable字段(在itabAdd中使用atomic.Storep)
     t := (*itabTableType)(atomic.Loadp(unsafe.Pointer(&itabTable)))
-	if m = t.find(inter, typ); m != nil {
-		goto finish
-	}
+    if m = t.find(inter, typ); m != nil {
+        goto finish
+    }
 
-	// 没有找到所需的 itab, 这种状况下, 在加锁的状况下再次查找. 这就是所谓的 dobule-checking
-	lock(&itabLock)
-	if m = itabTable.find(inter, typ); m != nil {
-		unlock(&itabLock)
-		goto finish
-	}
+    // 没有找到所需的 itab, 这种状况下, 在加锁的状况下再次查找. 这就是所谓的 dobule-checking
+    lock(&itabLock)
+    if m = itabTable.find(inter, typ); m != nil {
+        unlock(&itabLock)
+        goto finish
+    }
 
-	// 没有查找到. 只能先 create 一个 itab, 然后 update itabTable
-	// 这个是在当前的线程栈上去操作分配内存.
-	m = (*itab)(persistentalloc(unsafe.Sizeof(itab{})+uintptr(len(inter.mhdr)-1)*sys.PtrSize, 0, &memstats.other_sys))
-	m.inter = inter
-	m._type = typ
-	m.init() // itab 初始化
+    // 没有查找到. 只能先 create 一个 itab, 然后 update itabTable
+    // 这个是在当前的线程栈上去操作分配内存.
+    m = (*itab)(persistentalloc(unsafe.Sizeof(itab{})+uintptr(len(inter.mhdr)-1)*sys.PtrSize, 0, &memstats.other_sys))
+    m.inter = inter
+    m._type = typ
+    m.init() // itab 初始化
 	
-	// 将 itab 添加到 itabTable 当中. 
-	// 这当中可能发生 itabTable 的扩容(默认存储512个, 长度超过 75% 就会发生扩容.
-	itabAdd(m) 
-	unlock(&itabLock)
+    // 将 itab 添加到 itabTable 当中. 
+    // 这当中可能发生 itabTable 的扩容(默认存储512个, 长度超过 75% 就会发生扩容.
+    itabAdd(m) 
+    unlock(&itabLock)
 finish:
-	if m.fun[0] != 0 {
-		return m
-	}
-	if canfail {
-		return nil
-	}
+    if m.fun[0] != 0 {
+        return m
+    }
+    if canfail {
+        return nil
+    }
 	
-	// 如果是断言, 当没有使用 _, ok := x.(X) 的状况下, 转换失败就 panic
-	// 如果是转换, 在 T -> I, 则允许失败; 如果是 I -> I, 则不允许失败
-	panic(&TypeAssertionError{concrete: typ, asserted: &inter.typ, missingMethod: m.init()})
+    // 如果是断言, 当没有使用 _, ok := x.(X) 的状况下, 转换失败就 panic
+    // 如果是转换, 在 T -> I, 则允许失败; 如果是 I -> I, 则不允许失败
+    panic(&TypeAssertionError{concrete: typ, asserted: &inter.typ, missingMethod: m.init()})
 }
 ```
 
@@ -828,9 +828,9 @@ finish:
 
 ```cgo
 type itabTableType struct {
-	size    uintptr             // entries 的长度. 大小必须是 2 的指数
-	count   uintptr             // 当前已经填充了的 entries 的长度
-	entries [itabInitSize]*itab // 真实的长度是 size, itabInitSize=512
+    size    uintptr             // entries 的长度. 大小必须是 2 的指数
+    count   uintptr             // 当前已经填充了的 entries 的长度
+    entries [itabInitSize]*itab // 真实的长度是 size, itabInitSize=512
 }
 ```
 
@@ -858,26 +858,26 @@ func (t *itabTableType) find(inter *interfacetype, typ *_type) *itab {
     // 探测顺序为 h(i) = (h0 + i*(i+1)/2) mod 2^k. i 表示第i次探测
     //          h(i) = ( h(i-1) + 1 ) mod 2^k. i 表示第i次探测 
     // 我们保证使用此探测序列击中所有表条目.
-	mask := t.size - 1
+    mask := t.size - 1
 	
-	// itabHashFunc => inter.typ.hash ^ typ.hash
-	// h 是初始化的 h0 的值, 也可以认为它是 itabTableType 当中 entries 的 index
-	h := itabHashFunc(inter, typ) & mask
-	for i := uintptr(1); ; i++ {
-		p := (**itab)(add(unsafe.Pointer(&t.entries), h*sys.PtrSize))
+    // itabHashFunc => inter.typ.hash ^ typ.hash
+    // h 是初始化的 h0 的值, 也可以认为它是 itabTableType 当中 entries 的 index
+    h := itabHashFunc(inter, typ) & mask
+    for i := uintptr(1); ; i++ {
+        p := (**itab)(add(unsafe.Pointer(&t.entries), h*sys.PtrSize))
 		
-		// 在这里使用atomic read, 因此如果我们看到 m != nil, 我们还将看到m字段的初始化.
-		// m := *p
-		m := (*itab)(atomic.Loadp(unsafe.Pointer(p)))
-		if m == nil {
-			return nil
-		}
-		if m.inter == inter && m._type == typ {
-			return m
-		}
-		h += i
-		h &= mask
-	}
+        // 在这里使用atomic read, 因此如果我们看到 m != nil, 我们还将看到m字段的初始化.
+        // m := *p
+        m := (*itab)(atomic.Loadp(unsafe.Pointer(p)))
+        if m == nil {
+            return nil
+        }
+        if m.inter == inter && m._type == typ {
+            return m
+        }
+        h += i
+        h &= mask
+    }
 }
 ```
 
@@ -887,30 +887,30 @@ func (t *itabTableType) find(inter *interfacetype, typ *_type) *itab {
 
 ```cgo
 func itabAdd(m *itab) {
-	t := itabTable
+    t := itabTable
 	
-	// 75% load factor, 发生扩容
-	if t.count >= 3*(t.size/4) { 
-	    // itabTable进行扩容.
+    // 75% load factor, 发生扩容
+    if t.count >= 3*(t.size/4) { 
+        // itabTable进行扩容.
         // t2的内存大小 = (2+2*t.size)*sys.PtrSize, sys.PtrSize是指针大小, 多出来的2表示的是size, count字段
         // 我们撒谎并告诉 malloc 我们想要无指针的内存, 因为所有指向的值都不在堆中.
-		t2 := (*itabTableType)(mallocgc((2+2*t.size)*sys.PtrSize, nil, true))
-		t2.size = t.size * 2
+        t2 := (*itabTableType)(mallocgc((2+2*t.size)*sys.PtrSize, nil, true))
+        t2.size = t.size * 2
 
-		// copy
+        // copy
         // 注意: 在复制时, 其他线程可能会寻找itab并找不到它. 没关系, 然后他们将尝试获取 itab 锁, 结果请等到复制完成.
         // 这里调用的是 t2.add 表示向 t2 当中添加 *itab. 遍历的是 itabTable 列表.
-		iterate_itabs(t2.add)
-		if t2.count != t.count {
-			throw("mismatched count during itab table copy")
-		}
-		// 发布新的哈希表. 使用atomic write
-		atomicstorep(unsafe.Pointer(&itabTable), unsafe.Pointer(t2))
-		// Adopt the new table as our own.
-		t = itabTable
-		// Note: the old table can be GC'ed here.
-	}
-	t.add(m) // 将当前的 m 添加到 itabTable 当中.
+        iterate_itabs(t2.add)
+        if t2.count != t.count {
+            throw("mismatched count during itab table copy")
+        }
+        // 发布新的哈希表. 使用atomic write
+        atomicstorep(unsafe.Pointer(&itabTable), unsafe.Pointer(t2))
+        // Adopt the new table as our own.
+        t = itabTable
+        // Note: the old table can be GC'ed here.
+    }
+    t.add(m) // 将当前的 m 添加到 itabTable 当中.
 }
 ```
 
@@ -926,67 +926,67 @@ func itabAdd(m *itab) {
 // 可以在同一 m 上多次调用此函数, 甚至可以同时调用.
 func (m *itab) init() string {
     // 注: 调用此函数的时候, inter, _type, hash 已经赋值.
-	inter := m.inter
-	typ := m._type
-	x := typ.uncommon() // 根据 kind 生成相应的类型.
+    inter := m.inter
+    typ := m._type
+    x := typ.uncommon() // 根据 kind 生成相应的类型.
 
-	// both inter and typ have method sorted by name,
-	// and interface names are unique,
-	// so can iterate over both in lock step;
-	// the loop is O(ni+nt) not O(ni*nt).
-	ni := len(inter.mhdr)
-	nt := int(x.mcount)
+    // both inter and typ have method sorted by name,
+    // and interface names are unique,
+    // so can iterate over both in lock step;
+    // the loop is O(ni+nt) not O(ni*nt).
+    ni := len(inter.mhdr)
+    nt := int(x.mcount)
 	
-	// 接口方法(用于绑定对应于值当中方法)
-	methods := (*[1 << 16]unsafe.Pointer)(unsafe.Pointer(&m.fun[0]))[:ni:ni] 
-	// 值方法
-	xmhdr := (*[1 << 16]method)(add(unsafe.Pointer(x), uintptr(x.moff)))[:nt:nt] 
-	var fun0 unsafe.Pointer
-	j := 0
+    // 接口方法(用于绑定对应于值当中方法)
+    methods := (*[1 << 16]unsafe.Pointer)(unsafe.Pointer(&m.fun[0]))[:ni:ni] 
+    // 值方法
+    xmhdr := (*[1 << 16]method)(add(unsafe.Pointer(x), uintptr(x.moff)))[:nt:nt] 
+    var fun0 unsafe.Pointer
+    j := 0
 	
 imethods:
-	for k := 0; k < ni; k++ {
-	    // 获取接口当中方法 i, itype, iname, ipkg
-		i := &inter.mhdr[k]
-		itype := inter.typ.typeOff(i.ityp) // 解析接口方法类型
-		name := inter.typ.nameOff(i.name)  // 解析接口方法名称
-		iname := name.name()
-		ipkg := name.pkgPath()
-		if ipkg == "" {
-			ipkg = inter.pkgpath.name()
-		}
-		for ; j < nt; j++ {
-		    // 获取值当中的方法 t, ttype, tname, tpkg
-			t := &xmhdr[j]
-			tname := typ.nameOff(t.name)
-			if typ.typeOff(t.mtyp) == itype && tname.name() == iname {
-				pkgPath := tname.pkgPath()
-				if pkgPath == "" {
-					pkgPath = typ.nameOff(x.pkgpath).name()
-				}
+    for k := 0; k < ni; k++ {
+        // 获取接口当中方法 i, itype, iname, ipkg
+        i := &inter.mhdr[k]
+        itype := inter.typ.typeOff(i.ityp) // 解析接口方法类型
+        name := inter.typ.nameOff(i.name)  // 解析接口方法名称
+        iname := name.name()
+        ipkg := name.pkgPath()
+        if ipkg == "" {
+            ipkg = inter.pkgpath.name()
+        }
+        for ; j < nt; j++ {
+            // 获取值当中的方法 t, ttype, tname, tpkg
+            t := &xmhdr[j]
+            tname := typ.nameOff(t.name)
+            if typ.typeOff(t.mtyp) == itype && tname.name() == iname {
+                pkgPath := tname.pkgPath()
+                if pkgPath == "" {
+                    pkgPath = typ.nameOff(x.pkgpath).name()
+                }
 				
-				if tname.isExported() || pkgPath == ipkg {
-					if m != nil {
-						ifn := typ.textOff(t.ifn)
-						if k == 0 {
-							fun0 = ifn // we'll set m.fun[0] at the end
-						} else {
-							methods[k] = ifn
-						}
-					}
-					continue imethods
-				}
-			}
+                if tname.isExported() || pkgPath == ipkg {
+                    if m != nil {
+                        ifn := typ.textOff(t.ifn)
+                        if k == 0 {
+                            fun0 = ifn // we'll set m.fun[0] at the end
+                        } else {
+                            methods[k] = ifn
+                        }
+                    }
+                    continue imethods
+                }
+            }
 			
-		}
+        }
 		
-		// 只要有一个方法不匹配, 则都会走到这里. 最终会失败的. 正常的跳出循环才是匹配成功的.
-		m.fun[0] = 0
-		return iname
-	}
-	m.fun[0] = uintptr(fun0)
-	m.hash = typ.hash
-	return ""
+        // 只要有一个方法不匹配, 则都会走到这里. 最终会失败的. 正常的跳出循环才是匹配成功的.
+        m.fun[0] = 0
+        return iname
+    }
+    m.fun[0] = uintptr(fun0)
+    m.hash = typ.hash
+    return ""
 }
 ```
 
