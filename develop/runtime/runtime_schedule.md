@@ -58,34 +58,34 @@ globrunqget() 函数的 `_p_` 是当前工作线程绑定的 p, 第二个参数 
 ```cgo
 func globrunqget(_p_ *p, max int32) *g {
     // 全局运行队列为空
-	if sched.runqsize == 0 {
-		return nil
-	}
+    if sched.runqsize == 0 {
+        return nil
+    }
     
     // 根据 p 的数量平分全局运行队列中的 goroutines
-	n := sched.runqsize/gomaxprocs + 1
-	if n > sched.runqsize {
-		n = sched.runqsize // 最多获取全局队列中 goroutine 总量
-	}
-	if max > 0 && n > max {
-		n = max // 最多获取 max 个 goroutine
-	}
-	if n > int32(len(_p_.runq))/2 {
-		n = int32(len(_p_.runq)) / 2 // 最多只能获取本地队列容量的一半
-	}
+    n := sched.runqsize/gomaxprocs + 1
+    if n > sched.runqsize {
+        n = sched.runqsize // 最多获取全局队列中 goroutine 总量
+    }
+    if max > 0 && n > max {
+        n = max // 最多获取 max 个 goroutine
+    }
+    if n > int32(len(_p_.runq))/2 {
+        n = int32(len(_p_.runq)) / 2 // 最多只能获取本地队列容量的一半
+    }
 
-	sched.runqsize -= n 
+    sched.runqsize -= n 
     
     // 从全局队列 pop 出一个
-	gp := sched.runq.pop()
-	n--
+    gp := sched.runq.pop()
+    n--
 	
-	// 剩余的直接存储到 _p_ 的本地队列当中
-	for ; n > 0; n-- {
-		gp1 := sched.runq.pop()
-		runqput(_p_, gp1, false)
-	}
-	return gp
+    // 剩余的直接存储到 _p_ 的本地队列当中
+    for ; n > 0; n-- {
+        gp1 := sched.runq.pop()
+        runqput(_p_, gp1, false)
+    }
+    return gp
 }
 
 ```
@@ -1082,8 +1082,8 @@ stackPreempt就返回了, 并未真正强制被抢占的 goroutine 暂停下来.
 
 ```cgo
 TEXT runtime·morestack_noctxt(SB),NOSPLIT,$0
-    MOVL	$0, DX
-    JMP	runtime·morestack(SB)
+    MOVL    $0, DX
+    JMP    runtime·morestack(SB)
 ```
 
 morestack_noctxt 函数使用 JMP 指令直接跳转到 morestack 继续执行. 注意这里没有使用 CALL 指令调用 morestack, 因此
@@ -1093,27 +1093,27 @@ rsp 栈顶寄存器没有发生变化(栈顶值为调用 morestack_noctxt 函数
 TEXT runtime·morestack(SB),NOSPLIT,$0-0
     // 获取 m 
     get_tls(CX)
-    MOVQ	g(CX), BX    // BX=g 
-    MOVQ	g_m(BX), BX  // BX=g.m 
+    MOVQ    g(CX), BX    // BX=g 
+    MOVQ    g_m(BX), BX  // BX=g.m 
     
     // m->g0 与 g 比较
-    MOVQ	m_g0(BX), SI // SI=m.g0 
-    CMPQ	g(CX), SI    // m.g0 == g 
-    JNE	3(PC) // 不相等
-    CALL	runtime·badmorestackg0(SB)
-    CALL	runtime·abort(SB)
+    MOVQ    m_g0(BX), SI // SI=m.g0 
+    CMPQ    g(CX), SI    // m.g0 == g 
+    JNE    3(PC) // 不相等
+    CALL    runtime·badmorestackg0(SB)
+    CALL    runtime·abort(SB)
     
     // m->gsignal 与 g 比较 
-    MOVQ	m_gsignal(BX), SI # SI = m.signal 
-    CMPQ	g(CX), SI // m.signal == g 
-    JNE	3(PC) // 不相等
-    CALL	runtime·badmorestackgsignal(SB)
-    CALL	runtime·abort(SB)
+    MOVQ    m_gsignal(BX), SI # SI = m.signal 
+    CMPQ    g(CX), SI // m.signal == g 
+    JNE    3(PC) // 不相等
+    CALL    runtime·badmorestackgsignal(SB)
+    CALL    runtime·abort(SB)
     
     // f 是通过 call 调用 morestack_noctxt 的那个函数
     // f's caller 是通过 call 调用 f 的那个函数
     // 保存 f's caller 的信息到 m->morebuf
-    NOP	SP	// tell vet SP changed - stop checking offsets
+    NOP    SP    // tell vet SP changed - stop checking offsets
     // 这里的 SP 和 PC 的获取是 hard code 的.
     // 因为 morestack_noctxt 函数是汇编编译插入到代码当中, 并且是在函数调用的开始的位置
     // 而且插入的指令并没有占用栈空间. 那么 8(SP) 就是 f's caller 的 PC, 即调用 f 函数完成后的返回地址
@@ -1121,29 +1121,29 @@ TEXT runtime·morestack(SB),NOSPLIT,$0-0
     // 需要记录 f's caller 的 SP, 是因为当前 goroutine 要进行栈扩容, 那么就会发生栈内容的拷贝, 拷贝的结束位置就是
     // f's caller 的 SP. 
     // 需要记录 f's caller 的 PC, 是因为栈扩容完成之后, 需要重新将 PC 压人栈, 调用 f 函数.
-    MOVQ	8(SP), AX	// f's caller's PC 
-    MOVQ	AX, (m_morebuf+gobuf_pc)(BX)
-    LEAQ	16(SP), AX	// f's caller's SP
-    MOVQ	AX, (m_morebuf+gobuf_sp)(BX)
+    MOVQ    8(SP), AX    // f's caller's PC 
+    MOVQ    AX, (m_morebuf+gobuf_pc)(BX)
+    LEAQ    16(SP), AX    // f's caller's SP
+    MOVQ    AX, (m_morebuf+gobuf_sp)(BX)
     get_tls(CX)
-    MOVQ	g(CX), SI
-    MOVQ	SI, (m_morebuf+gobuf_g)(BX)
+    MOVQ    g(CX), SI
+    MOVQ    SI, (m_morebuf+gobuf_g)(BX)
     
     // 保存 f 的信息到 g->sched
-    MOVQ	0(SP), AX // f's PC, 栈顶是函数的返回地址, 即当前函数返回后需要执行的指令
-    MOVQ	AX, (g_sched+gobuf_pc)(SI)
-    MOVQ	SI, (g_sched+gobuf_g)(SI)
-    LEAQ	8(SP), AX // f's SP, f函数的栈顶指针
-    MOVQ	AX, (g_sched+gobuf_sp)(SI)
-    MOVQ	BP, (g_sched+gobuf_bp)(SI)
-    MOVQ	DX, (g_sched+gobuf_ctxt)(SI) # 0 
+    MOVQ    0(SP), AX // f's PC, 栈顶是函数的返回地址, 即当前函数返回后需要执行的指令
+    MOVQ    AX, (g_sched+gobuf_pc)(SI)
+    MOVQ    SI, (g_sched+gobuf_g)(SI)
+    LEAQ    8(SP), AX // f's SP, f函数的栈顶指针
+    MOVQ    AX, (g_sched+gobuf_sp)(SI)
+    MOVQ    BP, (g_sched+gobuf_bp)(SI)
+    MOVQ    DX, (g_sched+gobuf_ctxt)(SI) # 0 
     
     // 调用 newstack 函数
-    MOVQ	m_g0(BX), BX // BX=m.g0
-    MOVQ	BX, g(CX)    // g=BX, 切换到 g0 上
-    MOVQ	(g_sched+gobuf_sp)(BX), SP // 恢复 g0.sched.sp 
-    CALL	runtime·newstack(SB) // 函数不会返回
-    CALL	runtime·abort(SB)	// crash if newstack returns
+    MOVQ    m_g0(BX), BX // BX=m.g0
+    MOVQ    BX, g(CX)    // g=BX, 切换到 g0 上
+    MOVQ    (g_sched+gobuf_sp)(BX), SP // 恢复 g0.sched.sp 
+    CALL    runtime·newstack(SB) // 函数不会返回
+    CALL    runtime·abort(SB)    // crash if newstack returns
     RET
 ```
 
@@ -1372,32 +1372,32 @@ func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
 // args in DI SI DX R10 R8 R9, 
 // return in AX DX
 TEXT ·Syscall(SB),NOSPLIT,$0-56
-    CALL	runtime·entersyscall(SB) # 系统调用的准备工作
-    MOVQ	a1+8(FP), DI
-    MOVQ	a2+16(FP), SI
-    MOVQ	a3+24(FP), DX
-    MOVQ	trap+0(FP), AX	# AX, 系统调用号
+    CALL    runtime·entersyscall(SB) # 系统调用的准备工作
+    MOVQ    a1+8(FP), DI
+    MOVQ    a2+16(FP), SI
+    MOVQ    a3+24(FP), DX
+    MOVQ    trap+0(FP), AX    # AX, 系统调用号
     SYSCALL               
      
     // 0xfffffffffffff001 是 -4095
     // 从内核返回, 判断返回值, linux 使用 -1 ~ -4095 作为错误码
-    CMPQ	AX, $0xfffffffffffff001 
-    JLS	ok  // AX < $0xfffffffffffff001
+    CMPQ    AX, $0xfffffffffffff001 
+    JLS    ok  // AX < $0xfffffffffffff001
     
     // 系统调用异常返回
-    MOVQ	$-1, r1+32(FP)
-    MOVQ	$0, r2+40(FP)
-    NEGQ	AX  // 错误码取反
-    MOVQ	AX, err+48(FP)
-    CALL	runtime·exitsyscall(SB)
+    MOVQ    $-1, r1+32(FP)
+    MOVQ    $0, r2+40(FP)
+    NEGQ    AX  // 错误码取反
+    MOVQ    AX, err+48(FP)
+    CALL    runtime·exitsyscall(SB)
     RET
     
     // 系统调用正常返回
 ok:
-    MOVQ	AX, r1+32(FP)
-    MOVQ	DX, r2+40(FP)
-    MOVQ	$0, err+48(FP)
-    CALL	runtime·exitsyscall(SB)
+    MOVQ    AX, r1+32(FP)
+    MOVQ    DX, r2+40(FP)
+    MOVQ    $0, err+48(FP)
+    CALL    runtime·exitsyscall(SB)
     RET
 ```
 
@@ -1414,7 +1414,7 @@ entersyscall 又会做啥呢?
 
 ```cgo
 func entersyscall() {
-	reentersyscall(getcallerpc(), getcallersp())
+    reentersyscall(getcallerpc(), getcallersp())
 }
 
 // goroutine g 即将进入系统调用.
