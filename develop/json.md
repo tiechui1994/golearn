@@ -105,37 +105,37 @@ should.Equal("1000001", string(output))
 
 ```
 type Key struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+    Name  string `json:"name"`
+    Value string `json:"value"`
 }
 
 // 必须是传值调用(编码)
 // 函数当中不能调用 json.Marshal() 函数
 func (k Key) MarshalText() ([]byte, error) {
-	data := fmt.Sprintf("%v_%v", k.Name, k.Value)
-	return []byte(data), nil
+    data := fmt.Sprintf("%v_%v", k.Name, k.Value)
+    return []byte(data), nil
 }
 
 // 必须是传指针调用(解码), 否则解析的值是空. 
 // 函数当中不能调用 json.Unmarshal() 函数
 func (k *Key) UnmarshalText(text []byte) (error) {
-	tokens := strings.Split(string(text), "_")
-	if len(tokens) == 2 {
-		k.Name = tokens[0]
-		k.Value = tokens[1]
-		return nil
-	}
-	return errors.New("invalid text")
+    tokens := strings.Split(string(text), "_")
+    if len(tokens) == 2 {
+        k.Name = tokens[0]
+        k.Value = tokens[1]
+        return nil
+    }
+    return errors.New("invalid text")
 }
 
 func main() {
-	val := map[Key]string{{"12", "22"}: "2"}
-	data, err := json.Marshal(val)
-	fmt.Println(string(data), err)
+    val := map[Key]string{{"12", "22"}: "2"}
+    data, err := json.Marshal(val)
+    fmt.Println(string(data), err)
 
-	var vv map[Key]string
-	json.Unmarshal(data, &vv)
-	fmt.Println(vv)
+    var vv map[Key]string
+    json.Unmarshal(data, &vv)
+    fmt.Println(vv)
 }
 
 ```
@@ -147,14 +147,14 @@ func main() {
 
 ```
 type RawObject struct {
-	Key string
-	Raw json.RawMessage
+    Key string
+    Raw json.RawMessage
 }
 
 func main() {
-	var data RawObject
-	json.Unmarshal([]byte(`{"key":"111", "raw":[1,2,3]}`), &data)
-	fmt.Println(string(data.Raw)) // [1,2,3]
+    var data RawObject
+    json.Unmarshal([]byte(`{"key":"111", "raw":[1,2,3]}`), &data)
+    fmt.Println(string(data.Raw)) // [1,2,3]
 }
 ```
 
@@ -174,8 +174,8 @@ func main() {
 
 ```
 type T struct {
-	UserName      string
-	FirstLanguage string `json:"language"`
+    UserName      string
+    FirstLanguage string `json:"language"`
 }
 
 extra.SetNamingStrategy(func(s string) string {
@@ -192,9 +192,9 @@ Go 标准库只支持 public 的 field. jsoniter 额外支持了 private 的 fie
 
 ```
 type T struct {
-	UserName      string
-	FirstLanguage string `json:"language"`
-	private       string
+    UserName      string
+    FirstLanguage string `json:"language"`
+    private       string
 }
 
 extra.SetNamingStrategy(func(s string) string {

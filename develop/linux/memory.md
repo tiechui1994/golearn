@@ -1,4 +1,4 @@
-# mmp
+# Linux 下的 mmp
 
 ### 共享文件映射
 
@@ -43,7 +43,6 @@ int main(int argc, char* argv[]) {
 > ![image](/images/develop_linux_mmp_share_2.bmp)
 
 使用的内存是 `buffer/cache`
-
 
 ### 私有文件映射
 
@@ -90,7 +89,6 @@ int main(int argc, char* argv[]) {
 
 调用前后 `used` 和 `.
 
-
 ### 私有匿名映射
 
 ```cgo
@@ -123,7 +121,6 @@ int main(int argc, char* argv[]) {
 > ![image](/images/develop_linux_mmp_any_2.png)
 
 `used` 增加了 1G, 而 buff/cache 并没有增长. 说明匿名共享时, 并没有占所有 cache.
-
 
 ### 共享匿名映射
 

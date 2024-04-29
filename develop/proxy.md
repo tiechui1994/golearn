@@ -77,19 +77,19 @@ func ForwardHandler(writer http.ResponseWriter, request *http.Request) {
 
 ```cgo
 type ReverseProxy struct {
-	Director func(*http.Request)
+    Director func(*http.Request)
 
-	Transport http.RoundTripper
+    Transport http.RoundTripper
 
-	FlushInterval time.Duration
+    FlushInterval time.Duration
 
-	ErrorLog *log.Logger
+    ErrorLog *log.Logger
 
-	BufferPool BufferPool
+    BufferPool BufferPool
 
-	ModifyResponse func(*http.Response) error
+    ModifyResponse func(*http.Response) error
 
-	ErrorHandler func(http.ResponseWriter, *http.Request, error)
+    ErrorHandler func(http.ResponseWriter, *http.Request, error)
 }
 ```
 
