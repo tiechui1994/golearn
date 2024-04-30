@@ -13,8 +13,23 @@ EventLoop 是一个程序结构或者设计模式, 它在程序中是用来等�
 事件循环常常用于 Reactor 模式的连接器(用于连接请求与处理器, 也就是 Reactor 模式中的 Synchronous Event Demultiplexer).
 如果事件提供对于状态接口, 事件循环可以 seleted(符合条件) 事件把这个事件 Polled(抛出去) selected-polled 模式.
 
-
 在开启了端口重用或 UDP 服务的状况下, gnet 采用的是 EventLoop 模型, 否则采用的是 Reactor 模型.
+
+在 EventLoop 模式下, 创建 N 个 EventLoop, 每个 EventLoop 创建一个 Poller, 每个 EventLoop 启动一个监听器与之绑定,  
+当新连接建立时, 会选择启用一个 EventLoop 去 accept, 以及后续的读写事件处理都会在这个 Poller 上进行.
+
+在 EventLoop 模式下, 创建 N+1 个 EventLoop, 每个 EventLoop 创建一个 Poller, 启动 1 个监听器, 所有的 EventLoop 都与
+之绑定. 对于 1 个 Main EventLoop, 由其 Poller 只处理 Accept, 然后从 N 个 Sub EventLoop 当中选择一个, 将连接放入其中, 
+后续由该EventLoop Poller 处理该连接的读写事件.
+
+EventLoop 实现:
+
+![image](/images/tcp_gnet_el.png)
+
+Reactor 实现:
+
+![image](/images/tcp_gnet_reactor.png)
+
 
 ### EventLoop 模型(Linux)
 
@@ -26,73 +41,46 @@ read, write)
 
 eventLoop
 
-accept: 接收到 Read Event 的回调函数.
+create N eventLoop:
 ```
-func (el *eventloop) accept(fd int, ev netpoll.IOEvent) error {
-    if el.ln.network == "udp" {
-        return el.readUDP(fd, ev)
-    }
+func (eng *engine) activateEventLoops(numEventLoop int) (err error) 
+    ...
+    ln := eng.ln
+    for i := 0; i < numEventLoop; i++ {
+        if i > 0 {
+            if ln, err = initListener(network, address, eng.opts); err != nil {
+                return
+            }
+        }
+        var p *netpoll.Poller
+        if p, err = netpoll.OpenPoller(); err == nil {
+            el := new(eventloop)
+            el.ln = ln
+            el.engine = eng
+            el.poller = p
+            el.buffer = make([]byte, eng.opts.ReadBufferCap)
+            el.connections.init()
+            el.eventHandler = eng.eventHandler
+            // poller 添加 Read 监听事件, Read 触发是在 Poller 的 Polling 当中
+            if err = el.poller.AddRead(el.ln.packPollAttachment(el.accept)); err != nil {
+                return
+            }
+            eng.eventLoops.register(el)
 
-    nfd, sa, err := unix.Accept(el.ln.fd)
-    if err != nil {
-        switch err {
-        case unix.EINTR, unix.EAGAIN, unix.ECONNABORTED:
-            // ECONNABORTED means that a socket on the listen
-            // queue was closed before we Accept()ed it;
-            // it's a silly error, so try again.
-            return nil
-        default:
-            el.getLogger().Errorf("Accept() failed due to error: %v", err)
-            return errors.ErrAcceptSocket
+            // Start the ticker.
+            if el.idx == 0 && eng.opts.Ticker {
+                striker = el
+            }
+        } else {
+            return
         }
     }
 
-    // conn 的属性设置. 
-    if err = os.NewSyscallError("fcntl nonblock", setNonBlock(nfd, true)); err != nil {
-        return err
-    }
-    remoteAddr := socket.SockaddrToTCPOrUnixAddr(sa)
-    if el.engine.opts.TCPKeepAlive > 0 && el.ln.network == "tcp" {
-        err = socket.SetKeepAlivePeriod(nfd, int(el.engine.opts.TCPKeepAlive/time.Second))
-        logging.Error(err)
-    }
-
-    // 注: 将 conn 的 Handler 注册到 poller 的 Read Event 
-    c := newTCPConn(nfd, el, sa, el.ln.addr, remoteAddr)
-    if err = el.poller.AddRead(&c.pollAttachment); err != nil {
-        return err
-    }
-    el.connections.addConn(c, el.idx)
-    return el.open(c)
+    ...
 }
 ```
 
-open: 回调 OnOpen 函数
-
-```
-func (el *eventloop) open(c *conn) error {
-    c.opened = true
-
-    out, action := el.eventHandler.OnOpen(c)
-    if out != nil {
-        if err := c.open(out); err != nil {
-            return err
-        }
-    }
-
-    // outboundBuffer 是 conn 的发送数据缓冲区. 一旦该缓冲区当中不为空, 就需要触发 Write Event
-    if !c.outboundBuffer.IsEmpty() {
-        if err := el.poller.AddWrite(&c.pollAttachment); err != nil {
-            return err
-        }
-    }
-
-    return el.handleAction(c, action)
-}
-```
-
-
-run: 后台执行. Epoll 轮训
+run: 后台执行, Epoll 轮询(核心)
 ```
 func (el *eventloop) run() error {
     if el.engine.opts.LockOSThread {
@@ -130,6 +118,8 @@ func (el *eventloop) run() error {
             }
             return nil
         }
+        
+        // 新的连接事件, 与前面的 activateEventLoops 当中设置回调对应
         return el.accept(fd, ev)
     })
 
@@ -244,6 +234,70 @@ func (p *Poller) Polling(callback func(fd int, ev uint32) error) error {
 }
 ```
 
+accept: 接收到 Read Event 的回调函数.
+```
+func (el *eventloop) accept(fd int, ev netpoll.IOEvent) error {
+    if el.ln.network == "udp" {
+        return el.readUDP(fd, ev)
+    }
+
+    nfd, sa, err := unix.Accept(el.ln.fd)
+    if err != nil {
+        switch err {
+        case unix.EINTR, unix.EAGAIN, unix.ECONNABORTED:
+            // ECONNABORTED means that a socket on the listen
+            // queue was closed before we Accept()ed it;
+            // it's a silly error, so try again.
+            return nil
+        default:
+            el.getLogger().Errorf("Accept() failed due to error: %v", err)
+            return errors.ErrAcceptSocket
+        }
+    }
+
+    // conn 的属性设置. 
+    if err = os.NewSyscallError("fcntl nonblock", setNonBlock(nfd, true)); err != nil {
+        return err
+    }
+    remoteAddr := socket.SockaddrToTCPOrUnixAddr(sa)
+    if el.engine.opts.TCPKeepAlive > 0 && el.ln.network == "tcp" {
+        err = socket.SetKeepAlivePeriod(nfd, int(el.engine.opts.TCPKeepAlive/time.Second))
+        logging.Error(err)
+    }
+
+    // 注: 将 conn 的 Handler 注册到 poller 的 Read Event 
+    c := newTCPConn(nfd, el, sa, el.ln.addr, remoteAddr)
+    if err = el.poller.AddRead(&c.pollAttachment); err != nil {
+        return err
+    }
+    el.connections.addConn(c, el.idx)
+    return el.open(c)
+}
+```
+
+open: 回调 OnOpen 函数
+
+```
+func (el *eventloop) open(c *conn) error {
+    c.opened = true
+
+    out, action := el.eventHandler.OnOpen(c)
+    if out != nil {
+        if err := c.open(out); err != nil {
+            return err
+        }
+    }
+
+    // outboundBuffer 是 conn 的发送数据缓冲区. 一旦该缓冲区当中不为空, 就需要触发 Write Event
+    if !c.outboundBuffer.IsEmpty() {
+        if err := el.poller.AddWrite(&c.pollAttachment); err != nil {
+            return err
+        }
+    }
+
+    return el.handleAction(c, action)
+}
+```
 
 ### Reactor 模型(Linux)
 
