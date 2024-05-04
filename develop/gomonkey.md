@@ -67,8 +67,8 @@ func buildJmpDirective(double uintptr) []byte {
 
     // 测试, 在完成内存值修改后的汇编: 通过测试 0x4a19b8 指向的是真实地址是 main.B 的函数地址
     // TEXT main.A(SB) /home/user/workspace/go-test/telegen/main.go
-    //	 main.go:40	0x483540	48bab8194a0000000000	mov rdx, 0x4a19b8
-    //	 main.go:40	0x48354a	ff22			jmp qword ptr [rdx]
+    //     main.go:40    0x483540    48bab8194a0000000000    mov rdx, 0x4a19b8
+    //     main.go:40    0x48354a    ff22            jmp qword ptr [rdx]
     return []byte{
         0x48, 0xBA, d0, d1, d2, d3, d4, d5, d6, d7, // MOV rdx, double
         0xFF, 0x22,                                 // JMP [rdx]         // 这里的 [rdx] 是从 rdx 当中存储值取地址操作, 也就是获取替换函数在 .text 段当中的地址, 达到函数直接跳转的目的
@@ -97,7 +97,7 @@ func mprotectCrossPage(addr uintptr, length int, prot int) error {
     pageSize := syscall.Getpagesize()
     for p := pageStart(addr); p < addr+uintptr(length); p += uintptr(pageSize) {
         page := entryAddress(p, pageSize)
-	// syscall Mprotect 用于修改进程内内存的标志位(为修改进程内存值做铺垫). 
+    // syscall Mprotect 用于修改进程内内存的标志位(为修改进程内存值做铺垫). 
         if err := syscall.Mprotect(page, prot); err != nil {
             return err
         }
@@ -107,7 +107,7 @@ func mprotectCrossPage(addr uintptr, length int, prot int) error {
 
 // 内存对齐
 func pageStart(ptr uintptr) uintptr {
-	return ptr & ^(uintptr(syscall.Getpagesize() - 1))
+    return ptr & ^(uintptr(syscall.Getpagesize() - 1))
 }
 ```
 

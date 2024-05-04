@@ -573,27 +573,27 @@ conn.Read() => netFD.Read() => FD.Read() => syscall.Read()
 
 ```cgo
 type TCPConn struct {
-	conn
+    conn
 }
 
 func (c *conn) Read(b []byte) (int, error) {
-	if !c.ok() {
-		return 0, syscall.EINVAL
-	}
-	n, err := c.fd.Read(b)
-	if err != nil && err != io.EOF {
-		err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
-	}
-	return n, err
+    if !c.ok() {
+        return 0, syscall.EINVAL
+    }
+    n, err := c.fd.Read(b)
+    if err != nil && err != io.EOF {
+        err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
+    }
+    return n, err
 }
 
             ||
             \/
 
 func (fd *netFD) Read(p []byte) (n int, err error) {
-	n, err = fd.pfd.Read(p)
-	runtime.KeepAlive(fd)
-	return n, wrapSyscallError(readSyscallName, err)
+    n, err = fd.pfd.Read(p)
+    runtime.KeepAlive(fd)
+    return n, wrapSyscallError(readSyscallName, err)
 }
     
             ||

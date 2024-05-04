@@ -177,24 +177,24 @@ GC, 并行的垃圾收集器会在到达该目标前完成垃圾收集;
 ```cgo
 // 测试报告是否满足触发条件, 表示已满足 _GCoff 阶段的退出条件. 分配时应测试退出条件。
 func (t gcTrigger) test() bool {
-	if !memstats.enablegc || panicking != 0 || gcphase != _GCoff {
-		return false
-	}
+    if !memstats.enablegc || panicking != 0 || gcphase != _GCoff {
+        return false
+    }
 	
-	switch t.kind {
-	case gcTriggerHeap:
-		return memstats.heap_live >= memstats.gc_trigger
-	case gcTriggerTime:
-		if gcpercent < 0 {
-			return false
-		}
-		lastgc := int64(atomic.Load64(&memstats.last_gc_nanotime))
-		return lastgc != 0 && t.now-lastgc > forcegcperiod
-	case gcTriggerCycle:
-		return int32(t.n-work.cycles) > 0
-	}
+    switch t.kind {
+    case gcTriggerHeap:
+        return memstats.heap_live >= memstats.gc_trigger
+    case gcTriggerTime:
+        if gcpercent < 0 {
+            return false
+        }
+        lastgc := int64(atomic.Load64(&memstats.last_gc_nanotime))
+        return lastgc != 0 && t.now-lastgc > forcegcperiod
+    case gcTriggerCycle:
+        return int32(t.n-work.cycles) > 0
+    }
 	
-	return true
+    return true
 }
 ```
 
@@ -222,23 +222,23 @@ func (t gcTrigger) test() bool {
 
 ```cgo
 func init() {
-	go forcegchelper()
+    go forcegchelper()
 }
 
 func forcegchelper() {
-	forcegc.g = getg()
-	for {
-		lock(&forcegc.lock)
-		if forcegc.idle != 0 {
-			throw("forcegc: phase error")
-		}
-		atomic.Store(&forcegc.idle, 1)
-		goparkunlock(&forcegc.lock, waitReasonForceGGIdle, traceEvGoBlock, 1)
-		if debug.gctrace > 0 {
-			println("GC forced")
-		}
-		gcStart(gcTrigger{kind: gcTriggerTime, now: nanotime()})
-	}
+    forcegc.g = getg()
+    for {
+        lock(&forcegc.lock)
+        if forcegc.idle != 0 {
+            throw("forcegc: phase error")
+        }
+        atomic.Store(&forcegc.idle, 1)
+        goparkunlock(&forcegc.lock, waitReasonForceGGIdle, traceEvGoBlock, 1)
+        if debug.gctrace > 0 {
+            println("GC forced")
+        }
+        gcStart(gcTrigger{kind: gcTriggerTime, now: nanotime()})
+    }
 }
 ```
 
@@ -248,23 +248,23 @@ func forcegchelper() {
 
 ```cgo
 func sysmon() {
-	...
-	for {
-		...
-		// check if we need to force a GC
-		if t := (gcTrigger{kind: gcTriggerTime, now: now}); t.test() && atomic.Load(&forcegc.idle) != 0 {
-			lock(&forcegc.lock)
-			forcegc.idle = 0
-			var list gList
-			list.push(forcegc.g)
-			injectglist(&list)
-			unlock(&forcegc.lock)
-		}
-		if debug.schedtrace > 0 && lasttrace+int64(debug.schedtrace)*1000000 <= now {
-			lasttrace = now
-			schedtrace(debug.scheddetail > 0)
-		}
-	}
+    ...
+    for {
+        ...
+        // check if we need to force a GC
+        if t := (gcTrigger{kind: gcTriggerTime, now: now}); t.test() && atomic.Load(&forcegc.idle) != 0 {
+            lock(&forcegc.lock)
+            forcegc.idle = 0
+            var list gList
+            list.push(forcegc.g)
+            injectglist(&list)
+            unlock(&forcegc.lock)
+        }
+        if debug.schedtrace > 0 && lasttrace+int64(debug.schedtrace)*1000000 <= now {
+            lasttrace = now
+            schedtrace(debug.scheddetail > 0)
+        }
+    }
 }
 ```
 

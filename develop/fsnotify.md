@@ -30,10 +30,10 @@ InotifyEvent, 里面包含了事件, 文件描述符fd, 变更文件的临时名
 InotifyEvent:
 [
     Wd     int32  // 变化的文件fd
-	Mask   uint32 
-	Cookie uint32
-	Len    uint32 // Data 长度
-	Data   []byte // 文件的路径
+    Mask   uint32 
+    Cookie uint32
+    Len    uint32 // Data 长度
+    Data   []byte // 文件的路径
 ]
 
 注意: 一次性可能存在多个事件发生.

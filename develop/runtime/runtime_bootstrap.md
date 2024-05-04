@@ -28,8 +28,8 @@ goroutine进行调度, 当goroutine被调离 CPU 时, 调度器代码负责把 C
 
 ```cgo
 #ifdef GOARCH_amd64
-#define    get_tls(r)    MOVQ TLS, r    // 获取 TLS 的位置
-#define    g(r)    0(r)(TLS*1)        // 获取 TLS 当中存储 g 的位置 
+#define get_tls(r) MOVQ TLS, r    // 获取 TLS 的位置
+#define g(r) 0(r)(TLS*1)        // 获取 TLS 当中存储 g 的位置 
 #endif
 ```
 
@@ -1000,7 +1000,7 @@ top:
         }
     }
     
-    // 当前进入gc MarkWorker 模式
+    // 当前进入 gc MarkWorker 模式, GC 扫描时期
     if gp == nil && gcBlackenEnabled != 0 {
         gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
         tryWakeP = tryWakeP || gp != nil
@@ -1021,8 +1021,10 @@ top:
         gp, inheritTime = runqget(_g_.m.p.ptr())
     }
     if gp == nil {
-        // 当本地队列和全局队列都没有找到要运行的 goroutine. 调用 findrunable 函数总其他工作线程
-        // 的运行队列中偷取, 如果偷取不到, 则当前工作线程进入休眠, 直到获取到需要运行的 goroutine
+        // 1. 再次从当本地队列和全局队列(将全局队列至多一半的g放入到本地队列)获取要运行的 goroutine.
+        // 2. 从 epoll 当中查找就绪的 goroutine
+        // 3. 从其他 p 当中偷取(最多一半) stealWork, 最多有 4 次偷取的机会
+        // 当前工作线程进入休眠(使用的是线程锁), 直到获取到需要运行的 goroutine
         // 之后函数才返回.
         gp, inheritTime = findrunnable() // blocks until work is available
     }

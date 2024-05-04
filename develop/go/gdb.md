@@ -189,9 +189,9 @@ rodata, data, bss 等
 
 ```
 SYMBOL TABLE:
-0000000000000000 l    df *ABS*	0000000000000000 go.go
-0000000000401000 l     F .text	0000000000000000 runtime.text
-0000000000401d40 l     F .text	000000000000022d cmpbody
+0000000000000000 l    df *ABS*    0000000000000000 go.go
+0000000000401000 l     F .text    0000000000000000 runtime.text
+0000000000401d40 l     F .text    000000000000022d cmpbody
 ```
 
 第一个字段是符号地址, 第二个字段是标志位, 第三个字段是 section(或 `*ABS*`,`*UND*`), 第四个字段, 对于普通符号是对
@@ -240,9 +240,9 @@ F, f, O: 分别表示 symbol 是一个 function(F), file(f), Object(O)
 1) 查询函数 `fmt.Println` 地址: 
 ```
 > objdump video -t | grep fmt.Println -C 1
-0000000000479020 g     F .text	00000000000000e5 fmt.Fprintln
-0000000000479120 g     F .text	0000000000000067 fmt.Println
-00000000004791a0 g     F .text	0000000000000087 fmt.getField
+0000000000479020 g     F .text    00000000000000e5 fmt.Fprintln
+0000000000479120 g     F .text    0000000000000067 fmt.Println
+00000000004791a0 g     F .text    0000000000000087 fmt.getField
 ```
 
 2) 查看汇编代码(指定开始地址和结束地址): 
@@ -255,18 +255,18 @@ Disassembly of section .text:
 0000000000479120 <fmt.Println>:
 fmt.Println():
 /opt/local/go/src/fmt/print.go:273
-  479120:	49 3b 66 10          	cmp    0x10(%r14),%rsp
-  479124:	76 3c                	jbe    479162 <fmt.Println+0x42>
-  479126:	48 83 ec 30          	sub    $0x30,%rsp
-  47912a:	48 89 6c 24 28       	mov    %rbp,0x28(%rsp)
-  47912f:	48 8d 6c 24 28       	lea    0x28(%rsp),%rbp
-  479134:	48 89 44 24 38       	mov    %rax,0x38(%rsp)
+  479120:    49 3b 66 10              cmp    0x10(%r14),%rsp
+  479124:    76 3c                    jbe    479162 <fmt.Println+0x42>
+  479126:    48 83 ec 30              sub    $0x30,%rsp
+  47912a:    48 89 6c 24 28           mov    %rbp,0x28(%rsp)
+  47912f:    48 8d 6c 24 28           lea    0x28(%rsp),%rbp
+  479134:    48 89 44 24 38           mov    %rax,0x38(%rsp)
 /opt/local/go/src/fmt/print.go:274
-  479139:	48 8b 15 30 dd 0a 00 	mov    0xadd30(%rip),%rdx        # 526e70 <os.Stdout>
-  479140:	48 89 df             	mov    %rbx,%rdi
-  479143:	48 89 ce             	mov    %rcx,%rsi
-  479146:	48 89 d3             	mov    %rdx,%rbx
-  479149:	48 89 c1             	mov    %rax,%rcx
+  479139:    48 8b 15 30 dd 0a 00     mov    0xadd30(%rip),%rdx        # 526e70 <os.Stdout>
+  479140:    48 89 df                 mov    %rbx,%rdi
+  479143:    48 89 ce                 mov    %rcx,%rsi
+  479146:    48 89 d3                 mov    %rdx,%rbx
+  479149:    48 89 c1                 mov    %rax,%rcx
 
 ...
 ```

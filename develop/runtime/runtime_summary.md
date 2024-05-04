@@ -61,6 +61,7 @@ newproc1 当中做的事情:
 ### newm(fn func(), p *p, id int64)
 
 fn: m.mstartfn 
+
 p: 临时借用的 p, 也是 m 启动后绑定的 p(如果 fn 是一个forever-loop函数, p 可以为空. 目前存在: sysmon, templateThread)
 
 创建线程 m, 创建 m 对象的同时分配 g0 对象(栈大小无限制)(在 allocm 中完成); 创建 g0 运行的函数(newm1的 newosproc)
@@ -80,7 +81,3 @@ int32 clone(int32 flags, void *stk, M *mp, G *gp, void (*fn)(void));
 ```
 
 关于 mstart, 汇编实现, 直接调用 mstart1(运行 m.mstartfn 函数, 可能永不返回), 开启执行 schedule()
-
-### 
-
-

@@ -52,18 +52,18 @@ export ANDROID_NDK_HOME=${HOME}/android/android-ndk-r24
 export TOOL=${HOME}/android/android-ndk-r24
 
 android: depend
-	gomobile bind -target=android/arm64 -androidapi=23 -o device.aar -v -x ${HOME}/demo
+    gomobile bind -target=android/arm64 -androidapi=23 -o device.aar -v -x ${HOME}/demo
 
 ios: depend
-	gomobile bind -target=ios -o device.framework -v ${HOME}/demo
+    gomobile bind -target=ios -o device.framework -v ${HOME}/demo
 
 depend:
-	cd ${HOME}/demo
-	gomobile init
-	go get golang.org/x/mobile/bind
+    cd ${HOME}/demo
+    gomobile init
+    go get golang.org/x/mobile/bind
 
 clean:
-	rm -rvf libdevice.*
+    rm -rvf libdevice.*
 ```
 
 > `androidapi` 是 API 版本, target 是CPU架构
@@ -75,31 +75,31 @@ clean:
 package demo
 
 import (
-	"fmt"
-	"io/ioutil"
-	"path/filepath"
-	"time"
+    "fmt"
+    "io/ioutil"
+    "path/filepath"
+    "time"
 )
 
 var done = make(chan struct{})
 
 func Start(dir string) {
-	fmt.Println("dir", dir)
+    fmt.Println("dir", dir)
 
-	file := filepath.Join(dir, "test.log")
-	err := ioutil.WriteFile(file, []byte(time.Now().String()), 0666)
-	if err != nil {
-		fmt.Printf("Writefile:%v\n", err)
-	}
-	select {
-	case <-done:
-	case <-time.After(10 * time.Minute):
-	}
+    file := filepath.Join(dir, "test.log")
+    err := ioutil.WriteFile(file, []byte(time.Now().String()), 0666)
+    if err != nil {
+        fmt.Printf("Writefile:%v\n", err)
+    }
+    select {
+    case <-done:
+    case <-time.After(10 * time.Minute):
+    }
 }
 
 func Stop(mac string) {
-	fmt.Println("stop mac", mac)
-	close(done)
+    fmt.Println("stop mac", mac)
+    close(done)
 }
 ```
 

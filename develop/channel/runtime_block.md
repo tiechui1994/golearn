@@ -1,4 +1,4 @@
-# goroutine 休眠与唤醒
+# runtime 协程锁 - gopark 与 goready
 
 goroutine 休眠, `gopark`, `goparkunlock`(对 gopark 的进一步封装)
 
@@ -6,7 +6,7 @@ goroutine 唤醒, `goready`
 
 ### gopark
 
-gopark, 休眠当前的 goroutine.
+gopark, 休眠当前的 goroutine, 切换 g 的状态; g 与 m 分离; 开启新一轮调度;
 
 ```cgo
 func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason waitReason, traceEv byte, traceskip int) {
@@ -23,7 +23,7 @@ func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason w
         throw("gopark: bad g status")
     }
 
-    mp.waitlock = lock // unlockf 参数, 绑定到 m
+    mp.waitlock = lock       // unlockf 参数, 绑定到 m
     mp.waitunlockf = unlockf // 休眠前 callback 函数, 绑定到 m
     gp.waitreason = reason
     mp.waittraceev = traceEv
@@ -63,7 +63,7 @@ func park_m(gp *g) {
 }
 ```
 
-// goparkunlock 是对 gopark 的封装.
+// goparkunlock 是对 gopark 的封装. 特殊在于 lock 对象是线程锁
 ```cgo
 func goparkunlock(lock *mutex, reason waitReason, traceEv byte, traceskip int) {
     gopark(parkunlock_c, unsafe.Pointer(lock), reason, traceEv, traceskip)
@@ -77,7 +77,7 @@ func parkunlock_c(gp *g, lock unsafe.Pointer) bool {
 
 ### goready
 
-goready, 唤醒一个 goroutine
+goready, 唤醒一个 goroutine; 切换到 g0 上, 将 gp 的状态调整为 _Grunnable, 重新放回队列
 
 ```cgo
 func goready(gp *g, traceskip int) {

@@ -1,4 +1,4 @@
-# runtime mutex
+# runtime 线程锁 - runtime.mutex
 
 Go 的 runtime 中封装了 mutex, 这个 mutex 在 channel, netpoll, 检测活跃的定时器等使用.
 
@@ -17,7 +17,6 @@ futex 由一块能够被多个进程共享的内存空间(一个对齐后的整�
 一致需要仲裁时, 才需要进入操作系统内核空间执行. 
 
 futex 的基本思想是竞争态总是很少发生的, 只有在竞争态才需要进入内核, 否则在用户态即可完成.
-
 
 ```cgo
 /*
@@ -78,7 +77,7 @@ TEXT runtime.osyield(SB), NOSPLIT,$0
     RET
 ```
 
-Go 的 `futexsleep` 和 `fmutexwake` 是对 `futex`, 实现如下:
+Go 的 `futexsleep` 和 `fmutexwake` 是对 `futex` 的包装, 线程级别的锁, 实现如下:
 
 ```
 // 如果 *addr == val { 当前线程进入sleep状态 }; 不会阻塞超过ns, ns<0表示永远休眠
@@ -88,11 +87,11 @@ futexsleep(addr *uint32, val uint32, ns int64)
 futexwakeup(addr *uint32, cnt uint32) 
 ```
 
-`futex` 是系统调用
-
+// runtime.futex 系统调用实现
 ```
 // int64 futex(int32 *uaddr, int32 op, int32 val,
 //    struct timespec *timeout, int32 *uaddr2, int32 val2);
+// op: 代表操作, wait: 128, wake: 129
 TEXT runtime·futex(SB),NOSPLIT,$0
     MOVQ  addr+0(FP), DI
     MOVL  op+8(FP), SI
@@ -104,6 +103,40 @@ TEXT runtime·futex(SB),NOSPLIT,$0
     SYSCALL
     MOVL  AX, ret+40(FP)
     RET
+```
+
+// 线程 sleep, wakeup 实现原理 
+```cgo
+// Atomically,
+//    if(*addr == val) sleep
+// 可能被误唤醒; 这是允许的.
+// 睡眠时间不要超过 ns; ns < 0 表示永远.
+func futexsleep(addr *uint32, val uint32, ns int64) {
+    // 某些 Linux 内核存在bug, 即 FUTEX_WAIT 的 futex 返回内部错误代码作为 errno.
+    // Libpthread 忽略这里的返回值, 我们也可以: 正如它所说的几行, 允许虚假唤醒.
+    if ns < 0 {
+        futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, nil, nil, 0)
+        return
+    }
+
+    var ts timespec
+    ts.setNsec(ns)
+    futex(unsafe.Pointer(addr), _FUTEX_WAIT_PRIVATE, val, unsafe.Pointer(&ts), nil, 0)
+}
+
+// If any procs are sleeping on addr, wake up at most cnt.
+func futexwakeup(addr *uint32, cnt uint32) {
+    ret := futex(unsafe.Pointer(addr), _FUTEX_WAKE_PRIVATE, cnt, nil, nil, 0)
+    if ret >= 0 {
+        return
+    }
+
+    systemstack(func() {
+        print("futexwakeup addr=", addr, " returned ", ret, "\n")
+    })
+
+    *(*int32)(unsafe.Pointer(uintptr(0x1006))) = 0x1006
+}
 ```
 
 ### runtime.mutex 实现
@@ -124,9 +157,9 @@ type mutex struct {
 lockRankStruct 是 runtime 死锁检测用的, 只有开启特定设置才会有具体实现, 否则是一个空struct(空struct只要不是最后
 一个字段是不占用任何空间的). 不用关注.
 
-lock 实现:
+lock 实现: CPU 自旋 + CPU 调度 + futexsleep 
 
-```
+```cgo
 func lock(l *mutex) {
     lockWithRank(l, getLockRank(l))
 }
@@ -221,9 +254,9 @@ func lock2(l *mutex) {
 状态比如设置为了 mutex_locked 或者 mutex_unlocked. 这个时候不会进入sleep, 而是会去循环执行步骤3
 
 
-unlock 实现:
+unlock 实现: futexwakeup 
 
-```
+```cgo
 func unlock(l *mutex) {
     unlockWithRank(l)
 }
@@ -258,6 +291,3 @@ func unlock2(l *mutex) {
 ```
  
         
-
-
-

@@ -149,7 +149,7 @@ total {{ (len $) }}
 {{- range $ }}
 {{- $x := "f" }}
 {{- if (eq .Type 1) }} 
-	{{- $x = "d" }}
+    {{- $x = "d" }}
 {{- end }}
 {{ (printf "%s  %24s  %s" $x .Updated .Name) }}
 {{- end }}

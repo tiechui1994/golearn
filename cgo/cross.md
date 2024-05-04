@@ -69,14 +69,14 @@ GOOS=linux GOARCH=arm64 GOARM=7 go build -o xxx *.go
 
 ```makefile
 arm64:
-	GOOS=linux \
-	GOARCH=arm64 \
-	GOARM=7 \
-	CGO_ENABLED=1 \
-	CC=aarch64-linux-gnu-gcc \
-	CXX=aarch64-linux-gnu-g++ \
-	AR=aarch64-linux-gnu-ar \
-	go build -o xxx *.go
+    GOOS=linux \
+    GOARCH=arm64 \
+    GOARM=7 \
+    CGO_ENABLED=1 \
+    CC=aarch64-linux-gnu-gcc \
+    CXX=aarch64-linux-gnu-g++ \
+    AR=aarch64-linux-gnu-ar \
+    go build -o xxx *.go
 ```
 
 
@@ -84,14 +84,14 @@ arm64:
 
 ```makefile
 arm64:
-	GOOS=linux \
-	GOARCH=arm64 \
-	GOARM=7 \
-	CGO_ENABLED=1 \
-	CC=arm-linux-gnueabihf-gcc \
-	CXX=arm-linux-gnueabihf-g++ \
-	AR=arm-linux-gnueabihf-ar \
-	go build -o xxx *.go
+    GOOS=linux \
+    GOARCH=arm64 \
+    GOARM=7 \
+    CGO_ENABLED=1 \
+    CC=arm-linux-gnueabihf-gcc \
+    CXX=arm-linux-gnueabihf-g++ \
+    AR=arm-linux-gnueabihf-ar \
+    go build -o xxx *.go
 ```
 
 > arm 交叉汇编下载地址: http://releases.linaro.org/components/toolchain/binaries, 选择 `aarch64-linux-gnu`

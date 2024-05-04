@@ -49,6 +49,126 @@ schedule 函数分三步分别查找各种运行队列中寻找可运行的 goro
 工作线程的运行队列中偷取 goroutine, findrunnable 函数在偷取之前会再次尝试从全局运行队列和当前线程本地运行队列中查找需
 要运行的 goroutine.
 
+schedule 具体实现, 按照上述的步骤实现:
+
+```cgo
+func schedule() {
+    _g_ := getg()
+    
+    // m 不能被锁定.
+    if _g_.m.locks != 0 {
+        throw("schedule: holding locks")
+    }
+    
+    // 当 m 与某个 lockedg 锁定, 则 stop 掉 m(其实就是休眠), m 与 m.p 解绑, 执行调度 lockedg
+    if _g_.m.lockedg != 0 {
+        stoplockedm()
+        execute(_g_.m.lockedg.ptr(), false) // Never returns.
+    }
+    
+    // We should not schedule away from a g that is executing a cgo call,
+    // since the cgo call is using the m's g0 stack.
+    if _g_.m.incgo {
+        throw("schedule: in cgo")
+    }
+
+top:
+    // 获取 p, 并将抢占变量设置为 false
+    pp := _g_.m.p.ptr()
+    pp.preempt = false
+    
+    // 当前处于 GC 的 stopTheWorld 阶段. 这个时候需要将当前的 m 休眠掉
+    if sched.gcwaiting != 0 {
+        gcstopm() // 会调用 stopm(), 休眠阻塞
+        goto top
+    }
+    if pp.runSafePointFn != 0 {
+        runSafePointFn()
+    }
+    
+    // 进行完整性检查: 如果我们正在 spinning, 则 runq 应该为空.
+    // 在调用checkTimers之前检查它, 因为这可能会调用 goready 将就绪的 goroutine 放在本地运行队列中.
+    if _g_.m.spinning && (pp.runnext != 0 || pp.runqhead != pp.runqtail) {
+        throw("schedule: spinning with local work")
+    }
+    checkTimers(pp, 0)
+    
+    // 获取一个可以进行执行的 g
+    var gp *g
+    var inheritTime bool
+    
+    // 普通的goroutine会检查是否需要就绪, 但 GCworkers 和 tracereaders 不会这样做, 而必须在此处进行检查.
+    tryWakeP := false
+
+    // 当前进入gc MarkWorker 模式
+    if gp == nil && gcBlackenEnabled != 0 {
+        gp = gcController.findRunnableGCWorker(_g_.m.p.ptr())
+        tryWakeP = tryWakeP || gp != nil
+    }
+    
+    // 开始查找 gp (需要调度的任务)
+    if gp == nil {
+        // 保证调度的公平性, 每进行 61 次调度需要优先从全局运行队列中获取 goroutine
+        if _g_.m.p.ptr().schedtick%61 == 0 && sched.runqsize > 0 {
+            lock(&sched.lock)
+            gp = globrunqget(_g_.m.p.ptr(), 1)
+            unlock(&sched.lock)
+        }
+    }
+    
+    if gp == nil {
+        // 从与 m 关联的 p 的本地运行队列中获取 goroutine
+        gp, inheritTime = runqget(_g_.m.p.ptr())
+    }
+    if gp == nil {
+        // 1. 再次从当本地队列和全局队列(将全局队列至多一半的g放入到本地队列)获取要运行的 goroutine.
+        // 2. 从 epoll 当中查找就绪的 goroutine
+        // 3. 从其他 p 当中偷取(最多一半) stealWork, 最多有 4 次偷取的机会
+        // 当前工作线程进入休眠(使用的是线程锁), 直到获取到需要运行的 goroutine
+        // 之后函数才返回.
+        gp, inheritTime = findrunnable() // blocks until work is available
+    }
+    
+    // 此时线程将要开始执行 gp, 因此对于自旋状况必须重置
+    if _g_.m.spinning {
+        resetspinning()
+    }
+    
+    if sched.disable.user && !schedEnabled(gp) {
+        // 当前的 gp 被禁用调用时, 需要重新启用用户调度并再次查看, 
+        // 否则, 将其放在待处理的可运行goroutine列表中.
+        // 一般只有系统的 goroutine 可以被禁用调度
+        lock(&sched.lock)
+        if schedEnabled(gp) {
+            unlock(&sched.lock)
+        } else {
+            sched.disable.runnable.pushBack(gp)
+            sched.disable.n++
+            unlock(&sched.lock)
+            goto top
+        }
+    }
+    
+    // 当 goroutine 不是一般的 goroutine 时 (a GCworker or tracereader),
+    // 唤醒一个 P(可能会开启一个线程, sched.npidle>0 且 sched.nmspinning=0 状况下)
+    if tryWakeP {
+        wakep()
+    }
+    
+    // gp锁定在某个 m 上, 则需要重新进行查询 gp 
+    if gp.lockedm != 0 {
+        // Hands off own p to the locked m,
+        // then blocks waiting for a new p.
+        startlockedm(gp)
+        goto top
+    }
+    
+    // 当前运行的是 runtime 代码, 函数栈使用的是 g0 的栈空间
+    // 调用 execute 切换到 gp 代码和栈空间去运行.
+    execute(gp, inheritTime)
+}
+```
+
 
 全局运行队列中获取 goroutine:
 
