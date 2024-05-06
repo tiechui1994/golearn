@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ./node_modules
           key: ${{github.repository}}-vercel_golang_blog
@@ -60,7 +60,7 @@ jobs:
           node src/deploy/vercel.js --project golearn --domain golang --token ${{secrets.VERCEL}}
 
       - name: Store Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         if: ${{ success() && steps.install.outputs.store == 1 }}
         with:
           path: ./node_modules
