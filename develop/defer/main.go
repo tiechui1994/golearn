@@ -1,12 +1,14 @@
 package main
 
-import "fmt"
-
 func main() {
 	var a int
 	defer func(i int) {
-		println(i)
+		println("defer=", i)
 	}(a)
 
-	fmt.Println("==>", a)
+	println("main=", a)
+
+	defer func() {
+		println(1)
+	}()
 }
