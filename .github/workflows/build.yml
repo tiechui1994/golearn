@@ -13,12 +13,12 @@ jobs:
 
     steps:
       - name: Use Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 16.16.0
+          node-version: 18
 
       - name: Checkout [blog]
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: tiechui1994/blog
           fetch-depth: 5
@@ -27,7 +27,7 @@ jobs:
           token: ${{secrets.TOKEN}}
 
       - name: Checkout [golang]
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: tiechui1994/golearn
           fetch-depth: 5
