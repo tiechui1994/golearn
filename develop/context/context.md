@@ -33,7 +33,7 @@ goroutine 进行状态同步控制, 比如当其中有一个 goroutine 操作失
 看起来是不是挺简单的.
 
 
-### Contex 接口
+### Context 接口
 
 **Context** 是一个接口, 它定义了 context 协议所支持的行为. 
 

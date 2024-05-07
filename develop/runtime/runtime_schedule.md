@@ -1186,9 +1186,9 @@ stackPreempt就返回了, 并未真正强制被抢占的 goroutine 暂停下来.
 函数的结尾处.
 
 ```cgo
-0x0000 00000 (call.go:17)       MOVQ    (TLS), CX # CX=g 
+0x0000 00000 (call.go:17)       MOVQ    (TLS), CX  # CX=g 
 0x0009 00009 (call.go:17)       CMPQ    SP, 16(CX) # g.stackguard0 与当前 SP 进行比较
-0x000d 00013 (call.go:17)       JLS     163 # SP < g.stackguard0, 则跳转
+0x000d 00013 (call.go:17)       JLS     163        # SP < g.stackguard0, 则跳转
 
 ... 
 
@@ -1217,29 +1217,30 @@ TEXT runtime·morestack(SB),NOSPLIT,$0-0
     MOVQ    g_m(BX), BX  // BX=g.m 
     
     // m->g0 与 g 比较
-    MOVQ    m_g0(BX), SI // SI=m.g0 
+    MOVQ    m_g0(BX), SI  
     CMPQ    g(CX), SI    // m.g0 == g 
-    JNE    3(PC) // 不相等
+    JNE    3(PC)         // 不相等
     CALL    runtime·badmorestackg0(SB)
     CALL    runtime·abort(SB)
     
     // m->gsignal 与 g 比较 
-    MOVQ    m_gsignal(BX), SI # SI = m.signal 
-    CMPQ    g(CX), SI // m.signal == g 
-    JNE    3(PC) // 不相等
+    MOVQ    m_gsignal(BX), SI 
+    CMPQ    g(CX), SI  // m.signal == g 
+    JNE    3(PC)       // 不相等
     CALL    runtime·badmorestackgsignal(SB)
     CALL    runtime·abort(SB)
     
     // f 是通过 call 调用 morestack_noctxt 的那个函数
     // f's caller 是通过 call 调用 f 的那个函数
-    // 保存 f's caller 的信息到 m->morebuf
+    // 保存 f's caller 的信息到 m->morebuf(gobuf)
     NOP    SP    // tell vet SP changed - stop checking offsets
     // 这里的 SP 和 PC 的获取是 hard code 的.
     // 因为 morestack_noctxt 函数是汇编编译插入到代码当中, 并且是在函数调用的开始的位置
-    // 而且插入的指令并没有占用栈空间. 那么 8(SP) 就是 f's caller 的 PC, 即调用 f 函数完成后的返回地址
+    // 而且插入的指令并没有占用栈空间. 
+    //  8(SP) 就是 f's caller 的 PC, 即调用 f 函数完成后的返回地址
     // 16(SP) 就是 f's caller 的 SP, 即调用 f 函数的栈顶指针.
-    // 需要记录 f's caller 的 SP, 是因为当前 goroutine 要进行栈扩容, 那么就会发生栈内容的拷贝, 拷贝的结束位置就是
-    // f's caller 的 SP. 
+    // 需要记录 f's caller 的 SP, 是因为当前 goroutine 要进行栈扩容, 那么就会发生栈内容的拷贝, 
+    // 拷贝的结束位置就是 f's caller 的 SP. 
     // 需要记录 f's caller 的 PC, 是因为栈扩容完成之后, 需要重新将 PC 压人栈, 调用 f 函数.
     MOVQ    8(SP), AX    // f's caller's PC 
     MOVQ    AX, (m_morebuf+gobuf_pc)(BX)
@@ -1262,21 +1263,16 @@ TEXT runtime·morestack(SB),NOSPLIT,$0-0
     MOVQ    m_g0(BX), BX // BX=m.g0
     MOVQ    BX, g(CX)    // g=BX, 切换到 g0 上
     MOVQ    (g_sched+gobuf_sp)(BX), SP // 恢复 g0.sched.sp 
-    CALL    runtime·newstack(SB) // 函数不会返回
-    CALL    runtime·abort(SB)    // crash if newstack returns
+    CALL    runtime·newstack(SB)       // 函数不会返回
+    CALL    runtime·abort(SB)          // crash if newstack returns
     RET
 ```
 
+// check stack or prempt
 ```cgo
-//go:nowritebarrierrec
 func newstack() {
     thisg := getg() // g0
-    
-    ... // 省略一些检查性的代码
-    
     gp := thisg.m.curg
-    
-    ... // 省略一些检查性的代码
     
     morebuf := thisg.m.morebuf
     thisg.m.morebuf.pc = 0
@@ -1311,8 +1307,12 @@ func newstack() {
         }
     }
     
-    ... // 省略一些检查性的代码 
-    
+    sp := gp.sched.sp
+    if sys.ArchFamily == sys.AMD64 || sys.ArchFamily == sys.I386 || sys.ArchFamily == sys.WASM {
+        // The call to morestack cost a word.
+        sp -= sys.PtrSize
+    }
+
     if preempt {
         if gp == thisg.m.g0 {
             throw("runtime: preempt g0")
@@ -1324,7 +1324,8 @@ func newstack() {
         // 收缩栈
         if gp.preemptShrink {
             gp.preemptShrink = false
-            shrinkstack(gp) // 栈收缩
+            // 栈收缩, 缩减到原来的一半. 只有满足特定条件才会去分配新的栈, 并进行栈内存拷贝
+            shrinkstack(gp) 
         }
         
         // 停止抢占, 但是也会进入下一轮调度
