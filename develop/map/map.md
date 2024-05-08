@@ -41,7 +41,7 @@ type mapextra struct {
   // 的指针都放在 hmap.extra.overflow 和 hmap.extra.oldoverflow 中了. 注意, 此时的 bmap.overflow 是一个
   // uintptr 类型(整数类型), 不会被扫描.
   //  
-  // 当 key 和 elem 不包含指针时, 才使用 overflow 和 oldoverflow. 
+  // 当 key 和 elem 不包含指针时, 才会使用 overflow 和 oldoverflow(参考 newoverflow 函数). 
   // overflow 包含的是 hmap.buckets 的 overflow bucket, 
   // oldoverflow 包含扩容时的 hmap.oldbuckets 的 overflow bucket.
   overflow    *[]*bmap
@@ -51,7 +51,7 @@ type mapextra struct {
   nextOverflow *bmap
 }
 
-// A bucket for a Go map.
+// A bucket for a Go map. 仅仅是一个 header
 type bmap struct {
   // tophash包含此桶中每个键的哈希值最高字节(高8位)信息(也就是前面所述的high-order bits).
   // 如果tophash[0] < minTopHash, tophash[0]则代表桶的搬迁(evacuation)状态.
@@ -138,15 +138,15 @@ func bmap(t *types.Type) *types.Type {
   arr := types.NewArray(types.Types[TUINT8], BUCKETSIZE)
   field = append(field, makefield("topbits", arr))
 
+  // 2nd filed: keys keytype[BUCKETSIZE]
   arr = types.NewArray(keytype, BUCKETSIZE)
   arr.SetNoalg(true)
-  // 2nd filed: keys keytype[BUCKETSIZE]
   keys := makefield("keys", arr)
   field = append(field, keys)
 
+  // 3rd field: elems elemtype[BUCKETSIZE]
   arr = types.NewArray(elemtype, BUCKETSIZE)
   arr.SetNoalg(true)
-  // 3rd field: elems elemtype[BUCKETSIZE]
   elems := makefield("elems", arr)
   field = append(field, elems)
 
@@ -165,9 +165,10 @@ func bmap(t *types.Type) *types.Type {
     field = append(field, makefield("pad", types.Types[TUINTPTR]))
   }
 
-  // 如果key和elem都没有指针, 则map实现可以在侧面保留一个 overflow 指针列表, 以便可以将 buckets 标记为没有指针.
-  // 在这种情况下, 通过将 overflow 字段的类型更改为 uintptr, 使存储桶不包含任何指针.(与前面当中是解释呼应)
-  // last field: overflow *struct 或 uintptr, 都是 8 字节
+  // 如果key和elem都没有指针, 则map实现可以在侧面保留一个 overflow 指针列表, 
+  // 以便可以将 buckets 标记为没有指针. 在这种情况下, 通过将 overflow 字段的
+  // 类型更改为 uintptr, 使存储桶不包含任何指针. (与前面当中是解释呼应)
+  // 5th field: overflow *struct 或 uintptr, 都是 8 字节
   otyp := types.NewPtr(bucket)
   if !types.Haspointers(elemtype) && !types.Haspointers(keytype) {
     otyp = types.Types[TUINTPTR]
@@ -181,7 +182,6 @@ func bmap(t *types.Type) *types.Type {
   dowidth(bucket)
 
   t.MapType().Bucket = bucket
-
   bucket.StructType().Map = t
   return bucket
 }
@@ -292,6 +292,12 @@ func isEmpty(x uint8) bool {
   return x <= emptyOne // emptyRest:0, emptyOne:1
 }
 
+// 计算 count 对应的 B 是否满足 loadFactor, 最终是寻找一个合适的 B
+// 如果 count = 20, 合适的 B 为 2
+func overLoadFactor(count int, B uint8) bool {
+	return count > 8 && uintptr(count) > (bucketShift(B)*6.5)
+}
+
 // 获取 b 的 overflow 指针
 func (b *bmap) overflow(t *maptype) *bmap {
     // 很巧妙, bucketsize 的最后一个 sys.PtrSize 即是 overflow 指针
@@ -386,7 +392,7 @@ func makemap(t *maptype, hint int, h *hmap) *hmap {
   // 如果B为0, 那么buckets字段后续会在mapassign方法中lazily分配
   if h.B != 0 {
     var nextOverflow *bmap
-    // makeBucketArray创建一个map的底层保存buckets的数组, 它最少会分配h.B^2的大小.
+    // makeBucketArray创建一个map的底层保存buckets的数组(连续), 它最少会分配h.B^2的大小.
     h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
     // 存储 overflow bucket, 当 h.B >= 4 才有(即bucket的数量超过16).
     if nextOverflow != nil {
@@ -409,7 +415,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
     // 当桶的数量大于等于16个时, 正常情况下就会额外创建2^(b-4)个溢出桶
     nbuckets += bucketShift(b - 4)
     sz := t.bucket.size * nbuckets // 计算内存大小
-    up := roundupsize(sz)          // 计算mallocgc将分配的内存块的大小(需要以此为准)
+    up := roundupsize(sz)          // 计算mallocgc将分配的内存块的大小, 内存对齐(需要以此为准)
     if up != sz {
       nbuckets = up / t.bucket.size
     }
@@ -495,7 +501,7 @@ again:
   // bucketMask返回值是 2^B-1
   // 因此,通过hash值与bucketMask返回值做按位与操作,返回的在buckets数组中的第几号桶
   bucket := hash & bucketMask(h.B) // 获取bucket的位置
-  // 如果map正在扩容(即h.oldbuckets != nil)中, 则先进行搬移工作(当前的bucket).
+  // 如果map正在扩容 (即h.oldbuckets != nil) 中, 则先进行搬移工作(当前的bucket).
   if h.growing() {
     growWork(t, h, bucket) // 最多搬移两个bucket
   }
@@ -520,13 +526,11 @@ bucketloop:
       // [h0][h1][h2][h3][h4][e][e][e]
       // 但在执行过 delete 操作时,可能会变成这样:
       // [h0][h1][e][e][h5][e][e][e]
-      // 所以如果再插入的话,会尽量往前面的位置插
-      // [h0][h1][e][e][h5][e][e][e]
       //          ^
       //          ^
-      //       这个位置
-      // 所以在循环的时候还要顺便把前面的空位置先记下来
-      // 因为有可能在后面会找到相等的key,也可能找不到相等的key
+      //     这个位置作为插入位置
+      // 所以在循环的时候还要顺便把前面的空位置先记下来, 首选的位置
+      // 因为有可能在后面会找到相等的key, 也可能找不到相等的key
       if b.tophash[i] != top {
         // 如果cell位为空(b.tophash[i] <= emptyOne), 那么就可以在对应位置进行插入
         if isEmpty(b.tophash[i]) && inserti == nil {
@@ -543,7 +547,8 @@ bucketloop:
         continue
       }
 
-      // 第二种情况是cell位的tophash值和当前的tophash值相等
+      // 第二种情况是cell位的tophash值和当前的 tophash 值相等
+      // 这种情况还需要继续试探, 如果 key 也是一样, 需要覆盖
       // indirectkey()  // store ptr to key instead of key itself
       // indirectelem() // store ptr to elem instead of elem itself
       k := add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
@@ -579,8 +584,8 @@ bucketloop:
 
   // 在已有的桶和溢出桶中都未找到合适的cell供key写入, 那么有可能会触发以下两种情况
   // 情况一:
-  // 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多. 如果存在这两种情况之一, 则进行扩容
-  // 操作.
+  // 判断当前map的装载因子是否达到设定的6.5阈值, 或者当前map的溢出桶数量是否过多.
+  // 如果存在这两种情况之一, 则进行扩容操作.
   // hashGrow()实际并未完成扩容, 对哈希表数据的搬迁(复制)操作是通过growWork()来完成的.
   // 重新跳入again逻辑, 执行两次growWork()操作后, 再次遍历新的桶.
   // 分别分析情况1(装载因子) 和 情况2(buckets与overflow buckets)
@@ -590,8 +595,8 @@ bucketloop:
   }
 
   // 情况二:
-  // 在不满足情况一的条件下, 并且没有找到插入位置, 会为当前桶再新建溢出桶,并将tophash,key插入到新建溢出桶的对应内存
-  // 的0号位置
+  // 在不满足情况一的条件下, 并且没有找到插入位置, 会为当前桶再新建溢出桶,
+  // 并将tophash,key插入到新建溢出桶的对应内存的0号位置
   if inserti == nil {
     // all current buckets are full, allocate a new one.
     newb := h.newoverflow(t, b)
@@ -651,12 +656,12 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
     ovf = (*bmap)(newobject(t.bucket))
   }
 
-  // 修改 noverflow
+  // 修改 noverflow 数量
   h.incrnoverflow()
   // key和value 非指针
   if t.bucket.ptrdata == 0 {
     h.createOverflow()                                 // 创建 extra 和 overflow
-    *h.extra.overflow = append(*h.extra.overflow, ovf) // 将  overflow 存储到 extra 当中
+    *h.extra.overflow = append(*h.extra.overflow, ovf) // 将 overflow 存储到 extra 当中
   }
   b.setoverflow(t, ovf)
   return ovf
