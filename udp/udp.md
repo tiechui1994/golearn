@@ -153,7 +153,7 @@ Linux 当中可以通过设置 socket 的 SO_REUSEADDR 和 SO_REUSEPORT 来启�
 
 ### Go 当中端口重用实现
 
-```
+```cgo
 func Control(network, address string, c syscall.RawConn) error {
     var err error
     c.Control(func(fd uintptr) {
