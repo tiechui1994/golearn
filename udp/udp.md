@@ -1,22 +1,22 @@
-## UDP
+# UDP 基础
 
-### `ListenUDP` vs `DialUDP`
+## `ListenUDP` vs `DialUDP` 区别
 
 客户端使用 `DailUDP` 建立数据报的源对象和目标对象(IP+Port), 它会创建 UDP Socket文件描述符, 然后调用内部的 `connect`
-为这个文件描述符设置源地址和目标地址, 这时Go将它称之为 `connected`. 这个方法返回 `*UDPConn`.
+为这个文件描述符设置源地址和目标地址, 这时 Go 将它称之为 `connected`. 这个方法返回 `*UDPConn`.
 
 服务器使用 `ListenUDP` 返回的 `*UDPConn` 直接往某个目标地址发送数据报, 而不是通过 `DailUDP` 方式发送, 原因在于两者
 返回的 `*UDPConn` 是不同的. 前者是 `connected`, 后者是 `unconnected`.
 
 
-必须要清楚知道UDP是连接的(connected)还是未连接的(unconnected)的, 这样才能正确的选择读写方法.
+必须要清楚知道 UDP 是连接的(connected)还是未连接的(unconnected)的, 这样才能正确的选择读写方法.
 
 如果 `*UDPConn` 是 `connected`, 读写方法是 `Read` 和 `Write`.
 
 如果 `*UDPConn` 是 `unconnected`, 读写方法是 `ReadFromUDP` 和 `WriteToUDP` (以及 `ReadFrom` 和 `WriteTo`)
 
 
-下面是 Linux 关于 UDP 的文档:
+Linux 关于 UDP 的文档:
 
 > When a UDP socket is created, its local and remote addresses are unspecified. Datagrams can be 
 sent immediately using `sendto` or `sendmsg` with a valid destination address as an argument. When 
@@ -27,17 +27,15 @@ the socket can be bound to a local address first by using `bind`. Otherwise, the
 automatically assign a free local port out of the range defined by 
 `/proc/sys/net/ipv4/ip_local_port_range` and bind the socket to INADDR_ANY.
 
-
 `ReadFrom` 和 `WriteTo` 是为了实现 `PacketConn` 接口而实现的方法, 它们基本上和 `ReadFromUDP` 和 `WriteToDUP`
 一样, 只不过地址换成了更为通用的 `Addr`, 而不是具体化的 `UDPAddr`.
 
-
 几种特殊情况:
 
-1. 因为 `unconnected` 的 `*UDPConn` 还没有目标地址, 所以需要把目标地址当作参数传入到 `WriteToUDP` 的方法中, 但是
-`unconnected` 的 `*UDPConn` 可以调用 `Read` 方法吗?
+1. 因为 `unconnected` 的 `*UDPConn` 还没有目标地址, 所以需要把目标地址当作参数传入到 `WriteToUDP` 的方法中, 但
+是 `unconnected` 的 `*UDPConn` 可以调用 `Read` 方法吗?
 
-**可以**, 但是在这种状况下, 客户端的地址信息被忽略了.(也就是说客户端的地址信息提前确定, 才能往客户端写入)
+**可以**, 但是在这种状况下, 客户端的地址信息被忽略了. (也就是说客户端的地址信息提前确定, 才能往客户端写入)
 
 2. `unconnected` 的 `*UDPConn` 可以调用 `Write` 方法吗?
 
@@ -49,7 +47,7 @@ automatically assign a free local port out of the range defined by
 
 4. `connected` 的 `*UDPConn` 如果调用 `Closed` 以后可以调用 `WriteToUDP` 方法吗?
 
-**不可以**, 调用 `Closed` 之后, 
+**不可以**, 调用 `Closed` 之后, 相应的目标地址清空
 
 5. `connected` 的 `*UDPConn` 可以调用 `ReadFromUDP` 方法吗?
 
@@ -62,10 +60,9 @@ a) 如果 `UDPConn` 还未连接, 那么会发送数据到addr
 
 b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这种状况下会忽略 addr
 
-### 广播
+## 广播
 
-
-### socket 编程的相关选项
+## socket 的相关选项(UDP与TCP)
 
 - `SOCK_NONBLOCK`(非阻塞IO), `SOCK_CLOEXEC`(fork子进程之后, 关闭父进程的文件描述符), 这两个是fd的属性
 
@@ -86,7 +83,6 @@ b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这�
 每个套接字(包括第一个套接字) 上设置此选项.
 
 为了防止端口劫持, 绑定到同一地址的所有进程都必须具有相同的有效UID. 此选项可与TCP和UDP套接字一起使用.
-
 
 - `SO_REUSEADDR`(0x02)
 
@@ -111,9 +107,7 @@ b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这�
 > 使用 `recvmmsg` 代替 `recvmsg`, 调用 recvmsg 时会将收到的数据从内核空间拷贝到用户空间, 每调用一次就会产生一次内核
 开销. linux 2.6.33 增加了 `recvmmsg`, 允许用户一次性接收多个数据包. (UDP)
 
-
-
-### 通用多播编程
+## 通用多播编程
 
 在广域网上广播的时候, 其中的交换机和路由器只向需要获取数据的主机复制并转发数据.
 
@@ -138,6 +132,87 @@ b) 如果 `UDPConn` 已连接, 那么它会发送数据给连接的对端, 这�
 
 3) 应用收到包后还可以检查包是否来自这个组的包.
 
-
 同一个应用可以加入多个组中, 多个应用也可以加入到同一个组中.
+
+## Go UDP 端口重用
+
+一般来说, TCP/UDP 的端口只能绑定在一个套接字上. 当我们尝试监听一个已经被其他进程监听的端口时, bind 调用就会失败, 
+errno 置为 98 EADDRINUSE. 也就是所谓的端口占用.
+
+但是一个端口只能被一个进程监听吗? 显然不是的. 比如说我们可以先 bind 一个套接字再 fork, 这样两个子进程就监听了同一个
+端口. Nginx 就是这样做的, 它的所有 worker 进程都监听着同一个端口. 我们还可以使用 UNIX domain socket 传递文件, 
+将一个 fd "发送" 到另一个进程中, 实现同样的效果.
+
+根据 TCP/IP 标准, 端口本身是允许服用的, 绑定端口的本质就是当系统收到一个 TCP 报文段或 UDP 报文段时, 可以根据其头部
+的端口字段找到对应的进程, 并将数据传递给对应的进程. 另外对于广播和组播, 端口复用是必须的, 因为它们本身就是多重交付的.
+
+Linux 当中可以通过设置 socket 的 SO_REUSEADDR 和 SO_REUSEPORT 来启用地址复用和端口复用.
+
+注: SO_REUSEADDR 是在 Linux kernel 2.4 版本以后开始支持. SO_REUSEPORT 是 Linux kernel 3.9 版本以后开始支持.
+使用时需要注意下.
+
+### Go 当中端口重用实现
+
+```
+func Control(network, address string, c syscall.RawConn) error {
+    var err error
+    c.Control(func(fd uintptr) {
+        err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
+        if err != nil {
+            return
+        }
+    
+        err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+        if err != nil {
+            return
+        }
+    })
+    return err
+}
+
+var listenConfig = net.ListenConfig{
+    Control: Control,
+}
+
+// 可以 Listen UDP, TCP. 
+// Control 是在创建完系统 socket(调用 sysSocket) 后, 调用 netFD.listenDatagram 当中进行回调执行的.
+// 整个过程发生在 socket() 函数当中
+func ListenPacket(network, address string) (net.PacketConn, error) {
+    return listenConfig.ListenPacket(context.Background(), network, address)
+}
+
+// 可以 Dail UDP, TCP
+// Control 的调用时机与 ListenPacket 是一致的, 但是其调用链更长.
+// 1. Dialer.DialContext
+// 2. 构建 sysDialer, 调用 sysDialer.dialSerial
+// 3. 调用 sysDialer.dialSingle
+// 4. 调用 sysDialer.dialUDP
+// 5. internetSocket() -> socket()
+func Dial(network, laddr, raddr string) (net.Conn, error) {
+    nla, err := ResolveAddr(network, laddr)
+    if err != nil {
+        return nil, fmt.Errorf("failed to resolve local addr: %w", err)
+    }
+    d := net.Dialer{
+        Control:   Control,
+        LocalAddr: nla,
+    }
+    return d.Dial(network, raddr)
+}
+
+func ResolveAddr(network, address string) (net.Addr, error) {
+    switch network {
+    default:
+        return nil, net.UnknownNetworkError(network)
+    case "ip", "ip4", "ip6":
+        return net.ResolveIPAddr(network, address)
+    case "tcp", "tcp4", "tcp6":
+        return net.ResolveTCPAddr(network, address)
+    case "udp", "udp4", "udp6":
+        return net.ResolveUDPAddr(network, address)
+    case "unix", "unixgram", "unixpacket":
+        return net.ResolveUnixAddr(network, address)
+    }
+}
+```
 
