@@ -20,10 +20,6 @@ func TestHungryLock(t *testing.T) {
 	HungryLock()
 }
 
-func TestDoWork(t *testing.T) {
-	DoWork()
-}
-
 func TestBridge(t *testing.T) {
 	getvals := func() <-chan <-chan interface{} {
 		chans := make(chan (<-chan interface{}))

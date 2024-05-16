@@ -3,9 +3,7 @@ package ext
 import (
 	"runtime"
 
-	"fmt"
 	"sync/atomic"
-	"time"
 )
 
 type SpinLock struct {

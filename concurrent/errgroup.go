@@ -3,10 +3,11 @@ package concurrent
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"net/http"
 	"sync"
 	"time"
+
+	"golearn/concurrent/ext"
 )
 
 func ErrGroup() {
@@ -17,8 +18,8 @@ func ErrGroup() {
 		"http://www.baidu.vv",
 		"http://www.qq.com"}
 
-	var group *errgroup.Group
-	group, _ = errgroup.WithContext(context.Background())
+	var group *ext.Group
+	group, _ = ext.WithContext(context.Background())
 	for i := range urls {
 		url := urls[i]
 		group.Go(func() error {
