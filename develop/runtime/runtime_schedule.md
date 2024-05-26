@@ -1,4 +1,4 @@
-### go 调度 - 调度循环
+## go 调度(二) - 调度循环
 
 任何 goroutine 被调度运行起来都是通过 schedule() -> execute() -> gogo() 调用链, 而且这个调用链中的函数一直没有
 返回. 一个 goroutine 从调度到退出的路径:
@@ -44,6 +44,8 @@ schedule 函数分三步分别查找各种运行队列中寻找可运行的 goro
 行.
 
 - 从工作线程本地运行队列中查找 goroutine
+
+- 从全局线程队列当中查找 goroutine
 
 - 从其他工作线程的运行队列中偷取 goroutine. 如果上一步也没有找到需要运行的 goroutine, 则调用 findrunnable 从其他
 工作线程的运行队列中偷取 goroutine, findrunnable 函数在偷取之前会再次尝试从全局运行队列和当前线程本地运行队列中查找需
@@ -169,7 +171,6 @@ top:
 }
 ```
 
-
 全局运行队列中获取 goroutine:
 
 globrunqget() 函数的 `_p_` 是当前工作线程绑定的 p, 第二个参数 max 表示最多可以从全局队列拿多少个 g 到当前工作线程
@@ -210,7 +211,7 @@ func globrunqget(_p_ *p, max int32) *g {
 
 ```
 
-从工作线程本地运行队列当中获取:
+从本地运行队列当中获取:
 
 runqget() 的参数是本地运行队列 `_p_`. 工作线程的本地运行队列分为两部分, 一部分是 p 的 runq, runhead, runtail
 三个成员组成的无锁循环队列, 该队列最多可存储 256 个 goroutine; 另一部分是 p 的 runnext 成员, 它是指向一个 g 结构体
@@ -497,7 +498,6 @@ stop:
     goto top
 }
 ```
-
 
 偷取是由 runqsteal() 函数完成, 从 p2 当中偷取 G 放入 `_p_` 当中. 批量偷取的细节函数由 runqgrab() 完成. 偷取完成
 之后, 对 `_p_` 的runqtail进行修正.

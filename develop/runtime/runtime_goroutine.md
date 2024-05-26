@@ -1,4 +1,6 @@
-### go 调度 - main goroutine 
+## go 调度(四) - goroutine 退出
+
+### main goroutine 退出
 
 下来, 看看 runtime.main 函数:
 
@@ -139,7 +141,6 @@ runtime.main 是 main goroutine 的入口函数, 并不是直接被调用的, �
 
 但是, 前面的分析当中得知, 在创建 goroutine 时在其栈上已经放好了一个返回地址, 伪造成 goexit 函数调用了 goroutine 的入口函数, 在这里并没有
 使用到这个返回地址, 其实这个地址是为非 main goroutine 准备的, 让其在执行完成之后返回到 goexit 继续执行.
-
 
 ### 非 main goroutine 退出流程
 
