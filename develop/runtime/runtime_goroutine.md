@@ -1,4 +1,4 @@
-## go 调度(四) - goroutine 退出
+## go 调度(4) - goroutine 退出
 
 ### main goroutine 退出
 
