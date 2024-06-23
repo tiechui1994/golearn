@@ -189,7 +189,7 @@ dp[i][w] = max(dp[i-1][w -  k*w[i]] + k*p[i])  0 <= k <= +OO
 
 ||、
 
-dp[i][w] = max(dp[i-1][w -  w[i] + p[i], dp[i-1][w]) 
+dp[i][w] = max(dp[i][w -  w[i] + p[i], dp[i-1][w]) 
 
 for i in [1..N]:
     for w in [1..W]:
