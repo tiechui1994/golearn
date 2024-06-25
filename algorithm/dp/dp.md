@@ -244,6 +244,25 @@ dp[i][0] = max(dp[i-1][0], dp[i-1][1] + prices[i]) // 卖出
 dp[i][1] = max(dp[i-1][1],  -prices[i])            // 买入
 ```
 
+股票只能买卖没有限制:
+
+```
+dp[i][0] = max(dp[i-1][0], dp[i-1][1] + prices[i]) // 卖出
+dp[i][1] = max(dp[i-1][1], dp[i-1][0] - prices[i]) // 买入
+
+状态初始化:
+dp[0][0] = 0
+dp[0][1] = -prices[0]
+```
 
 
+股票只能买卖k次:
+
+```
+dp[i][k][0] = max(dp[i-1][k][0], dp[i-1][k][1] + prices[i])   // 卖出
+dp[i][k][1] = max(dp[i-1][k][1], dp[i-1][k-1][0] - prices[i]) // 买入
+
+dp[0][k][0] = 0
+dp[0][k][1] = -prices[0]
+```
 
