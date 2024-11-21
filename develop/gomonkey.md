@@ -5,9 +5,32 @@
 
 ### 代码实现
 
+先看代码: `json.Unmarshal` 进行 hook 操作
+
+```cgo
+patches := ApplyFunc(json.Unmarshal, func(data []byte, v interface{}) error {
+    if data == nil {
+        panic("input param is nil!")
+    }
+    p := v.(*map[int]int)
+    *p = make(map[int]int)
+    (*p)[1] = 2
+    (*p)[2] = 4
+    return nil
+})
+defer patches.Reset()
+
+var m map[int]int
+err := json.Unmarshal([]byte("123"), &m)
+```
+
+上述的代码 `ApplyFunc` call的就是 `ApplyCore`
+
+
 // 核心函数, 使用 double 来 Hook target.
 // 注: target 是函数指针, double 是当前函数实现
 ```
+// target, double: reflect.ValueOf(xx)
 func (this *Patches) ApplyCore(target, double reflect.Value) *Patches {
     this.check(target, double)
     // 要细品这里 assTarget 的含义.
@@ -45,7 +68,7 @@ func getPointer(v reflect.Value) unsafe.Pointer {
 // target 是机器码位置
 // double 当前替换的内存地址
 func replace(target, double uintptr) []byte {
-    code := buildJmpDirective(double)        // 需要替换的数据(指令)
+    code := buildJmpDirective(double)        // 需要替换的字节(指令)
     bytes := entryAddress(target, len(code)) // 获取原生 target 开始的 len(code) 字节数据
     original := make([]byte, len(bytes))
     copy(original, bytes)                    // 把这部分数据拷贝到 original
@@ -97,7 +120,7 @@ func mprotectCrossPage(addr uintptr, length int, prot int) error {
     pageSize := syscall.Getpagesize()
     for p := pageStart(addr); p < addr+uintptr(length); p += uintptr(pageSize) {
         page := entryAddress(p, pageSize)
-    // syscall Mprotect 用于修改进程内内存的标志位(为修改进程内存值做铺垫). 
+        // syscall Mprotect 用于修改进程内内存的标志位(为修改进程内存值做铺垫). 
         if err := syscall.Mprotect(page, prot); err != nil {
             return err
         }
