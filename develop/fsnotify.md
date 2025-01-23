@@ -1,14 +1,50 @@
 ## 监听文件变化的实现
 
-> Linux下inotify特性:
->
->inotify是内核一个特性, 可以用来监控目录, 文件的读写等事件. 当监控目标是目录时, inotify除了会监控目录本身, 还会监控目
-录中的文件. inotify的监控功能由如下几个系统调用组成: inotify_init1, inotify_add_watch, inotify_rm_watch,
-read 和 close.
->
->inotify的主要操作基于inotify_init1返回的 inotify 文件描述符, 该描述符的作用类似于 epoll 的 epoll_fd. inotify 
-在监控目录的时候, 不支持对目录的地柜监控, 即只能监控一层目录, 如果需要地柜监控, 就需要将这些目录通过 inotify_add_watch
-添加进来.
+### Linux
+
+Linux下 inotify 特性:
+
+inotify是内核一个特性, 可以用来监控目录, 文件的读写等事件. 当监控目标是目录时, inotify 除了会监控目录本身, 还会监
+控目录中的文件.
+
+inotify 的监控功能由如下几个 syscall 组成: `inotify_init1`, `inotify_add_watch`, `inotify_rm_watch`, `read` 和 `close`.
+
+inotify的主要操作基于 `inotify_init1` 返回的 inotify 文件描述符, 该描述符的作用类似于 epoll 的 epoll_fd. 
+
+注: inotify 在监控目录的时候, 不支持对目录的递归监控, 即只能监控一层目录, 如果需要递归监控, 就需要将这些目录通过 
+`inotify_add_watch` 添加.
+
+伪代码:
+
+```
+
+ifd := InotifyInit1()
+
+wfd := InotifyAddWatch(ifd, path, IN_OPEN|IN_CLOSE|IN_CREATE|IN_DELETE|IN_MODIFY|IN_ATTRIB|...)
+
+for (;;;) { 
+    data, ret = read(wfd)
+    if ret == EAGAIN {
+       continue
+    }
+
+    // parse data loop
+    // header: struct {
+    //   	wd     int32   
+    //   	mask   uint32  // contains event mask
+    //   	cookie uint32  // unused
+    //   	len    uint32
+    // }
+    // data: length is header len. is name
+}
+```
+
+### Windows
+
+Windows 下 `ReadDirectoryChangesW` 可以监控目录的变化
+
+
+### fsnotify
 
 核心: inotify系统调用产生的 fd 可以使用 epoll 进行去监听(类似于网络fd). 对于 inotify 当中监听的文件的变更都会使得
 inotifyfd 就绪, 从而可以从 inotifyfd 当中读取就绪的内容(文件变化的情况)
