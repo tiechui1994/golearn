@@ -737,9 +737,9 @@ Go 语言对于不同类型的转换非常严格, 任何 C 语言中可能出现
 
 - Go 当中两个指针之间的转换
 
-在 Go 语言中两个指针的类型完全一致则不需要转换可以直接使用. 如果一个指针类型是用 type 命令在另一个指针类型基础上构建的, 
+在 Go 语言中两个指针的 `类型完全一致` 则不需要转换可以直接使用. 如果一个指针类型是用 type 命令在另一个指针类型基础上构建的, 
 换言之 `两个指针是 "底层结构完全相同" 的指针`, 那么可以通过直接强制转换语法进行指针间的转换.  但是 cgo 经常要面对是2个
-完全不同类型的指针间的转换, 原则上这种操作在纯Go 语言代码是严格禁止的.
+完全不同类型的指针间的转换, 原则上这种操作在纯 Go 语言代码是严格禁止的.
 
 ```
 var p *X
@@ -757,11 +757,11 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 ![image](/images/cgo_xtoy.png)
 
 
-- C 和 Go 关于空指针的传递
+- C 与 Go 关于空指针的传递
 
 在 C 语言当中, 指针类型 `char*`, `void*`, `int*` 等等, 其空值为 `NULL`. 
 
-> 特别注意: NULL 是一个宏变量, 定义在 `<stdlib.h>` 当中, 在 Go 中可以通过 `C.NULL` 获取其值(0), 不能将 `C.NULL` 传递给 C
+> 注意: NULL 是一个宏变量, 定义在 `<stdlib.h>` 当中, 在 Go 中可以通过 `C.NULL` 获取其值(0), 不能将 `C.NULL` 传递给 C
 
 在 Go 语言当中, 指针类型的空值为 `nil`. 
 
@@ -770,6 +770,47 @@ p = (*Y)(unsafe.Pointer(q)) // *Y => *X
 该是 `(*C.char)(unsafe.Pointer(nil))` (这里是 `char*` 类型), `unsafe.Pointer(nil)` (这里是 `void*` 类型) . 
 
 > 注意: 在第一种状况下, 传递 C.NULL, 程序是会报错的. 因为 C.NULL 在 Go 当中就是一个整数类型, 并不是指针类型.
+
+
+- Go 中读取 C 指针的指针(例如 `int**`, `char**` 等)
+
+方式一: 转换
+```
+// cIntLen, cInt 分别是 int* 与 int**
+// 拆分: int* 是一个指针, int** 是一个 int* 的数组(一般情况下, 数组长度为1)
+gIntLen := *(*uint32)(unsafe.Pointer(cIntLen))
+gInt := *(*[1]*uint32)(unsafe.Pointer(cInt))
+
+// 转换 ...
+header := reflect.SliceHeader{
+    Data: uintptr(unsafe.Pointer(gInt[0])),
+    Len: int(gIntLen),
+    Cap: int(gIntLen),
+}
+
+var gValues []uint32
+*(*reflect.SliceHeader)(unsafe.Pointer(&gValues)) = header
+
+// can use gValues ....
+```
+
+
+方式二: 拆分
+```
+// cIntLen, cInt 分别是 int* 与 int**
+// 拆分: int* 是一个指针, int** 是一个 int* 的数组(一般情况下, 数组长度为1)
+gIntLen := *(*uint32)(unsafe.Pointer(cIntLen))
+gInt := *(*[1]*uint32)(unsafe.Pointer(cInt))
+
+// 解析真正的值. gInt[0] 代表的是 int*(本质上是一个 int 数组, 首地址与第一个元素的地址箱体) 的地址.
+gValues := make([]uint32, gIntLen)
+for i:=0; i<int(gIntLen); i++ {
+    gValues[i] = *(*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(gInt[0])) + uintptr(i)*unsafe.Sizeof(uint32(0))))
+}
+
+// can use gValues ....
+```
+
 
 #### 数值和指针的转换
 
